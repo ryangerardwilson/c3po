@@ -18,7 +18,7 @@ Usage:
   install.sh help            Show this help
 
 Installs to \$C3PO_INSTALL_DIR or ~/.local/bin.
-Links rgw-ast, cx, and complexity to the same binary.
+Links rgw-ast to the same binary and removes cx and complexity links that point at it.
 Writes the complexity XDG settings.json when it is missing.
 EOF
 }
@@ -80,6 +80,17 @@ link_name() {
   ln -sfn "$APP" "$INSTALL_DIR/$name"
 }
 
+remove_compat_link() {
+  local name="$1"
+  local path="$INSTALL_DIR/$name"
+  local target
+  [[ -L "$path" ]] || return 0
+  target="$(readlink "$path")"
+  if [[ "$target" == "$APP" || "$target" == "$INSTALL_DIR/$APP" ]]; then
+    rm -f "$path"
+  fi
+}
+
 install_from_source() {
   local source_path=$1
   [[ -d "$source_path" ]] || die "source path does not exist: $source_path"
@@ -92,8 +103,8 @@ install_from_source() {
   (cd "$source_path" && GOWORK=off CGO_ENABLED=0 go build -ldflags "$ldflags" -o "$INSTALL_DIR/$APP" ./cmd/c3po)
   chmod 755 "$INSTALL_DIR/$APP"
   link_name rgw-ast
-  link_name cx
-  link_name complexity
+  remove_compat_link cx
+  remove_compat_link complexity
   "$INSTALL_DIR/$APP" version
   "$INSTALL_DIR/$APP" scout complexity config --init >/dev/null
 }

@@ -9,17 +9,26 @@ c3po scout complexity [args...]
 
 `ast` is the AST-aware agent boundary: trace a symbol, then create, patch, and apply files by hash. `complexity` scores functions and schema shape, and it reports what became new or worse.
 
-`rgw-ast`, `cx`, and `complexity` are names for this same binary. Invoking one of those names selects that scout, so `rgw-ast patch` and `cx note` keep working.
+The installed names are `c3po` and `rgw-ast`. `rgw-ast` is the same binary, for tools that still launch that command. `cx` and `complexity` are not installed.
 
 ## Install
 
-From this checkout:
+Public source is https://github.com/ryangerardwilson/c3po. Release tags are `vX.Y.Z`. The current release is v0.1.0.
+
+From a checkout:
 
 ```sh
 ./install.sh
 ```
 
-The binary is installed to `$C3PO_INSTALL_DIR` or `~/.local/bin`. The installer also links `rgw-ast`, `cx`, and `complexity` to it. Install from the changed checkout. Publishing a GitHub release is a separate task.
+The binary is installed to `$C3PO_INSTALL_DIR` or `~/.local/bin`, with an `rgw-ast` symlink beside it. A clean checkout reports `c3po 0.1.0+<commit>`. Uncommitted changes add `-dirty`.
+
+Go installs the same module without the `rgw-ast` link:
+
+```sh
+GOBIN="$HOME/.local/bin" go install github.com/ryangerardwilson/c3po/cmd/c3po@v0.1.0
+ln -sfn c3po "$HOME/.local/bin/rgw-ast"
+```
 
 ## Develop
 

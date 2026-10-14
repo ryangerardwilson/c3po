@@ -73,7 +73,7 @@ func TestPatchAppendsTheNote(t *testing.T) {
 
 func stubCx(t *testing.T, body string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "cx")
+	path := filepath.Join(t.TempDir(), "c3po")
 	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}

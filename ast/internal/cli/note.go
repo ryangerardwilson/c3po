@@ -17,7 +17,7 @@ func (r Runner) noteWritten(paths []string) {
 	if len(paths) == 0 {
 		return
 	}
-	bin, err := exec.LookPath("cx")
+	bin, err := exec.LookPath("c3po")
 	if err != nil {
 		return
 	}
@@ -42,7 +42,7 @@ func cxNote(bin string, paths []string) []byte {
 }
 
 func noteArgs(paths []string) []string {
-	args := []string{"note", "--format", "text"}
+	args := []string{"scout", "complexity", "note", "--format", "text"}
 	for _, p := range paths {
 		args = append(args, "--path", p)
 	}
