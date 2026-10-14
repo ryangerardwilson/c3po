@@ -169,3 +169,12 @@ func TestDoctorUserLevelHookIsConfigured(t *testing.T) {
 		t.Fatalf("user-level hook not detected: %+v", rep)
 	}
 }
+
+func TestC3POScoutHookCounts(t *testing.T) {
+	if !isHookCommandValue("c3po scout ast hook") {
+		t.Fatal("c3po scout ast hook")
+	}
+	if isHookCommandValue("c3po scout complexity hook") {
+		t.Fatal("complexity hook is not the ast hook")
+	}
+}

@@ -108,12 +108,12 @@ func Run(cfg config.Config, cfgPath, cwd, rootOverride string, refresh bool) Rep
 		rep.AgentsBlockStatus = "absent_file"
 		rep.AgentsBlockReady = false
 		if rep.Enforced {
-			rep.Notes = append(rep.Notes, "AGENTS.md missing; embed with: rgw-ast agents-block")
+			rep.Notes = append(rep.Notes, "AGENTS.md missing; embed with: c3po scout ast agents-block")
 		}
 	} else {
 		rep.AgentsBlockStatus, rep.AgentsBlockReady = agentsBlockState(string(data))
 		if rep.AgentsBlockStatus == "stale" {
-			rep.Notes = append(rep.Notes, "AGENTS.md rgw-ast block differs from canonical output; refresh from: rgw-ast agents-block")
+			rep.Notes = append(rep.Notes, "AGENTS.md rgw-ast block differs from canonical output; refresh from: c3po scout ast agents-block")
 		}
 	}
 	if rep.AgentsBlockStatus == "absent_file" || rep.AgentsBlockStatus == "missing_block" {
@@ -121,17 +121,17 @@ func Run(cfg config.Config, cfgPath, cwd, rootOverride string, refresh bool) Rep
 			rep.AgentsBlockStatus, rep.AgentsBlockReady = "inherited", true
 			rep.Notes = append(rep.Notes, "agents block inherited from "+from)
 		} else if status == "stale" {
-			rep.Notes = append(rep.Notes, "ancestor "+from+" has a stale rgw-ast block; refresh from: rgw-ast agents-block")
+			rep.Notes = append(rep.Notes, "ancestor "+from+" has a stale rgw-ast block; refresh from: c3po scout ast agents-block")
 		}
 	}
 
 	// Host hooks: claim configured only for a parsed command field whose argv
-	// begins with rgw-ast hook. Mere prose or unrelated JSON strings are not evidence.
+	// begins with rgw-ast hook or c3po scout ast hook. Mere prose or unrelated JSON strings are not evidence.
 	hookFound := false
 	for _, p := range hookSettingsPaths(ws) {
 		if data, err := os.ReadFile(p); err == nil && hasConfiguredHook(data) {
 			hookFound = true
-			rep.Notes = append(rep.Notes, "found rgw-ast hook command in "+p)
+			rep.Notes = append(rep.Notes, "found ast hook command in "+p)
 		}
 	}
 	if hookFound {
@@ -140,7 +140,7 @@ func Run(cfg config.Config, cfgPath, cwd, rootOverride string, refresh bool) Rep
 	} else {
 		rep.HookStatus = "not_checked"
 		rep.HookReady = false
-		rep.Notes = append(rep.Notes, "host PreToolUse hook not observed; wire: rgw-ast hook")
+		rep.Notes = append(rep.Notes, "host PreToolUse hook not observed; wire: c3po scout ast hook")
 	}
 
 	if len(cfg.Generators.Allow) == 0 {
@@ -279,23 +279,53 @@ func containsHookCommand(value any) bool {
 func isHookCommandValue(value any) bool {
 	switch typed := value.(type) {
 	case string:
-		fields := strings.Fields(typed)
-		if len(fields) < 2 {
-			return false
-		}
-		first := strings.Trim(fields[0], "\"'")
-		second := strings.Trim(fields[1], "\"'")
-		return filepath.Base(first) == "rgw-ast" && second == "hook"
+		return hookCommand(strings.Fields(typed))
 	case []any:
-		if len(typed) < 2 {
-			return false
-		}
-		first, firstOK := typed[0].(string)
-		second, secondOK := typed[1].(string)
-		return firstOK && secondOK && filepath.Base(first) == "rgw-ast" && second == "hook"
+		return hookCommand(stringFields(typed))
 	default:
 		return false
 	}
+}
+
+func stringFields(items []any) []string {
+	fields := make([]string, 0, len(items))
+	for _, item := range items {
+		text, ok := item.(string)
+		if !ok {
+			return nil
+		}
+		fields = append(fields, text)
+	}
+	return fields
+}
+
+func hookCommand(fields []string) bool {
+	if astName(fields) {
+		return true
+	}
+	return c3poAst(fields)
+}
+
+func astName(fields []string) bool {
+	if len(fields) < 2 {
+		return false
+	}
+	return filepath.Base(cleanField(fields[0])) == "rgw-ast" && cleanField(fields[1]) == "hook"
+}
+
+func c3poAst(fields []string) bool {
+	if len(fields) < 4 {
+		return false
+	}
+	name := filepath.Base(cleanField(fields[0])) == "c3po"
+	scout := cleanField(fields[1]) == "scout"
+	tool := cleanField(fields[2]) == "ast"
+	hook := cleanField(fields[3]) == "hook"
+	return name && scout && tool && hook
+}
+
+func cleanField(field string) string {
+	return strings.Trim(field, "\"'")
 }
 
 // FormatText renders a compact human report.
