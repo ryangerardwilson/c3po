@@ -89,7 +89,7 @@ install_from_source() {
   read -r version commit source_hash < <(source_version_meta "$source_path")
   build_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   ldflags="$(build_ldflags "$version" "$commit" "$source_hash" "$build_time")"
-  (cd "$source_path" && CGO_ENABLED=0 go build -ldflags "$ldflags" -o "$INSTALL_DIR/$APP" ./cmd/c3po)
+  (cd "$source_path" && GOWORK=off CGO_ENABLED=0 go build -ldflags "$ldflags" -o "$INSTALL_DIR/$APP" ./cmd/c3po)
   chmod 755 "$INSTALL_DIR/$APP"
   link_name rgw-ast
   link_name cx
