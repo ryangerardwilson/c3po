@@ -1,0 +1,15 @@
+schema: spec-driven
+
+context: |
+  c3po is one CLI for scouting tools. The command is
+  c3po scout <name>. The scouts are ast and complexity.
+  ast is the AST-aware agent boundary. complexity is the
+  complexity gate. Product truth lives in this repository.
+
+rules:
+  proposal:
+    - Describe the observable problem, outcome, scope and migration impact.
+  specs:
+    - Use SHALL or MUST and concrete scenarios, including failure behavior.
+  tasks:
+    - Include strict validation and relevant tests; complete only verified work.

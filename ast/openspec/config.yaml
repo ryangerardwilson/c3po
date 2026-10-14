@@ -1,0 +1,44 @@
+schema: spec-driven
+
+context: |
+  Project: rgw-ast — global AST-aware agent boundary CLI.
+
+  Tech stack:
+  - Go 1.26 module github.com/ryangerardwilson/rgw-ast
+  - Entry: cmd/rgw-ast/main.go → internal/cli
+  - Prefer stdlib; use BurntSushi/toml for config only
+  - No per-project config files; sole policy file is
+    ~/.config/rgw-ast/config.toml (or $XDG_CONFIG_HOME/rgw-ast/config.toml)
+
+  Layout:
+  - cmd/rgw-ast — binary main
+  - internal/cli — command parse and dispatch
+  - internal/config — load/ensure global config
+  - internal/root — workspace root discovery (git root or cwd)
+  - internal/measure — LOC counting with include/exclude
+  - internal/enforce — enforced decision from mode + loc
+  - internal/intel — map/show/search (heuristic + go/parser)
+  - internal/files — hash, bounded read, exact patch, guarded delete
+  - internal/version — stamped Version
+  - install.sh — local install to ~/.local/bin/rgw-ast
+
+  Product boundaries:
+  - Uniform global policy; no .rgw-ast.toml in repos
+  - Auto-enforce when LOC >= threshold (default 5000)
+  - Structure-first reads when enforced; hash-guarded patches
+  - Deterministic plain text; optional --json on status/measure
+
+  Verification:
+  - go test ./...
+  - go run ./cmd/rgw-ast help|version|status
+
+rules:
+  proposal:
+    - Keep scope to the agent code boundary CLI; no full MCP server in v1
+    - Preserve global-only config; never require project-local policy files
+    - Include Non-goals
+  specs:
+    - Requirements use SHALL/MUST with GIVEN/WHEN/THEN scenarios
+    - Specs cover operator- and agent-visible contracts
+  tasks:
+    - Small verifiable chunks; unit tests for measure, enforce, hash/patch, CLI

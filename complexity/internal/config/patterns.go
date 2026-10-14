@@ -1,0 +1,112 @@
+package config
+
+// defaultPatterns skip dependency, build, cache, and generated trees
+// seen under Apps/ and the nested checkouts in Work/.
+var defaultPatterns = []string{
+	"**/node_modules/**",
+	"**/.git/**",
+	"**/dist/**",
+	"**/build/**",
+	"**/out/**",
+	"**/target/**",
+	"**/.next/**",
+	"**/.nuxt/**",
+	"**/.svelte-kit/**",
+	"**/.output/**",
+	"**/vendor/**",
+	"**/third_party/**",
+	"**/.venv/**",
+	"**/venv/**",
+	"**/__pycache__/**",
+	"**/.tox/**",
+	"**/.mypy_cache/**",
+	"**/.ruff_cache/**",
+	"**/.pytest_cache/**",
+	"**/coverage/**",
+	"**/htmlcov/**",
+	"**/.nyc_output/**",
+	"**/.turbo/**",
+	"**/.cache/**",
+	"**/.parcel-cache/**",
+	"**/.serverless/**",
+	"**/cdk.out/**",
+	"**/.gradle/**",
+	"**/storybook-static/**",
+	"**/playwright-report/**",
+	"**/test-results/**",
+	"**/*.generated.*",
+	"**/*.gen.go",
+	"**/*.pb.go",
+	"**/*_pb2.py",
+	"**/*.min.js",
+	"**/*.min.css",
+	"**/__generated__/**",
+	"**/generated/**",
+	"**/.yarn/**",
+	"**/.pnpm-store/**",
+	"**/site-packages/**",
+	"**/.terraform/**",
+}
+
+// defaultTests match how tests are laid out in Apps/ and Work/.
+// Go uses *_test.go. Python uses test_*.py and *_test.py.
+// TypeScript uses *.test.* and *.spec.* beside source, plus tests/,
+// __tests__/, and test/ (including iac/test).
+var defaultTests = []string{
+	"**/*_test.go",
+	"**/test_*.py",
+	"**/*_test.py",
+	"**/*.test.*",
+	"**/*.spec.*",
+	"**/tests/**",
+	"**/__tests__/**",
+	"**/testdata/**",
+	"**/test/**",
+	"**/fixtures/**",
+}
+
+// pruneDirs are directory names that are never walked.
+var pruneDirs = map[string]bool{
+	"node_modules":      true,
+	"dist":              true,
+	"build":             true,
+	"out":               true,
+	"target":            true,
+	".git":              true,
+	".next":             true,
+	".nuxt":             true,
+	".svelte-kit":       true,
+	".output":           true,
+	"vendor":            true,
+	"third_party":       true,
+	".venv":             true,
+	"venv":              true,
+	"__pycache__":       true,
+	".tox":              true,
+	".mypy_cache":       true,
+	".ruff_cache":       true,
+	".pytest_cache":     true,
+	"coverage":          true,
+	"htmlcov":           true,
+	".nyc_output":       true,
+	".turbo":            true,
+	".cache":            true,
+	".parcel-cache":     true,
+	".serverless":       true,
+	"cdk.out":           true,
+	".gradle":           true,
+	"storybook-static":  true,
+	"playwright-report": true,
+	"test-results":      true,
+	".yarn":             true,
+	".pnpm-store":       true,
+	"site-packages":     true,
+	".terraform":        true,
+	"DerivedData":       true,
+	"Pods":              true,
+}
+
+// PruneDir reports whether a directory name is skipped before descent.
+func PruneDir(name string) bool {
+	return pruneDirs[name]
+}

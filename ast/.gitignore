@@ -1,0 +1,5 @@
+/rgw-ast
+/bin/
+*.test
+*.out
+dist/
