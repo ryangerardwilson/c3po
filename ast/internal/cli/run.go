@@ -909,7 +909,7 @@ func (r Runner) cmdPatch(args []string) error {
 		if err != nil {
 			return err
 		}
-		return r.notedSymbol(wsRoot, results)
+		return r.notedSymbol(results)
 	}
 	newHash, err := files.PatchOps(abs, expectHash, ops)
 	if err != nil {
@@ -985,7 +985,6 @@ func (r Runner) cmdApply(args []string) error {
 		}
 		_, _ = fmt.Fprintln(r.Out)
 	}
-	r.noteWritten(applyAbs(wsRoot, results))
 	return nil
 }
 

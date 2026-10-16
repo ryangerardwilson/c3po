@@ -7,7 +7,13 @@ c3po selects a scouting tool and runs it.
 ## Requirements
 
 ### Requirement: Scout selects a tool
-`c3po scout ast` SHALL run the ast tool with the remaining arguments. `c3po scout complexity` SHALL run the complexity tool with the remaining arguments. `c3po scout` with no tool SHALL list `ast` and `complexity` and SHALL exit 0. An unknown scout name SHALL exit 2 and SHALL list the scouts.
+`c3po scout ast` SHALL run the ast tool with the remaining arguments. `c3po scout vibetree` SHALL run the size tree with the remaining arguments. `c3po scout` with no tool SHALL list `ast` and `vibetree` and SHALL exit 0. An unknown scout name SHALL exit 2 and SHALL list the scouts. The names `complexity`, `hide`, and `visualize` SHALL be unknown scouts.
+
+#### Scenario: Scout lists the tools
+- **WHEN** the operator runs `c3po scout`
+- **THEN** the command SHALL exit 0
+- **AND** the text SHALL list `ast` and `vibetree`
+- **AND** the text SHALL NOT list `complexity` or `hide`
 
 #### Scenario: Ast help is reached through scout
 - **GIVEN** the c3po binary
@@ -15,19 +21,23 @@ c3po selects a scouting tool and runs it.
 - **THEN** the command SHALL exit 0
 - **AND** the text SHALL name the patch command
 
-#### Scenario: Complexity help is reached through scout
-- **GIVEN** the c3po binary
-- **WHEN** the operator runs `c3po scout complexity help`
+#### Scenario: Vibetree help is reached through scout
+- **WHEN** the operator runs `c3po scout vibetree help`
 - **THEN** the command SHALL exit 0
-- **AND** the text SHALL name the note command
+- **AND** the text SHALL name `-p`, `-m`, and `--json`
+
+#### Scenario: A retired scout name is rejected
+- **WHEN** the operator runs `c3po scout complexity`
+- **THEN** the command SHALL exit 2
+- **AND** the same rejection SHALL apply to `hide` and `visualize`
 
 #### Scenario: An unknown scout is rejected
 - **WHEN** the operator runs `c3po scout nope`
 - **THEN** the command SHALL exit 2
-- **AND** the text SHALL list the known scouts
+- **AND** the text SHALL list the known scouts, `vibetree` among them
 
-### Requirement: The previous names select a scout
-Invoking the binary as `rgw-ast` SHALL run the ast scout. Invoking it as `cx` or `complexity` SHALL run the complexity scout. The arguments after the program name SHALL be the scout arguments.
+### Requirement: The previous name selects ast
+Invoking the binary as `rgw-ast` SHALL run the ast scout. The arguments after the program name SHALL be the scout arguments.
 
 #### Scenario: rgw-ast help still describes patch
 - **WHEN** the operator runs `rgw-ast help`

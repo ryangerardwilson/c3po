@@ -2,7 +2,7 @@ package version
 
 // Version is the semantic version, stamped at build/release time.
 // Source defaults are replaced via -ldflags when building releases or install.sh.
-var Version = "0.1.0"
+var Version = "0.2.0"
 
 // Commit is the short git SHA when available (ldflags).
 // A dirty checkout is stamped with a "-dirty" suffix so it cannot be

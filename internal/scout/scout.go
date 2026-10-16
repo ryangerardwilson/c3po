@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 
 	"github.com/ryangerardwilson/c3po/ast"
-	"github.com/ryangerardwilson/c3po/complexity"
 	"github.com/ryangerardwilson/c3po/internal/version"
+	"github.com/ryangerardwilson/c3po/vibetree"
 )
 
 // Main runs c3po from process arguments.
@@ -25,22 +25,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	switch toolOf(args[0]) {
 	case "ast":
 		return ast.Run(args[1:], stdout, stderr)
-	case "complexity":
-		return complexity.Run(args[1:], stdout, stderr)
 	default:
 		return c3po(args[1:], stdout, stderr)
 	}
 }
 
 func toolOf(argv0 string) string {
-	switch filepath.Base(argv0) {
-	case "rgw-ast":
+	if filepath.Base(argv0) == "rgw-ast" {
 		return "ast"
-	case "cx", "complexity":
-		return "complexity"
-	default:
-		return ""
 	}
+	return ""
 }
 
 func c3po(args []string, stdout, stderr io.Writer) int {
@@ -68,8 +62,8 @@ func runScout(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "ast":
 		return ast.Run(args[1:], stdout, stderr)
-	case "complexity":
-		return complexity.Run(args[1:], stdout, stderr)
+	case "vibetree":
+		return vibetree.Run(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown scout %q\n", args[0])
 		writeScouts(stderr)

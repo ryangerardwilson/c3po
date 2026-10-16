@@ -19,7 +19,6 @@ Usage:
 
 Installs to \$C3PO_INSTALL_DIR or ~/.local/bin.
 Links rgw-ast to the same binary and removes cx and complexity links that point at it.
-Writes the complexity XDG settings.json when it is missing.
 EOF
 }
 
@@ -50,7 +49,6 @@ build_ldflags() {
   local flags
   flags="$(stamp_vars "${MODULE_PATH}/internal/version" "$version" "$commit" "$source_hash" "$build_time")"
   flags+="$(stamp_vars "${MODULE_PATH}/ast/internal/version" "$version" "$commit" "$source_hash" "$build_time")"
-  flags+="$(stamp_vars "${MODULE_PATH}/complexity/internal/version" "$version" "$commit" "$source_hash" "$build_time")"
   printf '%s' "-s -w ${flags}"
 }
 
@@ -106,7 +104,6 @@ install_from_source() {
   remove_compat_link cx
   remove_compat_link complexity
   "$INSTALL_DIR/$APP" version
-  "$INSTALL_DIR/$APP" scout complexity config --init >/dev/null
 }
 
 case "${1:-install}" in

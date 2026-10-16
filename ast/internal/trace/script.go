@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/ryangerardwilson/c3po/ast/internal/pyimport"
 )
 
 // Outline is one named symbol in a file, shared by map, show, and trace.
@@ -229,20 +231,12 @@ func (ix *index) recordPyCalls(rel, trim string, line int, id, name, class strin
 }
 
 func (ix *index) notePyImport(rel, trim string) {
-	if m := reFromImport.FindStringSubmatch(trim); len(m) == 3 {
-		mod := m[1]
-		for _, part := range strings.Split(m[2], ",") {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
-			local, orig := part, part
-			if i := strings.Index(part, " as "); i >= 0 {
-				orig = strings.TrimSpace(part[:i])
-				local = strings.TrimSpace(part[i+4:])
-			}
-			ix.imports = append(ix.imports, pyImport{file: rel, local: local, module: mod, orig: orig})
-		}
+	imp, ok := pyimport.From(trim)
+	if !ok {
+		return
+	}
+	for _, n := range imp.Names {
+		ix.imports = append(ix.imports, pyImport{file: rel, local: n.Local, module: imp.Module, orig: n.Orig})
 	}
 }
 
@@ -762,14 +756,13 @@ func isBuiltin(name string) bool {
 }
 
 var (
-	reFromImport = regexp.MustCompile(`^from\s+(\S+)\s+import\s+(.+)$`)
-	reRoute      = regexp.MustCompile(`@(?:\w+\.)?(get|post|put|delete|patch|api_route)\(\s*["']([^"']+)["']`)
-	reDepends    = regexp.MustCompile(`\bDepends\(\s*([A-Za-z_][A-Za-z0-9_\.]*)`)
-	reInclude    = regexp.MustCompile(`\.include_router\(\s*([A-Za-z_][A-Za-z0-9_\.]*)`)
-	reAddRoute   = regexp.MustCompile(`\.add_api_route\(\s*["']([^"']+)["']\s*,\s*([A-Za-z_][A-Za-z0-9_\.]*)`)
-	reCallback   = regexp.MustCompile(`\.(?:add_event_handler|on_event)\(\s*["'][^"']*["']\s*,\s*([A-Za-z_][A-Za-z0-9_\.]*)`)
-	reRegister   = regexp.MustCompile(`\.(?:register|subscribe)\(\s*([A-Za-z_][A-Za-z0-9_\.]*)\s*\)`)
-	reJSX        = regexp.MustCompile(`<([A-Z][A-Za-z0-9_]*)\b`)
+	reRoute    = regexp.MustCompile(`@(?:\w+\.)?(get|post|put|delete|patch|api_route)\(\s*["']([^"']+)["']`)
+	reDepends  = regexp.MustCompile(`\bDepends\(\s*([A-Za-z_][A-Za-z0-9_\.]*)`)
+	reInclude  = regexp.MustCompile(`\.include_router\(\s*([A-Za-z_][A-Za-z0-9_\.]*)`)
+	reAddRoute = regexp.MustCompile(`\.add_api_route\(\s*["']([^"']+)["']\s*,\s*([A-Za-z_][A-Za-z0-9_\.]*)`)
+	reCallback = regexp.MustCompile(`\.(?:add_event_handler|on_event)\(\s*["'][^"']*["']\s*,\s*([A-Za-z_][A-Za-z0-9_\.]*)`)
+	reRegister = regexp.MustCompile(`\.(?:register|subscribe)\(\s*([A-Za-z_][A-Za-z0-9_\.]*)\s*\)`)
+	reJSX      = regexp.MustCompile(`<([A-Z][A-Za-z0-9_]*)\b`)
 )
 
 func frameworkCallee(name string) bool {
