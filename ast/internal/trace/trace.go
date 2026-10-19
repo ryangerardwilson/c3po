@@ -453,6 +453,7 @@ func buildIndex(root string, cfg config.Config) (*index, error) {
 	})
 	ix.resolveGoDirect()
 	ix.resolveGoTypes()
+	ix.resolveGoImports()
 	ix.resolvePyMethods()
 	ix.resolvePyImports()
 	ix.resolveUniqueNames()

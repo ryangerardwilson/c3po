@@ -352,3 +352,33 @@ def mount():
 		t.Fatalf("nested route %+v", inner.Callers)
 	}
 }
+
+func TestGoImportCall(t *testing.T) {
+	root := t.TempDir()
+	must(t, os.MkdirAll(filepath.Join(root, "work"), 0o755))
+	must(t, os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\n\nimport \"example.com/app/work\"\n\nfunc main() {\n\twork.Start()\n}\n"), 0o644))
+	must(t, os.WriteFile(filepath.Join(root, "work", "work.go"), []byte("package work\n\nfunc Start() { Hidden() }\n"), 0o644))
+	cal, err := Query(root, config.Default(), "main", "callees", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cal.Callees) != 1 || cal.Callees[0].PeerSymbol != "Start" || cal.Callees[0].Confidence != "statically-confirmed" {
+		t.Fatalf("%+v", cal.Callees)
+	}
+}
+
+func TestStringConversionIsNotACall(t *testing.T) {
+	root := t.TempDir()
+	must(t, os.MkdirAll(filepath.Join(root, "parse"), 0o755))
+	must(t, os.WriteFile(filepath.Join(root, "show.go"), []byte("package show\n\nfunc Show(buf []byte) string {\n\treturn string(buf)\n}\n"), 0o644))
+	must(t, os.WriteFile(filepath.Join(root, "parse", "lex.go"), []byte("package parse\n\ntype lexer struct{}\n\nfunc (l *lexer) string() {}\n"), 0o644))
+	cal, err := Query(root, config.Default(), "Show", "callees", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range cal.Callees {
+		if e.Confidence == "statically-confirmed" {
+			t.Fatalf("%+v", cal.Callees)
+		}
+	}
+}

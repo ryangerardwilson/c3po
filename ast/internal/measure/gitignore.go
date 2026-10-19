@@ -14,9 +14,10 @@ type gitIgnore struct {
 }
 
 type giRule struct {
-	negated bool
-	dirOnly bool
-	pattern string
+	negated  bool
+	dirOnly  bool
+	anchored bool
+	pattern  string
 }
 
 func loadGitIgnore(root string) *gitIgnore {
@@ -31,31 +32,10 @@ func loadGitIgnore(root string) *gitIgnore {
 		}
 		sc := bufio.NewScanner(f)
 		for sc.Scan() {
-			line := strings.TrimSpace(sc.Text())
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
+			rule, ok := parseGitRule(sc.Text())
+			if ok {
+				rules = append(rules, rule)
 			}
-			neg := false
-			if strings.HasPrefix(line, "!") {
-				neg = true
-				line = line[1:]
-			}
-			dirOnly := strings.HasSuffix(line, "/")
-			if dirOnly {
-				line = strings.TrimSuffix(line, "/")
-			}
-			line = strings.TrimPrefix(line, "/")
-			if line == "" {
-				continue
-			}
-			// Convert simple gitignore to our glob style.
-			pat := line
-			if !strings.Contains(pat, "/") {
-				pat = "**/" + pat
-			} else if !strings.HasPrefix(pat, "**/") && !strings.HasPrefix(pat, "*") {
-				// path relative to root
-			}
-			rules = append(rules, giRule{negated: neg, dirOnly: dirOnly, pattern: pat})
 		}
 		_ = f.Close()
 	}
@@ -65,40 +45,84 @@ func loadGitIgnore(root string) *gitIgnore {
 	return &gitIgnore{rules: rules}
 }
 
+func parseGitRule(line string) (giRule, bool) {
+	line = strings.TrimSpace(line)
+	if line == "" || strings.HasPrefix(line, "#") {
+		return giRule{}, false
+	}
+	neg := false
+	if strings.HasPrefix(line, "!") {
+		neg = true
+		line = line[1:]
+	}
+	dirOnly := strings.HasSuffix(line, "/")
+	if dirOnly {
+		line = strings.TrimSuffix(line, "/")
+	}
+	anchored := strings.HasPrefix(line, "/")
+	line = strings.TrimPrefix(line, "/")
+	if line == "" {
+		return giRule{}, false
+	}
+	pat := line
+	if !anchored && !strings.Contains(pat, "/") {
+		pat = "**/" + pat
+	}
+	return giRule{negated: neg, dirOnly: dirOnly, anchored: anchored, pattern: pat}, true
+}
+
 // ignored returns true if rel should be ignored.
-func (g *gitIgnore) ignored(rel string, isDir bool) bool {
+func (g *gitIgnore) ignored(rel string, _ bool) bool {
 	if g == nil {
 		return false
 	}
 	rel = filepath.ToSlash(rel)
 	matched := false
 	for _, r := range g.rules {
-		p := r.pattern
-		hit := matchGlob(p, rel) ||
-			matchGlob(p+"/**", rel) ||
-			matchGlob("**/"+p, rel) ||
-			matchGlob("**/"+p+"/**", rel) ||
-			matchGlob(p, filepath.Base(rel))
-		// directory rule "ignored/" matches path under ignored/
-		if r.dirOnly {
-			if rel == p || strings.HasPrefix(rel, p+"/") ||
-				matchGlob("**/"+p, rel) || strings.Contains(rel, "/"+p+"/") ||
-				strings.HasPrefix(rel, p+"/") {
-				hit = true
-			}
-			// first path segment
-			if segs := strings.Split(rel, "/"); len(segs) > 0 && segs[0] == p {
-				hit = true
-			}
-		}
-		if !hit {
+		if !ruleHit(r, rel) {
 			continue
 		}
-		if r.negated {
-			matched = false
-		} else {
-			matched = true
-		}
+		matched = !r.negated
 	}
 	return matched
+}
+
+func ruleHit(r giRule, rel string) bool {
+	if r.anchored {
+		return anchoredHit(r.pattern, rel)
+	}
+	return anywhereHit(r, rel)
+}
+
+func anchoredHit(p, rel string) bool {
+	return matchGlob(p, rel) || matchGlob(p+"/**", rel) || strings.HasPrefix(rel, p+"/")
+}
+
+func anywhereHit(r giRule, rel string) bool {
+	if nameHit(r.pattern, rel) {
+		return true
+	}
+	if !r.dirOnly {
+		return false
+	}
+	return dirHit(r.pattern, rel)
+}
+
+func nameHit(p, rel string) bool {
+	return matchGlob(p, rel) ||
+		matchGlob(p+"/**", rel) ||
+		matchGlob("**/"+p, rel) ||
+		matchGlob("**/"+p+"/**", rel) ||
+		matchGlob(p, filepath.Base(rel))
+}
+
+func dirHit(p, rel string) bool {
+	if rel == p || strings.HasPrefix(rel, p+"/") || strings.Contains(rel, "/"+p+"/") {
+		return true
+	}
+	if matchGlob("**/"+p, rel) {
+		return true
+	}
+	segs := strings.Split(rel, "/")
+	return len(segs) > 0 && segs[0] == p
 }

@@ -76,3 +76,24 @@ func TestScopeSkipsLinkedWorktreeAndSelfIgnoredDirs(t *testing.T) {
 		t.Fatalf("worktree skip %q", why)
 	}
 }
+
+func TestAnchoredGitignoreKeepsNestedNames(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, ".gitignore"), "/c3po\n/bin/\n")
+	writeFile(t, filepath.Join(root, "c3po"), "bin\n")
+	writeFile(t, filepath.Join(root, "cmd", "c3po", "main.go"), "package main\nfunc main() {}\n")
+	writeFile(t, filepath.Join(root, "bin", "tool"), "x\n")
+	sc := NewScope(root, config.Default())
+	if why := sc.SkipFile(filepath.Join(root, "c3po")); why != SkipGitIgnored {
+		t.Fatalf("root c3po %q", why)
+	}
+	if why := sc.SkipDir(filepath.Join(root, "bin")); why != SkipGitIgnored {
+		t.Fatalf("root bin %q", why)
+	}
+	if why := sc.SkipDir(filepath.Join(root, "cmd", "c3po")); why != "" {
+		t.Fatalf("cmd/c3po %q", why)
+	}
+	if why := sc.SkipFile(filepath.Join(root, "cmd", "c3po", "main.go")); why != "" {
+		t.Fatalf("main.go %q", why)
+	}
+}

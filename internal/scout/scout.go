@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/ryangerardwilson/c3po/ast"
+	"github.com/ryangerardwilson/c3po/cyclotree"
 	"github.com/ryangerardwilson/c3po/internal/version"
 	"github.com/ryangerardwilson/c3po/vibetree"
 )
@@ -64,6 +65,8 @@ func runScout(args []string, stdout, stderr io.Writer) int {
 		return ast.Run(args[1:], stdout, stderr)
 	case "vibetree":
 		return vibetree.Run(args[1:], stdout, stderr)
+	case "cyclotree":
+		return cyclotree.Run(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "unknown scout %q\n", args[0])
 		writeScouts(stderr)

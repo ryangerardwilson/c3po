@@ -853,7 +853,7 @@ func (ix *index) resolveUniqueNames() {
 	}
 	for i := range ix.edges {
 		e := &ix.edges[i]
-		if e.toID != "" || e.confidence != "unresolved" {
+		if e.toID != "" || e.confidence != "unresolved" || predeclared(e.callee) {
 			continue
 		}
 		if counts[e.callee] != 1 {

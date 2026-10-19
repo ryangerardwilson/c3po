@@ -7,7 +7,7 @@ import (
 
 func TestScoutListsTools(t *testing.T) {
 	out, code := call("c3po", "scout")
-	for _, name := range []string{"\n  ast", "\n  vibetree"} {
+	for _, name := range []string{"\n  ast", "\n  vibetree", "\n  cyclotree"} {
 		if code != 0 || !bytes.Contains(out, []byte(name)) {
 			t.Fatalf("code %d missing %q\n%s", code, name, out)
 		}
@@ -22,6 +22,13 @@ func TestScoutListsTools(t *testing.T) {
 func TestScoutVibetreeHelp(t *testing.T) {
 	out, code := call("c3po", "scout", "vibetree", "help")
 	if code != 0 || !bytes.Contains(out, []byte("-p N")) || !bytes.Contains(out, []byte("-m loc|cyclo")) {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+}
+
+func TestScoutCyclotreeHelp(t *testing.T) {
+	out, code := call("c3po", "scout", "cyclotree", "help")
+	if code != 0 || !bytes.Contains(out, []byte("j and k")) || !bytes.Contains(out, []byte("h moves")) {
 		t.Fatalf("code %d\n%s", code, out)
 	}
 }
