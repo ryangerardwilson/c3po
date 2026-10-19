@@ -48,3 +48,31 @@ Invoking the binary as `rgw-ast` SHALL run the ast scout. The arguments after th
 - **WHEN** the operator runs `rgw-ast help`
 - **THEN** the command SHALL exit 0
 - **AND** the text SHALL name the patch command
+
+### Requirement: One help command
+`c3po help` SHALL exit 0, SHALL show `c3po help -f`, and SHALL list `ast`, `vibetree`, and `cyclotree`. `c3po help -f <category>` SHALL explain that category. `c3po help -f ast <feature>` SHALL explain that ast command. `c3po help -f vibetree` SHALL name `-p` and `-m`. `c3po help -f cyclotree` SHALL describe `j` and `k`. An unknown category SHALL exit 2. An unknown ast feature SHALL exit 2. A feature after `vibetree` or `cyclotree` SHALL exit 2.
+
+#### Scenario: Help shows the single form
+- **WHEN** the operator runs `c3po help`
+- **THEN** the command SHALL exit 0
+- **AND** the text SHALL show `c3po help -f`
+- **AND** the text SHALL list `ast`, `vibetree`, and `cyclotree`
+
+#### Scenario: A category explains that tool
+- **WHEN** the operator runs `c3po help -f cyclotree`
+- **THEN** the command SHALL exit 0
+- **AND** the text SHALL describe `j` and `k`
+
+#### Scenario: A feature explains one ast command
+- **WHEN** the operator runs `c3po help -f ast patch`
+- **THEN** the command SHALL exit 0
+- **AND** the text SHALL describe patch
+
+#### Scenario: An unknown category is rejected
+- **WHEN** the operator runs `c3po help -f nope`
+- **THEN** the command SHALL exit 2
+
+#### Scenario: An unknown feature is rejected
+- **WHEN** the operator runs `c3po help -f ast nope`
+- **THEN** the command SHALL exit 2
+- **AND** a feature after `cyclotree` SHALL exit 2

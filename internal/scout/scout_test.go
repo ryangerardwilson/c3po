@@ -63,6 +63,47 @@ func TestUnknownScout(t *testing.T) {
 	}
 }
 
+func TestHelpFlagSelectsAFeature(t *testing.T) {
+	out, code := call("c3po", "help")
+	for _, want := range []string{"c3po help -f", "\n  ast", "\n  vibetree", "\n  cyclotree"} {
+		if code != 0 || !bytes.Contains(out, []byte(want)) {
+			t.Fatalf("index %d missing %q\n%s", code, want, out)
+		}
+	}
+	out, code = call("c3po", "help", "-f", "cyclotree")
+	if code != 0 || !bytes.Contains(out, []byte("j and k")) || !bytes.Contains(out, []byte("h moves")) {
+		t.Fatalf("cyclotree %d\n%s", code, out)
+	}
+	out, code = call("c3po", "help", "-f", "vibetree")
+	if code != 0 || !bytes.Contains(out, []byte("-p N")) || !bytes.Contains(out, []byte("-m loc|cyclo")) {
+		t.Fatalf("vibetree %d\n%s", code, out)
+	}
+	out, code = call("c3po", "help", "-f", "ast", "patch")
+	if code != 0 || !bytes.Contains(out, []byte("expect-hash")) {
+		t.Fatalf("patch %d\n%s", code, out)
+	}
+	out, code = call("c3po", "help", "-f", "ast", "search")
+	if code != 0 || !bytes.Contains(out, []byte("--regex")) {
+		t.Fatalf("search %d\n%s", code, out)
+	}
+	out, code = call("c3po", "help", "-f", "nope")
+	if code != 2 || !bytes.Contains(out, []byte("unknown category")) {
+		t.Fatalf("category %d\n%s", code, out)
+	}
+	out, code = call("c3po", "help", "-f", "ast", "nope")
+	if code != 2 || !bytes.Contains(out, []byte("unknown feature")) {
+		t.Fatalf("feature %d\n%s", code, out)
+	}
+	out, code = call("c3po", "help", "-f", "cyclotree", "extra")
+	if code != 2 || !bytes.Contains(out, []byte("unknown feature")) {
+		t.Fatalf("extra %d\n%s", code, out)
+	}
+	out, code = call("c3po", "help", "-f")
+	if code != 2 || !bytes.Contains(out, []byte("c3po help -f")) {
+		t.Fatalf("bare %d\n%s", code, out)
+	}
+}
+
 func TestVersion(t *testing.T) {
 	out, code := call("c3po", "version")
 	if code != 0 || !bytes.Contains(out, []byte("c3po ")) {

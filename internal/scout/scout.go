@@ -39,9 +39,12 @@ func toolOf(argv0 string) string {
 }
 
 func c3po(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 || isHelp(args[0]) {
+	if len(args) == 0 || (isHelp(args[0]) && len(args) == 1) {
 		writeHelp(stdout)
 		return 0
+	}
+	if args[0] == "help" {
+		return helpArgs(args[1:], stdout, stderr)
 	}
 	if isVersion(args[0]) {
 		fmt.Fprintln(stdout, "c3po "+version.String())

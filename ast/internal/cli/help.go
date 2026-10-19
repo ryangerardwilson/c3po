@@ -124,6 +124,21 @@ func WriteTraceHelp(w io.Writer) {
 	_, _ = io.WriteString(w, traceHelp)
 }
 
+// HelpText is the ast overview, or one command. The overview uses an empty name.
+func HelpText(cmd string) (string, bool) {
+	switch cmd {
+	case "":
+		return helpText, true
+	case "search":
+		return searchHelp, true
+	case "callers", "callees", "impact":
+		return traceHelp, true
+	default:
+		text, ok := commandHelp[cmd]
+		return text, ok
+	}
+}
+
 func WriteCommandHelp(w io.Writer, cmd string) {
 	if cmd == "callers" || cmd == "callees" || cmd == "impact" {
 		WriteTraceHelp(w)
