@@ -3,10 +3,10 @@
 Global AST-aware agent boundary CLI. One policy file for every repository:
 
 ```text
-~/.config/rgw-ast/config.toml
+~/.config/c3po/ast/config.toml
 ```
 
-(or `$XDG_CONFIG_HOME/rgw-ast/config.toml`)
+(or `$XDG_CONFIG_HOME/c3po/ast/config.toml`)
 
 No per-project config is required. When `enforcement.mode = "auto"` (default)
 and measured source LOC is at least `threshold_loc` (default **5000**),

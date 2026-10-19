@@ -8,7 +8,7 @@ context: |
   - Entry: cmd/rgw-ast/main.go → internal/cli
   - Prefer stdlib; use BurntSushi/toml for config only
   - No per-project config files; sole policy file is
-    ~/.config/rgw-ast/config.toml (or $XDG_CONFIG_HOME/rgw-ast/config.toml)
+    ~/.config/c3po/ast/config.toml (or $XDG_CONFIG_HOME/c3po/ast/config.toml)
 
   Layout:
   - cmd/rgw-ast — binary main

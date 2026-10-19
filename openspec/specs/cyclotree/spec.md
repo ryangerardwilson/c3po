@@ -6,16 +6,16 @@ cyclotree is a screen of the calls one function makes, or of the whole applicati
 
 ## Requirements
 
-### Requirement: Cyclotree is a scout
-`c3po scout cyclotree [symbol] [dir]` SHALL read `[dir]`, defaulting to the working directory. `[symbol]` MAY come before or after `[dir]` and MAY be omitted. `c3po scout cyclotree help` SHALL exit 0 and SHALL describe `j`, `k`, `h`, and `l`. An unknown flag or two symbols SHALL exit 2 and SHALL print the help. A path given as the directory that is not a directory SHALL exit 1. An unknown function SHALL exit 1 and SHALL name the symbol. When more than one function has the name, the command SHALL exit 1 and SHALL list each `path:line name`.
+### Requirement: Cyclotree is an app
+`c3po cyclotree [symbol] [dir]` SHALL read `[dir]`, defaulting to the working directory. `[symbol]` MAY come before or after `[dir]` and MAY be omitted. `c3po cyclotree help` SHALL exit 0 and SHALL describe `j`, `k`, `h`, and `l`. An unknown flag or two symbols SHALL exit 2 and SHALL print the help. A path given as the directory that is not a directory SHALL exit 1. An unknown function SHALL exit 1 and SHALL name the symbol. When more than one function has the name, the command SHALL exit 1 and SHALL list each `path:line name`.
 
 #### Scenario: Help names the motions
-- **WHEN** the operator runs `c3po scout cyclotree help`
+- **WHEN** the operator runs `c3po cyclotree help`
 - **THEN** the command SHALL exit 0
 - **AND** the text SHALL describe `j`, `k`, `h`, and `l`
 
 #### Scenario: An unknown function is an error
-- **WHEN** the operator runs `c3po scout cyclotree Missing` in an empty directory
+- **WHEN** the operator runs `c3po cyclotree Missing` in an empty directory
 - **THEN** the command SHALL exit 1
 - **AND** the text SHALL contain `no symbol "Missing"`
 
@@ -24,25 +24,25 @@ When no symbol is given, the command SHALL start at the program entrypoint and S
 
 #### Scenario: The application is treed from main
 - **GIVEN** `main` calls `Start` and `Start` calls `Work` in package `main`
-- **WHEN** the operator runs `c3po scout cyclotree` with no symbol and stdout is not a terminal
+- **WHEN** the operator runs `c3po cyclotree` with no symbol and stdout is not a terminal
 - **THEN** the command SHALL exit 0
 - **AND** the text SHALL show `main`, `Start`, and `Work`
 - **AND** `Work` SHALL be nested under `Start`
 
 #### Scenario: A repeated call stays closed
 - **GIVEN** `main` calls `A` and `B`, and both `A` and `B` call `C`, and `C` calls `D`
-- **WHEN** the operator runs `c3po scout cyclotree` with no symbol and stdout is not a terminal
+- **WHEN** the operator runs `c3po cyclotree` with no symbol and stdout is not a terminal
 - **THEN** `D` SHALL appear once, under the first `C`
 - **AND** the other `C` SHALL show no further calls
 
 #### Scenario: No entrypoint is an error
-- **WHEN** the operator runs `c3po scout cyclotree` in an empty directory
+- **WHEN** the operator runs `c3po cyclotree` in an empty directory
 - **THEN** the command SHALL exit 1
 - **AND** the text SHALL contain `no entrypoint`
 
 #### Scenario: Two entrypoints are listed
 - **GIVEN** two functions named `main` in package `main`
-- **WHEN** the operator runs `c3po scout cyclotree` with no symbol
+- **WHEN** the operator runs `c3po cyclotree` with no symbol
 - **THEN** the command SHALL exit 1
 - **AND** the text SHALL list both paths
 
@@ -51,20 +51,20 @@ The root SHALL be the named function. Its direct resolved calls SHALL start open
 
 #### Scenario: A call into internal is listed
 - **GIVEN** `Start` calls `Work`, and `Work` is defined under `internal/`
-- **WHEN** the operator runs `c3po scout cyclotree Start` with stdout not a terminal
+- **WHEN** the operator runs `c3po cyclotree Start` with stdout not a terminal
 - **THEN** the text SHALL show `Start` and `Work`
 - **AND** the `Work` row SHALL contain `internal/`
 - **AND** each row SHALL show that function's cyclomatic complexity
 
 #### Scenario: Depth counts calls that can be opened
 - **GIVEN** `Start` calls `Work` and `Work` calls `Start`
-- **WHEN** the operator runs `c3po scout cyclotree Start` with stdout not a terminal
+- **WHEN** the operator runs `c3po cyclotree Start` with stdout not a terminal
 - **THEN** the `Start` row SHALL show depth 1
 - **AND** the `Work` row SHALL show depth 0
 
 #### Scenario: A Rust root shows its complexity
 - **GIVEN** a Rust function `parse_line` with one branch
-- **WHEN** the operator runs `c3po scout cyclotree parse_line` with stdout not a terminal
+- **WHEN** the operator runs `c3po cyclotree parse_line` with stdout not a terminal
 - **THEN** the text SHALL show `parse_line` and its cyclomatic complexity
 - **AND** the text SHALL contain one row
 
@@ -128,7 +128,7 @@ The screen SHALL NOT show the shortcut list until the operator presses `?`. `?` 
 
 #### Scenario: A nested file is relative to its caller
 - **GIVEN** `main` in `main.go` calls `Start` in `work/work.go` and `Start` calls `Hidden` in that same file
-- **WHEN** the operator runs `c3po scout cyclotree` with stdout not a terminal
+- **WHEN** the operator runs `c3po cyclotree` with stdout not a terminal
 - **THEN** the `Start` row SHALL show `work/work.go`
 - **AND** the `Hidden` row SHALL show `work.go`
 

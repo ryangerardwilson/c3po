@@ -4,14 +4,23 @@ import (
 	"bytes"
 	"path/filepath"
 	"testing"
+
+	"github.com/ryangerardwilson/c3po/ast/internal/config"
 )
 
 func TestPatchPrintsTheHash(t *testing.T) {
 	ws := t.TempDir()
+	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	cfg := config.Default()
+	cfg.Cache.Dir = t.TempDir()
+	if err := config.Write(cfgPath, cfg); err != nil {
+		t.Fatal(err)
+	}
 	mustWrite(t, filepath.Join(ws, "f.go"), "package p\nconst X = 1\n")
 	var out, errB bytes.Buffer
 	r := NewRunner(&out, &errB)
 	r.Cwd = ws
+	r.ConfigPath = cfgPath
 	if code := r.Run([]string{"hash", "f.go"}); code != 0 {
 		t.Fatal(code, errB.String())
 	}

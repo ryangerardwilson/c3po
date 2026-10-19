@@ -33,7 +33,7 @@ func frictionRunner(t *testing.T, threshold int) (Runner, *bytes.Buffer, *bytes.
 func TestVersionFlagAndShowPath(t *testing.T) {
 	r, out, errB, ws := frictionRunner(t, 100000)
 	mustWrite(t, filepath.Join(ws, "AGENTS.md"), "# Title\n\n## Section\n")
-	if code := r.Run([]string{"--version"}); code != 0 || !strings.Contains(out.String(), "0.4.0") {
+	if code := r.Run([]string{"--version"}); code != 0 || !strings.Contains(out.String(), "0.5.0") {
 		t.Fatalf("--version %d %q", code, out.String())
 	}
 	out.Reset()

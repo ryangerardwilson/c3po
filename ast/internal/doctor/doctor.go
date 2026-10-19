@@ -108,12 +108,12 @@ func Run(cfg config.Config, cfgPath, cwd, rootOverride string, refresh bool) Rep
 		rep.AgentsBlockStatus = "absent_file"
 		rep.AgentsBlockReady = false
 		if rep.Enforced {
-			rep.Notes = append(rep.Notes, "AGENTS.md missing; embed with: c3po scout ast agents-block")
+			rep.Notes = append(rep.Notes, "AGENTS.md missing; embed with: c3po ast agents-block")
 		}
 	} else {
 		rep.AgentsBlockStatus, rep.AgentsBlockReady = agentsBlockState(string(data))
 		if rep.AgentsBlockStatus == "stale" {
-			rep.Notes = append(rep.Notes, "AGENTS.md rgw-ast block differs from canonical output; refresh from: c3po scout ast agents-block")
+			rep.Notes = append(rep.Notes, "AGENTS.md rgw-ast block differs from canonical output; refresh from: c3po ast agents-block")
 		}
 	}
 	if rep.AgentsBlockStatus == "absent_file" || rep.AgentsBlockStatus == "missing_block" {
@@ -121,12 +121,12 @@ func Run(cfg config.Config, cfgPath, cwd, rootOverride string, refresh bool) Rep
 			rep.AgentsBlockStatus, rep.AgentsBlockReady = "inherited", true
 			rep.Notes = append(rep.Notes, "agents block inherited from "+from)
 		} else if status == "stale" {
-			rep.Notes = append(rep.Notes, "ancestor "+from+" has a stale rgw-ast block; refresh from: c3po scout ast agents-block")
+			rep.Notes = append(rep.Notes, "ancestor "+from+" has a stale rgw-ast block; refresh from: c3po ast agents-block")
 		}
 	}
 
 	// Host hooks: claim configured only for a parsed command field whose argv
-	// begins with rgw-ast hook or c3po scout ast hook. Mere prose or unrelated JSON strings are not evidence.
+	// begins with rgw-ast hook or c3po ast hook. Mere prose or unrelated JSON strings are not evidence.
 	hookFound := false
 	for _, p := range hookSettingsPaths(ws) {
 		if data, err := os.ReadFile(p); err == nil && hasConfiguredHook(data) {
@@ -140,7 +140,7 @@ func Run(cfg config.Config, cfgPath, cwd, rootOverride string, refresh bool) Rep
 	} else {
 		rep.HookStatus = "not_checked"
 		rep.HookReady = false
-		rep.Notes = append(rep.Notes, "host PreToolUse hook not observed; wire: c3po scout ast hook")
+		rep.Notes = append(rep.Notes, "host PreToolUse hook not observed; wire: c3po ast hook")
 	}
 
 	if len(cfg.Generators.Allow) == 0 {
@@ -314,14 +314,13 @@ func astName(fields []string) bool {
 }
 
 func c3poAst(fields []string) bool {
-	if len(fields) < 4 {
+	if len(fields) < 3 {
 		return false
 	}
 	name := filepath.Base(cleanField(fields[0])) == "c3po"
-	scout := cleanField(fields[1]) == "scout"
-	tool := cleanField(fields[2]) == "ast"
-	hook := cleanField(fields[3]) == "hook"
-	return name && scout && tool && hook
+	tool := cleanField(fields[1]) == "ast"
+	hook := cleanField(fields[2]) == "hook"
+	return name && tool && hook
 }
 
 func cleanField(field string) string {

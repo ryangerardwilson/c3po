@@ -5,8 +5,10 @@ Keep one global policy file for every repository, with defaults written on first
 ## Requirements
 ### Requirement: Sole global policy file
 `rgw-ast` SHALL load policy only from the global config file at
-`$XDG_CONFIG_HOME/rgw-ast/config.toml` when `XDG_CONFIG_HOME` is set, otherwise
-`$HOME/.config/rgw-ast/config.toml`. The tool SHALL NOT require or read a
+`$XDG_CONFIG_HOME/c3po/ast/config.toml` when `XDG_CONFIG_HOME` is set, otherwise
+`$HOME/.config/c3po/ast/config.toml`. A legacy directory at
+`$XDG_CONFIG_HOME/rgw-ast` or `$HOME/.config/rgw-ast` SHALL be renamed to that
+path when the new path is absent. The tool SHALL NOT require or read a
 project-local `.rgw-ast.toml` or equivalent policy file inside the workspace.
 
 #### Scenario: No project config required

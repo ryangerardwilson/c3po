@@ -5,8 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"testing"
 
 	"github.com/BurntSushi/toml"
+	"github.com/ryangerardwilson/c3po/internal/xdg"
 )
 
 const (
@@ -120,14 +122,19 @@ func Default() Config {
 
 // Dir returns the global config directory.
 func Dir() (string, error) {
-	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "rgw-ast"), nil
+	base := os.Getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		base = filepath.Join(home, ".config")
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
+	dest := xdg.App(base, "ast")
+	if err := xdg.Adopt(dest, filepath.Join(base, "rgw-ast")); err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".config", "rgw-ast"), nil
+	return dest, nil
 }
 
 // Path returns the absolute path to config.toml.
@@ -143,14 +150,22 @@ func Path() (string, error) {
 func (c Config) CacheDir() (string, error) {
 	dir := strings.TrimSpace(c.Cache.Dir)
 	if dir == "" {
-		if xdg := os.Getenv("XDG_CACHE_HOME"); xdg != "" {
-			return filepath.Join(xdg, "rgw-ast"), nil
+		if testing.Testing() {
+			return filepath.Join(os.TempDir(), "c3po-ast-cache-test"), nil
 		}
-		home, err := os.UserHomeDir()
-		if err != nil {
+		base := os.Getenv("XDG_CACHE_HOME")
+		if base == "" {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "", err
+			}
+			base = filepath.Join(home, ".cache")
+		}
+		dest := xdg.App(base, "ast")
+		if err := xdg.Adopt(dest, filepath.Join(base, "rgw-ast")); err != nil {
 			return "", err
 		}
-		return filepath.Join(home, ".cache", "rgw-ast"), nil
+		return dest, nil
 	}
 	if strings.HasPrefix(dir, "~/") {
 		home, err := os.UserHomeDir()

@@ -1,10 +1,12 @@
 schema: spec-driven
 
 context: |
-  c3po is one CLI for scouting tools. The command is
-  c3po scout <name>. The scouts are ast and cyclotree.
+  c3po is one CLI. Each app is a top-level command,
+  c3po <name>. The apps are ast, cyclotree, deport,
+  gcal, gdrive, gmail, l, o, pass, and tunnel.
   ast is the AST-aware agent boundary. cyclotree is the
-  call tree. Product truth lives in this repository.
+  call tree. The other apps are the retired Apps of the
+  same names. Product truth lives in this repository.
 
 rules:
   proposal:

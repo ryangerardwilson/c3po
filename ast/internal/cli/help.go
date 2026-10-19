@@ -37,7 +37,7 @@ Commands:
   neighbors [--json] <id>
   cut [--json] [path]
 
-Policy: ~/.config/rgw-ast/config.toml only.
+Policy: ~/.config/c3po/ast/config.toml only.
 Every walk honors .gitignore, stops at nested git repos and worktrees, and skips
 directories that ignore themselves. Prose (Markdown, text) is prose_loc and does
 not reach threshold_loc unless enforcement.count_prose is set.

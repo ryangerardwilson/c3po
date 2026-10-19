@@ -5,14 +5,21 @@ import (
 	"io"
 
 	"github.com/ryangerardwilson/c3po/ast"
-	"github.com/ryangerardwilson/c3po/cyclotree"
 )
 
-const helpText = `c3po runs scouting tools.
+const helpText = `c3po runs these apps.
 
 Usage:
-  c3po scout ast [args...]
-  c3po scout cyclotree [symbol] [dir]
+  c3po ast [args...]
+  c3po cyclotree [symbol] [dir]
+  c3po deport <port>
+  c3po gcal [args...]
+  c3po gdrive [args...]
+  c3po gmail [args...]
+  c3po l [args...]
+  c3po o [args...]
+  c3po pass <vault> <item> [args...]
+  c3po tunnel open|add|remove|list|start|stop|status|logs|run
   c3po version
   c3po help [-f <category> [feature]]
 
@@ -22,14 +29,22 @@ const helpFoot = `c3po help -f <category> explains that category.
 c3po help -f ast <feature> explains one ast command.
 `
 
-const scoutText = `scouts:
+const appText = `apps:
   ast          AST-aware edits, trace, and the agent boundary
   cyclotree    calls of one function, as a tree you move with hjkl
+  deport       free a port by signalling its TCP and UDP holders
+  gcal         Google Calendar across presets
+  gdrive       local-first Google Drive sync
+  gmail        Gmail send, list, spam clean, and the hourly timer
+  l            compact colored tree of a directory
+  o            vim-inspired file navigator
+  pass         1Password vaults and items
+  tunnel       Cloudflare Tunnel routes for ryangerardwilson.com
 `
 
 func writeHelp(w io.Writer) {
 	fmt.Fprint(w, helpText)
-	fmt.Fprint(w, scoutText)
+	fmt.Fprint(w, appText)
 	fmt.Fprint(w, helpFoot)
 }
 
@@ -58,19 +73,19 @@ func helpUsage(stderr io.Writer) int {
 }
 
 func helpCategory(cat, feature string, stdout, stderr io.Writer) int {
-	switch cat {
-	case "ast":
+	if cat == "ast" {
 		return helpAst(feature, stdout, stderr)
-	case "cyclotree":
-		return helpScout(feature, cyclotree.Run, stdout, stderr)
-	default:
+	}
+	run, ok := apps[cat]
+	if !ok {
 		fmt.Fprintf(stderr, "unknown category %q\n", cat)
 		writeHelp(stderr)
 		return 2
 	}
+	return helpScout(feature, run, stdout, stderr)
 }
 
-func helpScout(feature string, run func([]string, io.Writer, io.Writer) int, stdout, stderr io.Writer) int {
+func helpScout(feature string, run runFunc, stdout, stderr io.Writer) int {
 	if feature != "" {
 		fmt.Fprintf(stderr, "unknown feature %q\n", feature)
 		writeHelp(stderr)
@@ -88,6 +103,3 @@ func helpAst(feature string, stdout, stderr io.Writer) int {
 	return 2
 }
 
-func writeScouts(w io.Writer) {
-	fmt.Fprint(w, scoutText)
-}

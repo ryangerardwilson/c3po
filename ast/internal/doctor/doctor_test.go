@@ -171,10 +171,13 @@ func TestDoctorUserLevelHookIsConfigured(t *testing.T) {
 }
 
 func TestC3POScoutHookCounts(t *testing.T) {
-	if !isHookCommandValue("c3po scout ast hook") {
-		t.Fatal("c3po scout ast hook")
+	if !isHookCommandValue("c3po ast hook") {
+		t.Fatal("c3po ast hook")
 	}
-	if isHookCommandValue("c3po scout complexity hook") {
+	if isHookCommandValue("c3po scout ast hook") {
+		t.Fatal("scout form is not the hook")
+	}
+	if isHookCommandValue("c3po complexity hook") {
 		t.Fatal("complexity hook is not the ast hook")
 	}
 }
