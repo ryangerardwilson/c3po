@@ -33,7 +33,7 @@ func TestHelpVersionStatus(t *testing.T) {
 		t.Fatal(code)
 	}
 	out.Reset()
-	if code := r.Run([]string{"version"}); code != 0 || !strings.Contains(out.String(), "0.3.0") {
+	if code := r.Run([]string{"version"}); code != 0 || !strings.Contains(out.String(), "0.4.0") {
 		t.Fatalf("version %q code %d", out.String(), code)
 	}
 	out.Reset()

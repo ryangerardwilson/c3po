@@ -5,7 +5,7 @@ import (
 	"hash/fnv"
 	"strconv"
 
-	"github.com/ryangerardwilson/c3po/vibetree/internal/metric"
+	"github.com/ryangerardwilson/c3po/cyclotree/internal/metric"
 )
 
 // File scores the functions in src. lang is go, python, rust, typescript,

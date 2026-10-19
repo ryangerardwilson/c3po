@@ -2,9 +2,9 @@ schema: spec-driven
 
 context: |
   c3po is one CLI for scouting tools. The command is
-  c3po scout <name>. The scouts are ast and vibetree.
-  ast is the AST-aware agent boundary. vibetree is the
-  size tree. Product truth lives in this repository.
+  c3po scout <name>. The scouts are ast and cyclotree.
+  ast is the AST-aware agent boundary. cyclotree is the
+  call tree. Product truth lives in this repository.
 
 rules:
   proposal:

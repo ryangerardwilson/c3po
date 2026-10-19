@@ -3,7 +3,7 @@ package parse
 import (
 	"testing"
 
-	"github.com/ryangerardwilson/c3po/vibetree/internal/metric"
+	"github.com/ryangerardwilson/c3po/cyclotree/internal/metric"
 )
 
 func TestPythonPaper(t *testing.T) {

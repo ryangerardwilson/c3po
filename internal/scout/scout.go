@@ -9,7 +9,6 @@ import (
 	"github.com/ryangerardwilson/c3po/ast"
 	"github.com/ryangerardwilson/c3po/cyclotree"
 	"github.com/ryangerardwilson/c3po/internal/version"
-	"github.com/ryangerardwilson/c3po/vibetree"
 )
 
 // Main runs c3po from process arguments.
@@ -66,8 +65,6 @@ func runScout(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "ast":
 		return ast.Run(args[1:], stdout, stderr)
-	case "vibetree":
-		return vibetree.Run(args[1:], stdout, stderr)
 	case "cyclotree":
 		return cyclotree.Run(args[1:], stdout, stderr)
 	default:

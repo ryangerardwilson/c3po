@@ -3,7 +3,7 @@ package parse
 import (
 	"strings"
 
-	"github.com/ryangerardwilson/c3po/vibetree/internal/metric"
+	"github.com/ryangerardwilson/c3po/cyclotree/internal/metric"
 )
 
 type pyLine struct {

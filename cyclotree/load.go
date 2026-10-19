@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/ryangerardwilson/c3po/ast"
-	"github.com/ryangerardwilson/c3po/vibetree"
 )
 
 type scoreHit struct {
@@ -25,7 +24,7 @@ func openTree(root, query string) (*screen, error) {
 	if err != nil {
 		return nil, err
 	}
-	fns, err := vibetree.Functions(root)
+	fns, err := scoreFunctions(root)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +99,7 @@ func ambiguous(query string, hits []candidate) error {
 	return fmt.Errorf("%s", strings.TrimRight(b.String(), "\n"))
 }
 
-func indexScores(fns []vibetree.Function) *scoreIndex {
+func indexScores(fns []scoredFn) *scoreIndex {
 	ix := &scoreIndex{byLine: map[string]scoreHit{}}
 	for _, fn := range fns {
 		h := scoreHit{file: fn.File, name: fn.Name, line: fn.Line, cyclo: fn.Cyclomatic}

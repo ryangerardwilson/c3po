@@ -6,14 +6,12 @@ import (
 
 	"github.com/ryangerardwilson/c3po/ast"
 	"github.com/ryangerardwilson/c3po/cyclotree"
-	"github.com/ryangerardwilson/c3po/vibetree"
 )
 
 const helpText = `c3po runs scouting tools.
 
 Usage:
   c3po scout ast [args...]
-  c3po scout vibetree <dir> [-p N] [-m loc|cyclo] [--json]
   c3po scout cyclotree [symbol] [dir]
   c3po version
   c3po help [-f <category> [feature]]
@@ -26,7 +24,6 @@ c3po help -f ast <feature> explains one ast command.
 
 const scoutText = `scouts:
   ast          AST-aware edits, trace, and the agent boundary
-  vibetree     cyclomatic or line counts by percentile, as a tree of files and directories
   cyclotree    calls of one function, as a tree you move with hjkl
 `
 
@@ -64,8 +61,6 @@ func helpCategory(cat, feature string, stdout, stderr io.Writer) int {
 	switch cat {
 	case "ast":
 		return helpAst(feature, stdout, stderr)
-	case "vibetree":
-		return helpScout(feature, vibetree.Run, stdout, stderr)
 	case "cyclotree":
 		return helpScout(feature, cyclotree.Run, stdout, stderr)
 	default:

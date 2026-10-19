@@ -1,6 +1,6 @@
 package parse
 
-import "github.com/ryangerardwilson/c3po/vibetree/internal/metric"
+import "github.com/ryangerardwilson/c3po/cyclotree/internal/metric"
 
 type scorer struct {
 	name   string

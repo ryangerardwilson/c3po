@@ -7,22 +7,15 @@ import (
 
 func TestScoutListsTools(t *testing.T) {
 	out, code := call("c3po", "scout")
-	for _, name := range []string{"\n  ast", "\n  vibetree", "\n  cyclotree"} {
+	for _, name := range []string{"\n  ast", "\n  cyclotree"} {
 		if code != 0 || !bytes.Contains(out, []byte(name)) {
 			t.Fatalf("code %d missing %q\n%s", code, name, out)
 		}
 	}
-	for _, gone := range []string{"\n  complexity", "\n  hide", "\n  visualize"} {
+	for _, gone := range []string{"\n  complexity", "\n  hide", "\n  visualize", "\n  vibetree"} {
 		if bytes.Contains(out, []byte(gone)) {
 			t.Fatalf("old name still listed %q\n%s", gone, out)
 		}
-	}
-}
-
-func TestScoutVibetreeHelp(t *testing.T) {
-	out, code := call("c3po", "scout", "vibetree", "help")
-	if code != 0 || !bytes.Contains(out, []byte("-p N")) || !bytes.Contains(out, []byte("-m loc|cyclo")) {
-		t.Fatalf("code %d\n%s", code, out)
 	}
 }
 
@@ -34,7 +27,7 @@ func TestScoutCyclotreeHelp(t *testing.T) {
 }
 
 func TestRetiredScoutsAreRejected(t *testing.T) {
-	for _, name := range []string{"complexity", "hide", "visualize"} {
+	for _, name := range []string{"complexity", "hide", "visualize", "vibetree"} {
 		out, code := call("c3po", "scout", name)
 		if code != 2 || !bytes.Contains(out, []byte("unknown scout")) {
 			t.Fatalf("%s code %d\n%s", name, code, out)
@@ -58,24 +51,27 @@ func TestNamesSelectTheScout(t *testing.T) {
 
 func TestUnknownScout(t *testing.T) {
 	out, code := call("c3po", "scout", "nope")
-	if code != 2 || !bytes.Contains(out, []byte("unknown scout")) || !bytes.Contains(out, []byte("\n  vibetree")) {
+	if code != 2 || !bytes.Contains(out, []byte("unknown scout")) || !bytes.Contains(out, []byte("\n  cyclotree")) {
 		t.Fatalf("code %d\n%s", code, out)
 	}
 }
 
 func TestHelpFlagSelectsAFeature(t *testing.T) {
 	out, code := call("c3po", "help")
-	for _, want := range []string{"c3po help -f", "\n  ast", "\n  vibetree", "\n  cyclotree"} {
+	for _, want := range []string{"c3po help -f", "\n  ast", "\n  cyclotree"} {
 		if code != 0 || !bytes.Contains(out, []byte(want)) {
 			t.Fatalf("index %d missing %q\n%s", code, want, out)
 		}
+	}
+	if bytes.Contains(out, []byte("\n  vibetree")) {
+		t.Fatalf("vibetree still listed\n%s", out)
 	}
 	out, code = call("c3po", "help", "-f", "cyclotree")
 	if code != 0 || !bytes.Contains(out, []byte("j and k")) || !bytes.Contains(out, []byte("h moves")) {
 		t.Fatalf("cyclotree %d\n%s", code, out)
 	}
 	out, code = call("c3po", "help", "-f", "vibetree")
-	if code != 0 || !bytes.Contains(out, []byte("-p N")) || !bytes.Contains(out, []byte("-m loc|cyclo")) {
+	if code != 2 || !bytes.Contains(out, []byte("unknown category")) {
 		t.Fatalf("vibetree %d\n%s", code, out)
 	}
 	out, code = call("c3po", "help", "-f", "ast", "patch")

@@ -9,7 +9,7 @@ import (
 	"hash/fnv"
 	"strconv"
 
-	"github.com/ryangerardwilson/c3po/vibetree/internal/metric"
+	"github.com/ryangerardwilson/c3po/cyclotree/internal/metric"
 )
 
 // ParseGo scores every function and function literal in src.
