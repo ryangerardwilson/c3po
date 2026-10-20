@@ -198,7 +198,7 @@ func TestScreensAreOnlyUnderTUI(t *testing.T) {
 
 func TestGDriveScreenHelp(t *testing.T) {
 	out, code := call("c3po", "tui", "gdrive", "help")
-	if code != 0 || !bytes.Contains(out, []byte("preset")) || !bytes.Contains(out, []byte("c3po tui gdrive")) {
+	if code != 0 || !bytes.Contains(out, []byte("preset")) || !bytes.Contains(out, []byte("browse")) || bytes.Contains(out, []byte("upload")) {
 		t.Fatalf("help %d\n%s", code, out)
 	}
 	out, code = call("c3po", "help", "-f", "tui", "gdrive")

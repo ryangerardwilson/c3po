@@ -2,53 +2,13 @@ package transfer
 
 import (
 	"archive/zip"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"sort"
 
 	"github.com/ryangerardwilson/c3po/gdrive/internal/driveapi"
-	"github.com/ryangerardwilson/c3po/gdrive/internal/paths"
 )
-
-type UploadSummary struct {
-	FilesUploaded int
-	DirsCreated   int
-}
-
-func NormalizeUploadPaths(values []string) ([]string, error) {
-	if len(values) == 0 {
-		return nil, fmt.Errorf("upload needs at least one local path")
-	}
-	result := []string{}
-	for _, value := range values {
-		path := paths.ExpandHome(value)
-		info, err := os.Stat(path)
-		if err != nil {
-			return nil, fmt.Errorf("missing local path: %s", path)
-		}
-		if !info.IsDir() && !info.Mode().IsRegular() {
-			return nil, fmt.Errorf("unsupported local path: %s", path)
-		}
-		abs, err := filepath.Abs(path)
-		if err != nil {
-			return nil, err
-		}
-		result = append(result, abs)
-	}
-	return result, nil
-}
-
-func UploadLocalPaths(client driveapi.Client, parentID string, localPaths []string) (UploadSummary, error) {
-	summary := UploadSummary{}
-	for _, path := range localPaths {
-		if err := uploadLocalPath(client, parentID, path, &summary); err != nil {
-			return summary, err
-		}
-	}
-	return summary, nil
-}
 
 func DownloadDirectoryAsZip(client driveapi.Client, entry driveapi.NavEntry, targetPath string) (string, error) {
 	tmp, err := os.MkdirTemp("", "gdrive-dir-zip-*")
@@ -83,49 +43,6 @@ func DownloadDirectoryAsZip(client driveapi.Client, entry driveapi.NavEntry, tar
 		}
 	}
 	return zipDirectory(localRoot, targetPath)
-}
-
-func uploadLocalPath(client driveapi.Client, parentID, localPath string, summary *UploadSummary) error {
-	name, err := client.FindAvailableName(parentID, filepath.Base(localPath))
-	if err != nil {
-		return err
-	}
-	info, err := os.Stat(localPath)
-	if err != nil {
-		return err
-	}
-	if info.IsDir() {
-		return uploadLocalDir(client, parentID, name, localPath, summary)
-	}
-	if _, err := client.UploadFile(parentID, name, localPath); err != nil {
-		return err
-	}
-	summary.FilesUploaded++
-	return nil
-}
-
-func uploadLocalDir(client driveapi.Client, parentID, name, localPath string, summary *UploadSummary) error {
-	folderID, err := client.CreateFolder(parentID, name)
-	if err != nil {
-		return err
-	}
-	summary.DirsCreated++
-	children, err := os.ReadDir(localPath)
-	if err != nil {
-		return err
-	}
-	sort.SliceStable(children, func(i, j int) bool {
-		if children[i].IsDir() != children[j].IsDir() {
-			return children[i].IsDir()
-		}
-		return children[i].Name() < children[j].Name()
-	})
-	for _, child := range children {
-		if err := uploadLocalPath(client, folderID, filepath.Join(localPath, child.Name()), summary); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func zipDirectory(root, targetPath string) (string, error) {

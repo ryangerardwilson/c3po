@@ -52,7 +52,7 @@ screens:
   l            compact colored tree of a directory
   o            vim-inspired file navigator
   tunnel       Cloudflare Tunnel route editor
-  gdrive       Drive preset, then browse or upload
+  gdrive       Drive preset, then browse
 
 c3po help -f tui <screen> explains one screen.
 `

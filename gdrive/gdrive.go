@@ -41,20 +41,19 @@ c3po version. A usage error exits 2.
 
 // ScreenHelp is the help for c3po tui gdrive.
 const ScreenHelp = `c3po tui gdrive
-browse or upload one Google Drive preset
+browse one Google Drive preset
 
   c3po tui gdrive
-    choose a preset, then browse or upload
+    choose a preset, then browse its Drive
   c3po tui gdrive help
     show this help
 
-j and k move. enter selects. h goes back from the action list.
-browse opens that preset's Drive. upload asks for local paths,
-then opens Drive to pick the destination. q quits.
+j and k move. enter selects a preset. q quits.
+The screen opens that preset's Drive.
 auth, sync, and registration stay on c3po gdrive.
 `
 
-// Screen asks for a preset and an action, then opens that Drive screen.
+// Screen asks for a preset, then browses that Drive.
 func Screen(stdout, stderr io.Writer) int {
 	return cli.Screen(stdout, stderr)
 }

@@ -38,10 +38,11 @@ c3po runs one app from the first argument.
 - **THEN** the command SHALL exit 0
 - **AND** the text SHALL list `cyclotree`, `l`, `o`, `tunnel`, and `gdrive`
 
-#### Scenario: Drive screens start from tui gdrive
+#### Scenario: Drive browse starts from tui gdrive
 - **WHEN** the operator runs `c3po tui gdrive help`
 - **THEN** the command SHALL exit 0
-- **AND** the text SHALL name a preset
+- **AND** the text SHALL name a preset and browse
+- **AND** the text SHALL NOT offer upload
 - **AND** `c3po gdrive 1 browse` SHALL exit 2
 
 #### Scenario: An unknown screen is rejected

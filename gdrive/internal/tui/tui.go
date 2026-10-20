@@ -1,4 +1,4 @@
-// Package tui is the full-screen Drive navigator for browse and upload.
+// Package tui is the full-screen Drive navigator.
 package tui
 
 import (
@@ -9,18 +9,6 @@ import (
 	"github.com/ryangerardwilson/c3po/gdrive/internal/driveapi"
 	"github.com/ryangerardwilson/c3po/gdrive/internal/transfer"
 )
-
-type Mode string
-
-const (
-	ModeBrowse Mode = "browse"
-	ModeUpload Mode = "upload"
-)
-
-type Result struct {
-	UploadSummary *transfer.UploadSummary
-	UploadTarget  string
-}
 
 const (
 	styleTitle  = "\x1b[1m"
@@ -39,16 +27,13 @@ type screen interface {
 
 type model struct {
 	client      driveapi.Client
-	mode        Mode
 	downloadDir string
-	uploadPaths []string
 	parentStack []stackItem
 	parentID    string
 	pathLabel   string
 	entries     []driveapi.NavEntry
 	cursor      int
 	status      string
-	result      Result
 	err         error
 	width       int
 	height      int
@@ -61,52 +46,41 @@ type stackItem struct {
 
 type actionMsg struct {
 	status string
-	result Result
 	err    error
-	quit   bool
 }
 
 func Browse(client driveapi.Client, downloadDir string) (int, error) {
-	_, err := run(client, ModeBrowse, downloadDir, nil)
-	if err != nil {
+	if err := run(client, downloadDir); err != nil {
 		return 1, err
 	}
 	return 0, nil
 }
 
-func Upload(client driveapi.Client, downloadDir string, uploadPaths []string) (Result, int, error) {
-	result, err := run(client, ModeUpload, downloadDir, uploadPaths)
-	if err != nil {
-		return result, 1, err
-	}
-	return result, 0, nil
-}
-
-func run(client driveapi.Client, mode Mode, downloadDir string, uploadPaths []string) (Result, error) {
+func run(client driveapi.Client, downloadDir string) error {
 	term, err := openTerminal()
 	if err != nil {
-		return Result{}, err
+		return err
 	}
 	defer term.close()
-	m := newModel(client, mode, downloadDir, uploadPaths)
+	m := newModel(client, downloadDir)
 	m.load("root")
 	return m.loop(term)
 }
 
-func newModel(client driveapi.Client, mode Mode, downloadDir string, uploadPaths []string) *model {
-	return &model{client: client, mode: mode, downloadDir: downloadDir, uploadPaths: uploadPaths, parentID: "root", pathLabel: "My Drive"}
+func newModel(client driveapi.Client, downloadDir string) *model {
+	return &model{client: client, downloadDir: downloadDir, parentID: "root", pathLabel: "My Drive"}
 }
 
-func (m *model) loop(term screen) (Result, error) {
+func (m *model) loop(term screen) error {
 	for {
 		m.width, m.height = term.size()
 		term.paint(m.View())
 		key, err := term.readKey()
 		if err != nil {
-			return Result{}, err
+			return err
 		}
 		if m.handleKey(key) {
-			return m.result, m.err
+			return m.err
 		}
 	}
 }
@@ -127,7 +101,7 @@ func (m *model) handleKey(key string) bool {
 	case "h", "left", "backspace":
 		m.goUp()
 	case "l", "right", "enter":
-		return m.activate(key)
+		return m.activate()
 	}
 	m.cursor = m.clampedCursor()
 	return false
@@ -143,22 +117,16 @@ func (m *model) goUp() {
 	m.load(last.ID)
 }
 
-func (m *model) activate(key string) bool {
+func (m *model) activate() bool {
 	if len(m.entries) == 0 {
 		return false
 	}
 	entry := m.entries[m.clampedCursor()]
 	if entry.IsDir() {
-		if m.mode == ModeUpload && key == "enter" {
-			return m.apply(m.upload(entry))
-		}
 		m.parentStack = append(m.parentStack, stackItem{ID: m.parentID, Label: m.pathLabel})
 		m.pathLabel = strings.Trim(m.pathLabel+"/"+entry.Name, "/")
 		m.load(entry.ID)
 		return false
-	}
-	if m.mode == ModeUpload {
-		return m.apply(m.uploadToParent(entry))
 	}
 	return m.apply(m.download(entry))
 }
@@ -169,8 +137,7 @@ func (m *model) apply(msg actionMsg) bool {
 		return false
 	}
 	m.status = msg.status
-	m.result = msg.result
-	return msg.quit
+	return false
 }
 
 func (m *model) load(parentID string) {
@@ -200,22 +167,6 @@ func (m *model) download(entry driveapi.NavEntry) actionMsg {
 	return actionMsg{status: "downloaded " + downloaded}
 }
 
-func (m *model) upload(entry driveapi.NavEntry) actionMsg {
-	summary, err := transfer.UploadLocalPaths(m.client, entry.ID, m.uploadPaths)
-	if err != nil {
-		return actionMsg{err: err}
-	}
-	return actionMsg{status: "uploaded", result: Result{UploadSummary: &summary, UploadTarget: m.pathLabel + "/" + entry.Name}, quit: true}
-}
-
-func (m *model) uploadToParent(entry driveapi.NavEntry) actionMsg {
-	summary, err := transfer.UploadLocalPaths(m.client, entry.ParentID, m.uploadPaths)
-	if err != nil {
-		return actionMsg{err: err}
-	}
-	return actionMsg{status: "uploaded", result: Result{UploadSummary: &summary, UploadTarget: m.pathLabel}, quit: true}
-}
-
 func (m *model) clampedCursor() int {
 	if len(m.entries) == 0 || m.cursor < 0 {
 		return 0
@@ -228,8 +179,8 @@ func (m *model) clampedCursor() int {
 
 func (m *model) View() string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s\n", paintStyle(styleTitle, fmt.Sprintf("gdrive %s - %s", m.mode, m.pathLabel)))
-	fmt.Fprintf(&b, "%s\n\n", paintStyle(styleMuted, "j/k move  l enter  h up  enter download/upload  q quit"))
+	fmt.Fprintf(&b, "%s\n", paintStyle(styleTitle, "gdrive browse - "+m.pathLabel))
+	fmt.Fprintf(&b, "%s\n\n", paintStyle(styleMuted, "j/k move  l enter  h up  enter download  q quit"))
 	m.writeEntries(&b)
 	if m.status != "" {
 		style := styleMuted

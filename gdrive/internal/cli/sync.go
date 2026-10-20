@@ -9,7 +9,6 @@ import (
 	"github.com/ryangerardwilson/c3po/gdrive/internal/config"
 	"github.com/ryangerardwilson/c3po/gdrive/internal/driveapi"
 	"github.com/ryangerardwilson/c3po/gdrive/internal/syncer"
-	"github.com/ryangerardwilson/c3po/gdrive/internal/transfer"
 	"github.com/ryangerardwilson/c3po/gdrive/internal/tui"
 )
 
@@ -55,30 +54,6 @@ func runBrowse(preset string, _ []string, _ io.Writer) error {
 	}
 	_, err = tui.Browse(client, mustGetwd())
 	return err
-}
-
-func runUploadPicker(preset string, params []string, stdout io.Writer) error {
-	if _, err := ensureClientSecret(preset, true, stdout); err != nil {
-		return err
-	}
-	uploadPaths, err := transfer.NormalizeUploadPaths(params[1:])
-	if err != nil {
-		return err
-	}
-	client, err := presetClient(preset)
-	if err != nil {
-		return err
-	}
-	result, _, err := tui.Upload(client, mustGetwd(), uploadPaths)
-	if err != nil {
-		return err
-	}
-	if result.UploadSummary == nil {
-		fmt.Fprintln(stdout, "cancelled")
-		return nil
-	}
-	fmt.Fprintf(stdout, "uploaded\tfiles=%d\tdirs=%d\ttarget=%s\n", result.UploadSummary.FilesUploaded, result.UploadSummary.DirsCreated, result.UploadTarget)
-	return nil
 }
 
 // runSyncAll syncs every registration of every preset, in preset order.
