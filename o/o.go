@@ -3,6 +3,7 @@
 package o
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -196,6 +197,22 @@ func parseSave(args []string) (app.Config, error) {
 	}
 	cfg.Extensions = parseExtensions(rest[1])
 	return cfg, nil
+}
+
+// Pick opens the navigator at startDir. l enters a directory. enter chooses
+// the highlighted file or directory. An empty path means the operator quit.
+func Pick(startDir string, stderr io.Writer) (string, int) {
+	cfg := app.Config{
+		StartDir: fsnav.NormalizePath(startDir),
+		Mode:     app.ModePick,
+		Allowed:  "any",
+		Descend:  true,
+	}
+	var stdout bytes.Buffer
+	if code := runNavigator(cfg, &stdout, stderr); code != 0 {
+		return "", code
+	}
+	return strings.TrimSpace(stdout.String()), 0
 }
 
 func runNavigator(cfg app.Config, stdout, stderr io.Writer) int {

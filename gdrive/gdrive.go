@@ -51,6 +51,8 @@ browse one Google Drive preset
 j and k move. enter selects a preset. q quits.
 The screen opens that preset's Drive.
 l opens a folder. h goes up. enter opens the item in the browser.
+u opens the file navigator and uploads the chosen file or folder into the open folder.
+dd deletes the selected file.
 auth, sync, and registration stay on c3po gdrive.
 `
 

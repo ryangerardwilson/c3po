@@ -35,6 +35,8 @@ type Config struct {
 	Allowed      string
 	Extensions   []string
 	Multi        bool
+	// Descend lets l enter a directory during pick. enter confirms the row.
+	Descend bool
 }
 
 // Result is what the session hands back: picked paths or a shell cd target.

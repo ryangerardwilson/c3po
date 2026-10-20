@@ -24,7 +24,7 @@ type screen interface {
 }
 
 type model struct {
-	client      driveapi.Client
+	client      driveUploader
 	parentStack []stackItem
 	parentID    string
 	pathLabel   string
@@ -35,6 +35,8 @@ type model struct {
 	width       int
 	height      int
 	open        func(string) error
+	pick        func() (string, error)
+	armed       bool
 }
 
 type stackItem struct {
@@ -56,6 +58,7 @@ func run(client driveapi.Client) error {
 	}
 	defer term.close()
 	m := newModel(client)
+	m.pick = func() (string, error) { return pickLocal(term) }
 	m.load("root")
 	return m.loop(term)
 }
@@ -80,6 +83,25 @@ func (m *model) loop(term screen) error {
 
 // handleKey applies one key and reports whether the navigator quits.
 func (m *model) handleKey(key string) bool {
+	if m.armed {
+		m.armed = false
+		if key == "d" {
+			return m.deleteItem()
+		}
+		if key == "esc" {
+			m.status = ""
+			return false
+		}
+		m.status = ""
+	} else if key == "d" {
+		m.armed = true
+		m.status = "d"
+		return false
+	}
+	return m.applyMotion(key)
+}
+
+func (m *model) applyMotion(key string) bool {
 	switch key {
 	case "ctrl+c", "q", "esc":
 		return true
@@ -97,6 +119,8 @@ func (m *model) handleKey(key string) bool {
 		m.descend()
 	case "enter":
 		return m.openItem()
+	case "u":
+		return m.upload()
 	}
 	m.cursor = m.clampedCursor()
 	return false
@@ -165,7 +189,7 @@ func (m *model) clampedCursor() int {
 func (m *model) View() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n", paintStyle(styleTitle, "gdrive browse - "+m.pathLabel))
-	fmt.Fprintf(&b, "%s\n\n", paintStyle(styleMuted, "j/k move  l folder  h up  enter browser  q quit"))
+	fmt.Fprintf(&b, "%s\n\n", paintStyle(styleMuted, "j/k move  l folder  h up  enter browser  u upload  dd delete  q quit"))
 	m.writeEntries(&b)
 	if m.status != "" {
 		style := styleMuted

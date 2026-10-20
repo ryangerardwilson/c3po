@@ -37,13 +37,30 @@ func (m *model) enter(dir string) {
 }
 
 // accept is enter: in browse mode it hands the listed directory to the
-// shell and quits; in pick and save modes it activates the current row.
+// shell and quits. In pick and save modes it activates the current row.
+// Descend confirms that row instead of entering a directory.
 func (m model) accept() (model, tui.Cmd) {
 	if m.cfg.Mode == ModeBrowse {
 		m.result.ShellCD = m.currentDir
 		return m, tui.Quit
 	}
+	if m.cfg.Descend {
+		return m.confirmPick()
+	}
 	return m.activate()
+}
+
+func (m model) confirmPick() (model, tui.Cmd) {
+	if len(m.entries) == 0 {
+		m.result.Selections = []string{m.currentDir}
+		return m, tui.Quit
+	}
+	entry := m.entries[m.selected]
+	if !m.isSelectable(entry) {
+		return m, nil
+	}
+	m.result.Selections = []string{entry.Path}
+	return m, tui.Quit
 }
 
 // activate is l: enter a directory, open a file, or confirm a pick.
@@ -53,6 +70,10 @@ func (m model) activate() (model, tui.Cmd) {
 	}
 	entry := m.entries[m.selected]
 	if m.cfg.Mode == ModePick || m.cfg.Mode == ModeSave {
+		if m.cfg.Descend && entry.IsDir {
+			m.enter(entry.Path)
+			return m, nil
+		}
 		return m.pickEntry(entry)
 	}
 	if entry.IsDir {

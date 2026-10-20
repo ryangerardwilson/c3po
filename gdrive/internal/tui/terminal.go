@@ -23,7 +23,30 @@ func openTerminal() (*terminal, error) {
 
 func (t *terminal) close() {
 	_, _ = t.out.WriteString("\x1b[?25h\x1b[?1049l")
-	t.restore()
+	if t.restore != nil {
+		t.restore()
+		t.restore = nil
+	}
+}
+
+// suspend leaves the navigator screen, runs fn, then returns to it.
+func (t *terminal) suspend(fn func() error) error {
+	_, _ = t.out.WriteString("\x1b[?25h\x1b[?1049l")
+	if t.restore != nil {
+		t.restore()
+		t.restore = nil
+	}
+	err := fn()
+	restore, rawErr := enterRaw(int(t.in.Fd()))
+	if rawErr != nil {
+		if err == nil {
+			err = fmt.Errorf("gdrive navigator needs a terminal: %w", rawErr)
+		}
+		return err
+	}
+	t.restore = restore
+	_, _ = t.out.WriteString("\x1b[?1049h\x1b[?25l")
+	return err
 }
 
 func (t *terminal) size() (int, int) {

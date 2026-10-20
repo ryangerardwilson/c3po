@@ -63,6 +63,9 @@ func (f *fakeDrive) DeleteEntry(fileID string) error {
 	f.deleted = append(f.deleted, fileID)
 	return nil
 }
+func (f *fakeDrive) TrashEntry(fileID string) error {
+	return f.DeleteEntry(fileID)
+}
 
 func TestParentRelPath(t *testing.T) {
 	if ParentRelPath("a/b/c.txt") != "a/b" {

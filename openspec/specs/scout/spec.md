@@ -43,7 +43,8 @@ c3po runs one app from the first argument.
 - **THEN** the command SHALL exit 0
 - **AND** the text SHALL name a preset and browse
 - **AND** the text SHALL say enter opens the item in the browser
-- **AND** the text SHALL NOT offer upload
+- **AND** the text SHALL say u uploads into the open folder
+- **AND** the text SHALL say dd deletes the selected file
 - **AND** `c3po gdrive 1 browse` SHALL exit 2
 
 #### Scenario: An unknown screen is rejected

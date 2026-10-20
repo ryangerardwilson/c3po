@@ -278,3 +278,24 @@ func TestOpenTextFileUsesEditor(t *testing.T) {
 		t.Fatalf("open exit = %d, stderr = %s", code, stderr.String())
 	}
 }
+
+func TestPickReturnsOnePath(t *testing.T) {
+	stubApp(t, func(cfg app.Config) (app.Result, int) {
+		if cfg.Mode != app.ModePick || !cfg.Descend || cfg.Allowed != "any" {
+			t.Fatalf("%#v", cfg)
+		}
+		return app.Result{Selections: []string{"/tmp/a.txt"}}, 0
+	})
+	path, code := Pick("/tmp", io.Discard)
+	if code != 0 || path != "/tmp/a.txt" {
+		t.Fatalf("%d %q", code, path)
+	}
+}
+
+func TestPickQuitIsEmpty(t *testing.T) {
+	stubApp(t, func(app.Config) (app.Result, int) { return app.Result{}, 0 })
+	path, code := Pick("/tmp", io.Discard)
+	if code != 0 || path != "" {
+		t.Fatalf("%d %q", code, path)
+	}
+}

@@ -67,6 +67,7 @@ type Client interface {
 	MoveEntry(fileID, newParentID, newName, oldParentID string) error
 	RenameEntry(fileID, newName string) error
 	DeleteEntry(fileID string) error
+	TrashEntry(fileID string) error
 }
 
 // DriveClient calls the Drive v3 REST API with an authorized HTTP client.
@@ -359,6 +360,14 @@ func (c *DriveClient) RenameEntry(fileID, newName string) error {
 func (c *DriveClient) DeleteEntry(fileID string) error {
 	params := url.Values{"supportsAllDrives": {"false"}}
 	return apiError(c.doJSON(http.MethodDelete, c.fileURL(fileID), params, nil, nil))
+}
+
+func (c *DriveClient) TrashEntry(fileID string) error {
+	params := url.Values{"supportsAllDrives": {"false"}}
+	body := struct {
+		Trashed bool `json:"trashed"`
+	}{Trashed: true}
+	return apiError(c.doJSON(http.MethodPatch, c.fileURL(fileID), params, body, nil))
 }
 
 func (c *DriveClient) fileURL(fileID string) string {
