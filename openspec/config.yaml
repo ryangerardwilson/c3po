@@ -2,11 +2,11 @@ schema: spec-driven
 
 context: |
   c3po is one CLI. Each app is a top-level command,
-  c3po <name>. The apps are ast, cyclotree, deport,
-  gcal, gdrive, gmail, l, o, pass, and tunnel.
-  ast is the AST-aware agent boundary. cyclotree is the
-  call tree. The other apps are the retired Apps of the
-  same names. Product truth lives in this repository.
+  c3po <name>. The apps are ast, deport, gcal, gdrive,
+  gmail, pass, tunnel, and tui. A terminal screen is only
+  c3po tui cyclotree, c3po tui l, c3po tui o,
+  c3po tui tunnel, or c3po tui gdrive. ast is the AST-aware agent boundary.
+  Product truth lives in this repository.
 
 rules:
   proposal:

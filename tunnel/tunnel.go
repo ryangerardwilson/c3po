@@ -1,6 +1,6 @@
 // Package tunnel publishes ports on this laptop as subdomains of
 // ryangerardwilson.com through a named Cloudflare tunnel. It is the
-// app behind c3po tunnel.
+// app behind c3po tunnel. The route screen is c3po tui tunnel.
 package tunnel
 
 import (
@@ -18,7 +18,6 @@ import (
 	"github.com/ryangerardwilson/c3po/tunnel/internal/tui"
 )
 
-// Help is the full help for c3po tunnel.
 const Help = `c3po tunnel
 publish laptop ports as subdomains of ryangerardwilson.com
 
@@ -27,8 +26,6 @@ global actions:
     show this help
   c3po tunnel version
     print the c3po version
-  c3po tunnel open
-    edit routes in the terminal
   c3po tunnel start
     start the background service
   c3po tunnel stop
@@ -44,7 +41,6 @@ features:
   add a subdomain and forward it to a local port
   # add <name> on <port>
   c3po tunnel add notes on 8080
-  c3po tunnel open
 
   show or remove a route
   # list | remove <name>
@@ -65,13 +61,32 @@ notes:
   start, stop, status, and logs drive the user unit tunnel.service,
   whose ExecStart is c3po tunnel run. run keeps cloudflared
   connected and reconnects when the route list changes.
+  The route screen is c3po tui tunnel.
 
 exit: 0 ok, 1 error, 2 usage
+`
+
+// ScreenHelp is the help for c3po tui tunnel.
+const ScreenHelp = `c3po tui tunnel
+edit routes in the terminal
+
+  c3po tui tunnel
+    open the route screen
+  c3po tui tunnel help
+    show this help
+
+j and k move. a adds a route. d asks before removing the selected
+route. y confirms that removal and n cancels it. q quits.
 `
 
 // Run runs c3po tunnel. args are the words after tunnel.
 func Run(args []string, stdout, stderr io.Writer) int {
 	return newApp(stdout, stderr).run(args)
+}
+
+// Screen runs the route editor. The command is c3po tui tunnel.
+func Screen(stdout, stderr io.Writer) int {
+	return newApp(stdout, stderr).open(nil)
 }
 
 // app holds the seams the commands use, so tests can replace credentials,
@@ -125,7 +140,6 @@ var commands = map[string]command{
 	"-h":      (*app).help,
 	"--help":  (*app).help,
 	"version": (*app).version,
-	"open":    (*app).open,
 	"list":    (*app).listCmd,
 	"add":     (*app).add,
 	"remove":  (*app).remove,
@@ -177,7 +191,7 @@ func (a *app) version(_ []string) int {
 
 func (a *app) open(_ []string) int {
 	if a.Open == nil {
-		fmt.Fprintln(a.Err, "tunnel open is unavailable")
+		fmt.Fprintln(a.Err, "c3po tui tunnel is unavailable")
 		return 1
 	}
 	return a.report(a.Open(a.Home))

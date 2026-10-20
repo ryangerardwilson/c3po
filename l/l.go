@@ -1,4 +1,4 @@
-// Package l is the c3po l: a compact colored tree listing.
+// Package l is the c3po tui l: a compact colored tree listing.
 package l
 
 import (
@@ -10,12 +10,12 @@ import (
 	"github.com/ryangerardwilson/c3po/l/internal/tree"
 )
 
-// Help is the full help for c3po l.
-const Help = `c3po l shows a compact tree view for seeing refactoring damage.
+// Help is the full help for c3po tui l.
+const Help = `c3po tui l shows a compact tree view for seeing refactoring damage.
 
 Usage:
-  c3po l [path] [flags]
-  c3po l help
+  c3po tui l [path] [flags]
+  c3po tui l help
 
 Flags:
   -a, --all              include hidden files and directories
@@ -63,7 +63,7 @@ Exit 0 when the tree is printed, 1 when the path cannot be read, 2 on bad
 usage.
 `
 
-// Run runs c3po l. args are the arguments after "c3po l".
+// Run runs c3po tui l. args are the arguments after "l".
 func Run(args []string, stdout, stderr io.Writer) int {
 	opts, err := parseArgs(args)
 	if err != nil {

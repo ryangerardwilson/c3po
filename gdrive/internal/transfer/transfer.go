@@ -19,7 +19,7 @@ type UploadSummary struct {
 
 func NormalizeUploadPaths(values []string) ([]string, error) {
 	if len(values) == 0 {
-		return nil, fmt.Errorf("usage: c3po gdrive <preset> upload <file_path> <file_path> ...")
+		return nil, fmt.Errorf("upload needs at least one local path")
 	}
 	result := []string{}
 	for _, value := range values {

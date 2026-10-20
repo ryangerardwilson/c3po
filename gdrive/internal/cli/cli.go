@@ -97,8 +97,6 @@ var presetCommands = []presetCommand{
 	{func(p []string) bool { return p[0] == "register" }, runRegister},
 	{func(p []string) bool { return sameArgs(p, "list", "registrations") }, runListRegistrations},
 	{func(p []string) bool { return hasPrefix(p, "remove", "registration") }, runRemoveRegistration},
-	{func(p []string) bool { return sameArgs(p, "browse") }, runBrowse},
-	{func(p []string) bool { return p[0] == "upload" }, runUploadPicker},
 	{func(p []string) bool { return sameArgs(p, "restore", "registrations") }, runRestoreRegistrations},
 	{func(p []string) bool { return hasPrefix(p, "restore", "registration") }, runRestoreRegistration},
 }

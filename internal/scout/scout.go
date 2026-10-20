@@ -24,16 +24,22 @@ type runFunc func([]string, io.Writer, io.Writer) int
 
 // apps maps each app name to its entrypoint.
 var apps = map[string]runFunc{
-	"ast":       ast.Run,
+	"ast":    ast.Run,
+	"deport": deport.Run,
+	"gcal":   gcal.Run,
+	"gdrive": gdrive.Run,
+	"gmail":  gmail.Run,
+	"pass":   pass.Run,
+	"tunnel": tunnel.Run,
+	"tui":    dispatchTUI,
+}
+
+var screens = map[string]runFunc{
 	"cyclotree": cyclotree.Run,
-	"deport":    deport.Run,
-	"gcal":      gcal.Run,
-	"gdrive":    gdrive.Run,
-	"gmail":     gmail.Run,
 	"l":         l.Run,
 	"o":         o.Run,
-	"pass":      pass.Run,
-	"tunnel":    tunnel.Run,
+	"tunnel":    tunnelScreen,
+	"gdrive":    gdriveScreen,
 }
 
 // Main runs c3po from process arguments.
@@ -89,6 +95,50 @@ func runApp(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	return run(args[1:], stdout, stderr)
+}
+
+func dispatchTUI(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 || (len(args) == 1 && isHelp(args[0])) {
+		writeTUI(stdout)
+		return 0
+	}
+	run, ok := screens[args[0]]
+	if !ok {
+		fmt.Fprintf(stderr, "unknown tui %q\n", args[0])
+		writeTUI(stderr)
+		return 2
+	}
+	return run(args[1:], stdout, stderr)
+}
+
+func tunnelScreen(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		return tunnel.Screen(stdout, stderr)
+	}
+	if len(args) == 1 && isHelp(args[0]) {
+		fmt.Fprint(stdout, tunnel.ScreenHelp)
+		return 0
+	}
+	if len(args) == 1 && isVersion(args[0]) {
+		return tunnel.Run([]string{"version"}, stdout, stderr)
+	}
+	fmt.Fprint(stderr, tunnel.ScreenHelp)
+	return 2
+}
+
+func gdriveScreen(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		return gdrive.Screen(stdout, stderr)
+	}
+	if len(args) == 1 && isHelp(args[0]) {
+		fmt.Fprint(stdout, gdrive.ScreenHelp)
+		return 0
+	}
+	if len(args) == 1 && isVersion(args[0]) {
+		return gdrive.Run([]string{"version"}, stdout, stderr)
+	}
+	fmt.Fprint(stderr, gdrive.ScreenHelp)
+	return 2
 }
 
 func isHelp(s string) bool {

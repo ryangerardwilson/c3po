@@ -37,7 +37,7 @@ func TestHelpAndVersionDoNotStartApp(t *testing.T) {
 			t.Fatalf("%s output is not Help: %s", arg, stdout.String())
 		}
 	}
-	if !strings.Contains(Help, "c3po o pick from ~/src files py,md") {
+	if !strings.Contains(Help, "c3po tui o pick from ~/src files py,md") {
 		t.Fatalf("help missing picker example: %s", Help)
 	}
 	if strings.Contains(Help, "upgrade") {

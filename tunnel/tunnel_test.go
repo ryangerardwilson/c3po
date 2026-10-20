@@ -30,7 +30,7 @@ func TestHelpVersionAndAdd(t *testing.T) {
 		return nil
 	}
 	out, errOut, code := run(&a, "help")
-	if code != 0 || !strings.Contains(out, "c3po tunnel add notes on 8080") || !strings.Contains(out, "c3po tunnel open") {
+	if code != 0 || !strings.Contains(out, "c3po tunnel add notes on 8080") || !strings.Contains(out, "c3po tui tunnel") || strings.Contains(out, "c3po tunnel open") {
 		t.Fatalf("help %d %s", code, out)
 	}
 	if strings.Contains(out, "\033") {
@@ -69,7 +69,7 @@ func TestHelpVersionAndAdd(t *testing.T) {
 		t.Fatalf("remove %d %s", code, out)
 	}
 	_, errOut, code = run(&a, "nope")
-	if code != 2 || !strings.Contains(errOut, "c3po tunnel open") {
+	if code != 2 || !strings.Contains(errOut, "c3po tui tunnel") || strings.Contains(errOut, "c3po tunnel open") {
 		t.Fatalf("unknown %d %s", code, errOut)
 	}
 	_, errOut, code = run(&a, "add", "lab")

@@ -1,4 +1,4 @@
-// Package tui is the route screen behind tunnel open. It uses only the
+// Package tui is the route screen behind c3po tui tunnel. It uses only the
 // standard library: raw mode on Linux, ANSI output, and a small line
 // input for the name and port fields.
 package tui

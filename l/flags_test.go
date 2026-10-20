@@ -25,7 +25,7 @@ func TestHelpPrintsFullHelpToStdout(t *testing.T) {
 			t.Fatalf("%s: expected Help, got %q", arg, out)
 		}
 	}
-	for _, want := range []string{"c3po l [path] [flags]", "--color <mode>", "--no-color", "--animate <mode>", "--no-ignore", "--ignore <pattern>", "-d, --depth <n|*>", "200L", "100KB"} {
+	for _, want := range []string{"c3po tui l [path] [flags]", "--color <mode>", "--no-color", "--animate <mode>", "--no-ignore", "--ignore <pattern>", "-d, --depth <n|*>", "200L", "100KB"} {
 		if !strings.Contains(Help, want) {
 			t.Fatalf("Help missing %q", want)
 		}

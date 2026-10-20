@@ -25,7 +25,7 @@ func Run(home string, load func() (secrets.Tunnel, error), ensure store.Ensure) 
 	in, out := os.Stdin, os.Stdout
 	restore, err := enterRaw(int(in.Fd()))
 	if err != nil {
-		return fmt.Errorf("tunnel open needs a terminal")
+		return fmt.Errorf("c3po tui tunnel needs a terminal")
 	}
 	defer restore()
 	m := newModel(home, file, os.Getenv("NO_COLOR") == "")

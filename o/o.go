@@ -1,4 +1,4 @@
-// Package o is the c3po o file navigator: a Vim-inspired terminal
+// Package o is the c3po tui o file navigator: a Vim-inspired terminal
 // file browser with open, reveal, pick, save, and config commands.
 package o
 
@@ -22,10 +22,10 @@ import (
 const shellCDEnv = "O_SHELL_CD_FILE"
 
 const (
-	openUsage   = "Use: c3po o open <path> [<path> ...]"
-	revealUsage = "Use: c3po o reveal <path>"
-	pickUsage   = "Use: c3po o pick from <dir> [files <exts>|directories] [multiple]"
-	saveUsage   = "Use: c3po o save from <dir> [extension <ext>]"
+	openUsage   = "Use: c3po tui o open <path> [<path> ...]"
+	revealUsage = "Use: c3po tui o reveal <path>"
+	pickUsage   = "Use: c3po tui o pick from <dir> [files <exts>|directories] [multiple]"
+	saveUsage   = "Use: c3po tui o save from <dir> [extension <ext>]"
 )
 
 // runApp shows the navigator. Tests replace it so no terminal is needed.
@@ -41,7 +41,7 @@ var commands = map[string]command{
 	"config": runConfig,
 }
 
-// Run executes c3po o with the arguments after "o". The navigator
+// Run executes c3po tui o with the arguments after "o". The navigator
 // itself draws on the terminal; help, results, and errors use the writers.
 func Run(args []string, stdout, stderr io.Writer) int {
 	switch {

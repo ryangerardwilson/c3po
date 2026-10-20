@@ -1,22 +1,20 @@
 # c3po
 
-c3po is one CLI. The apps are `ast`, `cyclotree`, `deport`, `gcal`, `gdrive`, `gmail`, `l`, `o`, `pass`, and `tunnel`.
+c3po is one CLI. The apps are `ast`, `deport`, `gcal`, `gdrive`, `gmail`, `pass`, `tunnel`, and `tui`. Terminal screens are only `c3po tui cyclotree`, `c3po tui l`, `c3po tui o`, `c3po tui tunnel`, and `c3po tui gdrive`.
 
 ```sh
 c3po ast [args...]
-c3po cyclotree [symbol] [dir]
 c3po deport <port>
 c3po gcal [args...]
 c3po gdrive [args...]
 c3po gmail [args...]
-c3po l [args...]
-c3po o [args...]
 c3po pass <vault> <item> [args...]
-c3po tunnel open|add|remove|list|start|stop|status|logs|run
+c3po tunnel add|remove|list|start|stop|status|logs|run
+c3po tui cyclotree|l|o|tunnel|gdrive [args...]
 c3po help [-f <category> [feature]]
 ```
 
-Help for every tool is `c3po help`. `c3po help -f ast` lists the ast commands, and `c3po help -f ast patch` explains one of them. `c3po help -f <category>` explains that app.
+Help for every tool is `c3po help`. `c3po help -f ast` lists the ast commands, and `c3po help -f ast patch` explains one of them. `c3po help -f tui <screen>` explains one screen. `c3po help -f <category>` explains that app.
 
 `ast` is the AST-aware agent boundary: trace a symbol, then create, patch, and apply files by hash. `cyclotree` shows the calls of one function. With no symbol, the tree starts at the program entrypoint and includes every call reached from it. Each row is that function, its cyclomatic complexity, and how many levels of calls can be opened under it. The screen is yellow and updates as those files change. A nested row shows its file relative to the caller. The bottom shows the call chain from the root to the row under the cursor, then that row's full path. `enter` opens that file in vim at its line. `?` toggles the shortcut list. `j` and `k` move, `l` opens the calls, and `h` moves to the caller. A call back to a function already on the path is marked `cycle` and stays closed.
 

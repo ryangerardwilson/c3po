@@ -11,15 +11,13 @@ const helpText = `c3po runs these apps.
 
 Usage:
   c3po ast [args...]
-  c3po cyclotree [symbol] [dir]
   c3po deport <port>
   c3po gcal [args...]
   c3po gdrive [args...]
   c3po gmail [args...]
-  c3po l [args...]
-  c3po o [args...]
   c3po pass <vault> <item> [args...]
-  c3po tunnel open|add|remove|list|start|stop|status|logs|run
+  c3po tunnel add|remove|list|start|stop|status|logs|run
+  c3po tui cyclotree|l|o|tunnel|gdrive [args...]
   c3po version
   c3po help [-f <category> [feature]]
 
@@ -30,22 +28,43 @@ c3po help -f ast <feature> explains one ast command.
 `
 
 const appText = `apps:
-  ast          AST-aware edits, trace, and the agent boundary
+  ast       AST-aware edits, trace, and the agent boundary
+  deport    free a port by signalling its TCP and UDP holders
+  gcal      Google Calendar across presets
+  gdrive    local-first Google Drive sync
+  gmail     Gmail send, list, spam clean, and the hourly timer
+  pass      1Password vaults and items
+  tunnel    Cloudflare Tunnel routes for ryangerardwilson.com
+  tui       terminal screens
+`
+
+const tuiText = `c3po tui runs a terminal screen. This is the only way to open one.
+
+Usage:
+  c3po tui cyclotree [symbol] [dir]
+  c3po tui l [path] [flags]
+  c3po tui o [args...]
+  c3po tui tunnel
+  c3po tui gdrive
+
+screens:
   cyclotree    calls of one function, as a tree you move with hjkl
-  deport       free a port by signalling its TCP and UDP holders
-  gcal         Google Calendar across presets
-  gdrive       local-first Google Drive sync
-  gmail        Gmail send, list, spam clean, and the hourly timer
   l            compact colored tree of a directory
   o            vim-inspired file navigator
-  pass         1Password vaults and items
-  tunnel       Cloudflare Tunnel routes for ryangerardwilson.com
+  tunnel       Cloudflare Tunnel route editor
+  gdrive       Drive preset, then browse or upload
+
+c3po help -f tui <screen> explains one screen.
 `
 
 func writeHelp(w io.Writer) {
 	fmt.Fprint(w, helpText)
 	fmt.Fprint(w, appText)
 	fmt.Fprint(w, helpFoot)
+}
+
+func writeTUI(w io.Writer) {
+	fmt.Fprint(w, tuiText)
 }
 
 func helpArgs(args []string, stdout, stderr io.Writer) int {
@@ -76,6 +95,9 @@ func helpCategory(cat, feature string, stdout, stderr io.Writer) int {
 	if cat == "ast" {
 		return helpAst(feature, stdout, stderr)
 	}
+	if cat == "tui" {
+		return helpTUI(feature, stdout, stderr)
+	}
 	run, ok := apps[cat]
 	if !ok {
 		fmt.Fprintf(stderr, "unknown category %q\n", cat)
@@ -83,6 +105,20 @@ func helpCategory(cat, feature string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	return helpScout(feature, run, stdout, stderr)
+}
+
+func helpTUI(feature string, stdout, stderr io.Writer) int {
+	if feature == "" {
+		writeTUI(stdout)
+		return 0
+	}
+	run, ok := screens[feature]
+	if !ok {
+		fmt.Fprintf(stderr, "unknown feature %q\n", feature)
+		writeTUI(stderr)
+		return 2
+	}
+	return run([]string{"help"}, stdout, stderr)
 }
 
 func helpScout(feature string, run runFunc, stdout, stderr io.Writer) int {
@@ -102,4 +138,3 @@ func helpAst(feature string, stdout, stderr io.Writer) int {
 	ast.Help("", stderr)
 	return 2
 }
-
