@@ -3,11 +3,9 @@ package tui
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/ryangerardwilson/c3po/gdrive/internal/driveapi"
-	"github.com/ryangerardwilson/c3po/gdrive/internal/transfer"
 )
 
 const (
@@ -27,7 +25,6 @@ type screen interface {
 
 type model struct {
 	client      driveapi.Client
-	downloadDir string
 	parentStack []stackItem
 	parentID    string
 	pathLabel   string
@@ -37,6 +34,7 @@ type model struct {
 	err         error
 	width       int
 	height      int
+	open        func(string) error
 }
 
 type stackItem struct {
@@ -44,31 +42,26 @@ type stackItem struct {
 	Label string
 }
 
-type actionMsg struct {
-	status string
-	err    error
-}
-
-func Browse(client driveapi.Client, downloadDir string) (int, error) {
-	if err := run(client, downloadDir); err != nil {
+func Browse(client driveapi.Client) (int, error) {
+	if err := run(client); err != nil {
 		return 1, err
 	}
 	return 0, nil
 }
 
-func run(client driveapi.Client, downloadDir string) error {
+func run(client driveapi.Client) error {
 	term, err := openTerminal()
 	if err != nil {
 		return err
 	}
 	defer term.close()
-	m := newModel(client, downloadDir)
+	m := newModel(client)
 	m.load("root")
 	return m.loop(term)
 }
 
-func newModel(client driveapi.Client, downloadDir string) *model {
-	return &model{client: client, downloadDir: downloadDir, parentID: "root", pathLabel: "My Drive"}
+func newModel(client driveapi.Client) *model {
+	return &model{client: client, parentID: "root", pathLabel: "My Drive", open: openBrowser}
 }
 
 func (m *model) loop(term screen) error {
@@ -100,8 +93,10 @@ func (m *model) handleKey(key string) bool {
 		m.cursor = len(m.entries) - 1
 	case "h", "left", "backspace":
 		m.goUp()
-	case "l", "right", "enter":
-		return m.activate()
+	case "l", "right":
+		m.descend()
+	case "enter":
+		return m.openItem()
 	}
 	m.cursor = m.clampedCursor()
 	return false
@@ -117,26 +112,31 @@ func (m *model) goUp() {
 	m.load(last.ID)
 }
 
-func (m *model) activate() bool {
+func (m *model) descend() {
+	if len(m.entries) == 0 {
+		return
+	}
+	entry := m.entries[m.clampedCursor()]
+	if !entry.IsDir() {
+		return
+	}
+	m.parentStack = append(m.parentStack, stackItem{ID: m.parentID, Label: m.pathLabel})
+	m.pathLabel = strings.Trim(m.pathLabel+"/"+entry.Name, "/")
+	m.load(entry.ID)
+}
+
+func (m *model) openItem() bool {
 	if len(m.entries) == 0 {
 		return false
 	}
 	entry := m.entries[m.clampedCursor()]
-	if entry.IsDir() {
-		m.parentStack = append(m.parentStack, stackItem{ID: m.parentID, Label: m.pathLabel})
-		m.pathLabel = strings.Trim(m.pathLabel+"/"+entry.Name, "/")
-		m.load(entry.ID)
+	if err := m.open(itemURL(entry)); err != nil {
+		m.err = err
+		m.status = err.Error()
 		return false
 	}
-	return m.apply(m.download(entry))
-}
-
-func (m *model) apply(msg actionMsg) bool {
-	if msg.err != nil {
-		m.status = msg.err.Error()
-		return false
-	}
-	m.status = msg.status
+	m.err = nil
+	m.status = "opened " + entry.Name
 	return false
 }
 
@@ -152,21 +152,6 @@ func (m *model) load(parentID string) {
 	m.cursor = 0
 }
 
-func (m *model) download(entry driveapi.NavEntry) actionMsg {
-	target := filepath.Join(m.downloadDir, entry.Name)
-	var downloaded string
-	var err error
-	if entry.IsDir() {
-		downloaded, err = transfer.DownloadDirectoryAsZip(m.client, entry, target)
-	} else {
-		downloaded, err = m.client.DownloadEntry(entry, target)
-	}
-	if err != nil {
-		return actionMsg{err: err}
-	}
-	return actionMsg{status: "downloaded " + downloaded}
-}
-
 func (m *model) clampedCursor() int {
 	if len(m.entries) == 0 || m.cursor < 0 {
 		return 0
@@ -180,7 +165,7 @@ func (m *model) clampedCursor() int {
 func (m *model) View() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n", paintStyle(styleTitle, "gdrive browse - "+m.pathLabel))
-	fmt.Fprintf(&b, "%s\n\n", paintStyle(styleMuted, "j/k move  l enter  h up  enter download  q quit"))
+	fmt.Fprintf(&b, "%s\n\n", paintStyle(styleMuted, "j/k move  l folder  h up  enter browser  q quit"))
 	m.writeEntries(&b)
 	if m.status != "" {
 		style := styleMuted

@@ -52,7 +52,7 @@ func runBrowse(preset string, _ []string, _ io.Writer) error {
 	if err != nil {
 		return err
 	}
-	_, err = tui.Browse(client, mustGetwd())
+	_, err = tui.Browse(client)
 	return err
 }
 

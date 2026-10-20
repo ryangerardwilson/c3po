@@ -42,10 +42,11 @@ func (e RemoteEntry) IsDir() bool {
 }
 
 type NavEntry struct {
-	ID       string
-	Name     string
-	MimeType string
-	ParentID string
+	ID          string
+	Name        string
+	MimeType    string
+	ParentID    string
+	WebViewLink string
 }
 
 func (e NavEntry) IsDir() bool {
@@ -76,10 +77,11 @@ type DriveClient struct {
 }
 
 type fileResource struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	MimeType string   `json:"mimeType"`
-	Parents  []string `json:"parents"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	MimeType    string   `json:"mimeType"`
+	Parents     []string `json:"parents"`
+	WebViewLink string   `json:"webViewLink"`
 }
 
 type fileList struct {
@@ -138,7 +140,7 @@ func (c *DriveClient) ListChildren(parentID string) ([]NavEntry, error) {
 	for {
 		params := url.Values{
 			"q":                 {fmt.Sprintf("'%s' in parents and trashed = false", escapeQuery(parentID))},
-			"fields":            {"nextPageToken,files(id,name,mimeType,parents)"},
+			"fields":            {"nextPageToken,files(id,name,mimeType,parents,webViewLink)"},
 			"pageSize":          {"1000"},
 			"orderBy":           {"folder,name_natural"},
 			"supportsAllDrives": {"false"},
@@ -181,7 +183,7 @@ func navEntry(item fileResource, fallbackParent string) NavEntry {
 	if len(item.Parents) > 0 {
 		parent = item.Parents[0]
 	}
-	return NavEntry{ID: item.ID, Name: item.Name, MimeType: item.MimeType, ParentID: parent}
+	return NavEntry{ID: item.ID, Name: item.Name, MimeType: item.MimeType, ParentID: parent, WebViewLink: item.WebViewLink}
 }
 
 func (c *DriveClient) GetEntry(fileID string) (NavEntry, error) {

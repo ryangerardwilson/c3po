@@ -149,11 +149,3 @@ func sortedAccountKeys(accounts map[string]*config.Account) []string {
 	})
 	return keys
 }
-
-func mustGetwd() string {
-	wd, err := os.Getwd()
-	if err != nil {
-		return "."
-	}
-	return wd
-}
