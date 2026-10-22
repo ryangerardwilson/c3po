@@ -61,7 +61,7 @@ workspace root.
 Discovery SHALL include:
 
 - `Apps/<name>/` when `go.mod`, `package.json`, or `install.sh` exists
-- `Tests/<name>/` when `run.sh` exists
+- `tests/<name>/` when `run.sh` exists
 - `.config/hypr` and `.config/quickshell` when those directories exist
 
 Go apps SHALL verify with `go test -C <path> ./...`. Apps with an npm `test`

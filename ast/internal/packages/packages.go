@@ -98,7 +98,7 @@ func discoverApps(root string) ([]Package, error) {
 }
 
 func discoverTests(root string) ([]Package, error) {
-	entries, err := os.ReadDir(filepath.Join(root, "Tests"))
+	entries, err := os.ReadDir(filepath.Join(root, "tests"))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -110,7 +110,7 @@ func discoverTests(root string) ([]Package, error) {
 		if !e.IsDir() {
 			continue
 		}
-		rel := filepath.ToSlash(filepath.Join("Tests", e.Name()))
+		rel := filepath.ToSlash(filepath.Join("tests", e.Name()))
 		if !fileExists(filepath.Join(root, rel, "run.sh")) {
 			continue
 		}
@@ -132,8 +132,8 @@ func discoverDesktop(root string) []Package {
 	}
 	if dirExists(filepath.Join(root, ".config", "quickshell")) {
 		pkg := Package{ID: ".config/quickshell", Kind: "desktop", Path: ".config/quickshell"}
-		if fileExists(filepath.Join(root, "Tests", "quickshell-desktop", "run.sh")) {
-			pkg.Verify = []string{"Tests/quickshell-desktop/run.sh"}
+		if fileExists(filepath.Join(root, "tests", "quickshell-desktop", "run.sh")) {
+			pkg.Verify = []string{"tests/quickshell-desktop/run.sh"}
 		}
 		out = append(out, pkg)
 	}

@@ -16,12 +16,12 @@ func TestDiscoverAndAffected(t *testing.T) {
 	mustMk(t, filepath.Join(root, "Apps", "gmail", "tests"))
 	mustWrite(t, filepath.Join(root, "Apps", "gmail", "requirements.txt"), "example\n")
 	mustWrite(t, filepath.Join(root, "Apps", "gmail", "install.sh"), "#!/bin/sh\n")
-	mustMk(t, filepath.Join(root, "Tests", "rgwos-chromium"))
-	mustWrite(t, filepath.Join(root, "Tests", "rgwos-chromium", "run.sh"), "#!/bin/sh\n")
+	mustMk(t, filepath.Join(root, "tests", "rgwos-chromium"))
+	mustWrite(t, filepath.Join(root, "tests", "rgwos-chromium", "run.sh"), "#!/bin/sh\n")
 	mustMk(t, filepath.Join(root, ".config", "hypr"))
 	mustMk(t, filepath.Join(root, ".config", "quickshell"))
-	mustMk(t, filepath.Join(root, "Tests", "quickshell-desktop"))
-	mustWrite(t, filepath.Join(root, "Tests", "quickshell-desktop", "run.sh"), "#!/bin/sh\n")
+	mustMk(t, filepath.Join(root, "tests", "quickshell-desktop"))
+	mustWrite(t, filepath.Join(root, "tests", "quickshell-desktop", "run.sh"), "#!/bin/sh\n")
 
 	pkgs, err := Discover(root)
 	if err != nil {
@@ -49,11 +49,11 @@ func TestDiscoverAndAffected(t *testing.T) {
 	if !contains(gmail.Verify, "PYTHONPATH=Apps/gmail python3 -m unittest discover -s Apps/gmail/tests -q") {
 		t.Fatalf("gmail verify %#v", gmail.Verify)
 	}
-	if _, ok := byID["Tests/rgwos-chromium"]; !ok {
+	if _, ok := byID["tests/rgwos-chromium"]; !ok {
 		t.Fatal("missing test package")
 	}
 	qs := byID[".config/quickshell"]
-	if !contains(qs.Verify, "Tests/quickshell-desktop/run.sh") {
+	if !contains(qs.Verify, "tests/quickshell-desktop/run.sh") {
 		t.Fatalf("quickshell verify %#v", qs.Verify)
 	}
 
