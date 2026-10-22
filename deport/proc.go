@@ -9,10 +9,36 @@ import (
 	"strings"
 )
 
+// externalMin and externalMax are the safe external ports. 8080 and 8082
+// sit in this band. A port outside it is internal and is never signalled.
+const (
+	externalMin = 8000
+	externalMax = 8999
+)
+
+func externalPort(port int) bool {
+	return port >= externalMin && port <= externalMax
+}
+
 // proc is a process holding a socket on the requested port.
 type proc struct {
 	pid  int
 	name string
+}
+
+// occupant is one process holding a safe external port.
+// pid 0 means the port is taken and its process is not visible.
+type occupant struct {
+	port int
+	pid  int
+	name string
+}
+
+func formatOccupant(row occupant) string {
+	if row.pid == 0 {
+		return strconv.Itoa(row.port)
+	}
+	return fmt.Sprintf("%d %d %s", row.port, row.pid, row.name)
 }
 
 // portInodes returns socket inodes whose local port is port.
@@ -20,8 +46,21 @@ type proc struct {
 // explicitly bound to that port all keep the port occupied. Client sockets
 // whose remote port matches are left alone.
 func portInodes(procRoot string, port int) (map[uint64]struct{}, error) {
-	foundTable := false
+	texts, err := socketTables(procRoot)
+	if err != nil {
+		return nil, err
+	}
 	inodes := map[uint64]struct{}{}
+	for _, text := range texts {
+		for _, inode := range inodesInTable(text, port) {
+			inodes[inode] = struct{}{}
+		}
+	}
+	return inodes, nil
+}
+
+func socketTables(procRoot string) ([]string, error) {
+	var texts []string
 	for _, name := range []string{"tcp", "tcp6", "udp", "udp6"} {
 		text, err := os.ReadFile(filepath.Join(procRoot, "net", name))
 		if err != nil {
@@ -30,35 +69,40 @@ func portInodes(procRoot string, port int) (map[uint64]struct{}, error) {
 			}
 			return nil, err
 		}
-		foundTable = true
-		for _, inode := range inodesInTable(string(text), port) {
-			inodes[inode] = struct{}{}
-		}
+		texts = append(texts, string(text))
 	}
-	if !foundTable {
+	if len(texts) == 0 {
 		return nil, fmt.Errorf("no socket tables in %s", filepath.Join(procRoot, "net"))
 	}
-	return inodes, nil
+	return texts, nil
 }
 
 func inodesInTable(text string, port int) []uint64 {
 	var out []uint64
+	eachLocal(text, func(found int, inode uint64) {
+		if found == port {
+			out = append(out, inode)
+		}
+	})
+	return out
+}
+
+func eachLocal(text string, fn func(port int, inode uint64)) {
 	for _, line := range strings.Split(text, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 10 {
 			continue
 		}
-		localPort, ok := hexPort(fields[1])
-		if !ok || localPort != port {
+		port, ok := hexPort(fields[1])
+		if !ok {
 			continue
 		}
 		inode, err := strconv.ParseUint(fields[9], 10, 64)
 		if err != nil || inode == 0 {
 			continue
 		}
-		out = append(out, inode)
+		fn(port, inode)
 	}
-	return out
 }
 
 func hexPort(addr string) (int, bool) {
@@ -71,6 +115,89 @@ func hexPort(addr string) (int, bool) {
 		return 0, false
 	}
 	return int(n), true
+}
+
+// occupied lists processes holding a safe external port.
+// An occupied port with no visible process is included with pid 0.
+func occupied(procRoot string) ([]occupant, error) {
+	texts, err := socketTables(procRoot)
+	if err != nil {
+		return nil, err
+	}
+	inodePorts := map[uint64]map[int]struct{}{}
+	ports := map[int]struct{}{}
+	for _, text := range texts {
+		eachLocal(text, func(port int, inode uint64) {
+			if !externalPort(port) {
+				return
+			}
+			ports[port] = struct{}{}
+			set := inodePorts[inode]
+			if set == nil {
+				set = map[int]struct{}{}
+				inodePorts[inode] = set
+			}
+			set[port] = struct{}{}
+		})
+	}
+	found, err := occupants(procRoot, inodePorts)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[int]struct{}{}
+	for _, row := range found {
+		seen[row.port] = struct{}{}
+	}
+	for port := range ports {
+		if _, ok := seen[port]; !ok {
+			found = append(found, occupant{port: port})
+		}
+	}
+	sort.Slice(found, func(i, j int) bool {
+		if found[i].port != found[j].port {
+			return found[i].port < found[j].port
+		}
+		return found[i].pid < found[j].pid
+	})
+	return found, nil
+}
+
+func occupants(procRoot string, inodePorts map[uint64]map[int]struct{}) ([]occupant, error) {
+	if len(inodePorts) == 0 {
+		return nil, nil
+	}
+	entries, err := os.ReadDir(procRoot)
+	if err != nil {
+		return nil, err
+	}
+	var found []occupant
+	seen := map[[2]int]struct{}{}
+	self := os.Getpid()
+	for _, entry := range entries {
+		pid, ok := candidatePID(entry, self)
+		if !ok || !threadGroupLeader(procRoot, pid) {
+			continue
+		}
+		name := ""
+		for _, inode := range processInodes(procRoot, pid) {
+			portSet, ok := inodePorts[inode]
+			if !ok {
+				continue
+			}
+			if name == "" {
+				name = processName(procRoot, pid)
+			}
+			for port := range portSet {
+				key := [2]int{port, pid}
+				if _, dup := seen[key]; dup {
+					continue
+				}
+				seen[key] = struct{}{}
+				found = append(found, occupant{port: port, pid: pid, name: name})
+			}
+		}
+	}
+	return found, nil
 }
 
 func holders(procRoot string, inodes map[uint64]struct{}) ([]proc, error) {
@@ -118,11 +245,21 @@ func threadGroupLeader(procRoot string, pid int) bool {
 }
 
 func holdsInode(procRoot string, pid int, inodes map[uint64]struct{}) bool {
+	for _, inode := range processInodes(procRoot, pid) {
+		if _, yes := inodes[inode]; yes {
+			return true
+		}
+	}
+	return false
+}
+
+func processInodes(procRoot string, pid int) []uint64 {
 	fdDir := filepath.Join(procRoot, strconv.Itoa(pid), "fd")
 	fds, err := os.ReadDir(fdDir)
 	if err != nil {
-		return false
+		return nil
 	}
+	var out []uint64
 	for _, fd := range fds {
 		target, err := os.Readlink(filepath.Join(fdDir, fd.Name()))
 		if err != nil {
@@ -132,11 +269,9 @@ func holdsInode(procRoot string, pid int, inodes map[uint64]struct{}) bool {
 		if !ok {
 			continue
 		}
-		if _, yes := inodes[inode]; yes {
-			return true
-		}
+		out = append(out, inode)
 	}
-	return false
+	return out
 }
 
 func socketInode(target string) (uint64, bool) {

@@ -1,4 +1,4 @@
-// Package deport frees a local port by killing whatever is bound to it.
+// Package deport frees a safe external port by killing whatever is bound to it.
 package deport
 
 import (
@@ -12,23 +12,34 @@ import (
 )
 
 // Help is the full help text for c3po deport.
-const Help = `c3po deport frees a local port by killing whatever is bound to it.
+const Help = `c3po deport frees a safe external port by killing whatever is bound to it.
+
+A safe external port is 8000 through 8999. 8080 and 8082 are in that band.
+Any other port is internal. Deport does not signal it.
 
 Usage:
+  c3po deport list
   c3po deport <port>
   c3po deport help
   c3po deport version
 
-<port> is a number from 1 to 65535. Every process with a TCP or UDP socket
-on that local port gets SIGTERM. When the port is still taken a second
-later, each of those processes that is still alive gets SIGKILL. Every TCP
-state counts: a listener, an accepted connection, and a socket bound to
-that port all hold it. A client socket whose remote port matches is left
-alone. Threads are signalled once, through their process.
+list prints each occupied safe external port as "<port> <pid> <name>",
+sorted by port, then pid. A port with no visible process is just the
+number. When none are occupied, list prints "no occupied external ports".
+
+<port> is a number from 8000 to 8999. Every process with a TCP or UDP
+socket on that local port gets SIGTERM. When the port is still taken a
+second later, each of those processes that is still alive gets SIGKILL.
+Every TCP state counts: a listener, an accepted connection, and a socket
+bound to that port all hold it. A client socket whose remote port matches
+is left alone. Threads are signalled once, through their process.
 
 Each signalled process is printed as "killed <pid> <name>", then
 "<port> is free". When nothing is bound, only "<port> is free" is printed.
 
+The screen is c3po tui deport. j and k move. dd frees the selected port.
+
+  c3po deport list
   c3po deport 8082
   killed 4242 python
   8082 is free
@@ -36,8 +47,24 @@ Each signalled process is printed as "killed <pid> <name>", then
 help, -h, and --help print this text. version, -v, and --version print the
 c3po version.
 
-Exit 0 when the port is free, 1 when it stays occupied or its process
-cannot be seen or signalled, 2 on bad usage.
+Exit 0 when the port is free or the list is printed, 1 when a safe port
+stays occupied or its process cannot be seen or signalled, 2 on bad usage
+or an internal port.
+`
+
+// ScreenHelp is the help for c3po tui deport.
+const ScreenHelp = `c3po tui deport
+list occupied safe external ports and free one
+
+  c3po tui deport
+    list ports 8000 through 8999 that are in use
+  c3po tui deport help
+    show this help
+
+j and k move. dd frees the selected port.
+The first d arms the chord. Esc cancels it. Any other key clears the arm.
+q quits. An internal port is not listed and is not signalled.
+list and <port> stay on c3po deport.
 `
 
 const (
@@ -59,10 +86,20 @@ type env struct {
 	sleep    func(time.Duration)
 }
 
-// Run frees the port named by args. args are the arguments after
-// c3po deport.
+// Run frees the port named by args, or lists occupied safe external ports.
+// args are the arguments after c3po deport.
 func Run(args []string, stdout, stderr io.Writer) int {
 	return run(args, stdout, stderr, env{procRoot: "/proc", killer: osKiller{}, sleep: time.Sleep})
+}
+
+// Screen lists occupied safe external ports and frees the selected one.
+func Screen(_ io.Writer, stderr io.Writer) int {
+	err := runScreen(env{procRoot: "/proc", killer: osKiller{}, sleep: time.Sleep})
+	if err != nil {
+		fmt.Fprintf(stderr, "deport: %s\n", err.Error())
+		return 1
+	}
+	return 0
 }
 
 func run(args []string, stdout, stderr io.Writer, e env) int {
@@ -73,6 +110,9 @@ func run(args []string, stdout, stderr io.Writer, e env) int {
 	if len(args) == 1 && isVersion(args[0]) {
 		fmt.Fprintln(stdout, "c3po "+version.String())
 		return 0
+	}
+	if len(args) == 1 && args[0] == "list" {
+		return listOccupied(stdout, stderr, e)
 	}
 	port, err := parseArgs(args)
 	if err != nil {
@@ -86,6 +126,21 @@ func run(args []string, stdout, stderr io.Writer, e env) int {
 		return fail(stderr, err)
 	}
 	fmt.Fprintf(stdout, "%d is free\n", port)
+	return 0
+}
+
+func listOccupied(stdout, stderr io.Writer, e env) int {
+	rows, err := occupied(e.procRoot)
+	if err != nil {
+		return fail(stderr, err)
+	}
+	if len(rows) == 0 {
+		fmt.Fprintln(stdout, "no occupied external ports")
+		return 0
+	}
+	for _, row := range rows {
+		fmt.Fprintln(stdout, formatOccupant(row))
+	}
 	return 0
 }
 

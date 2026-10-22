@@ -41,6 +41,7 @@ var screens = map[string]runFunc{
 	"tunnel":    tunnelScreen,
 	"gdrive":    gdriveScreen,
 	"pass":      passScreen,
+	"deport":    deportScreen,
 }
 
 // Main runs c3po from process arguments.
@@ -139,6 +140,21 @@ func gdriveScreen(args []string, stdout, stderr io.Writer) int {
 		return gdrive.Run([]string{"version"}, stdout, stderr)
 	}
 	fmt.Fprint(stderr, gdrive.ScreenHelp)
+	return 2
+}
+
+func deportScreen(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		return deport.Screen(stdout, stderr)
+	}
+	if len(args) == 1 && isHelp(args[0]) {
+		fmt.Fprint(stdout, deport.ScreenHelp)
+		return 0
+	}
+	if len(args) == 1 && isVersion(args[0]) {
+		return deport.Run([]string{"version"}, stdout, stderr)
+	}
+	fmt.Fprint(stderr, deport.ScreenHelp)
 	return 2
 }
 

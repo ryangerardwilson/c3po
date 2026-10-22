@@ -11,13 +11,13 @@ const helpText = `c3po runs these apps.
 
 Usage:
   c3po ast [args...]
-  c3po deport <port>
+  c3po deport list|<port>
   c3po gcal [args...]
   c3po gdrive [args...]
   c3po gmail [args...]
   c3po pass <vault> <item> [args...]
   c3po tunnel add|remove|list|start|stop|status|logs|run
-  c3po tui cyclotree|l|o|tunnel|gdrive|pass [args...]
+  c3po tui cyclotree|l|o|tunnel|gdrive|pass|deport [args...]
   c3po version
   c3po help [-f <category> [feature]]
 
@@ -29,7 +29,7 @@ c3po help -f ast <feature> explains one ast command.
 
 const appText = `apps:
   ast       AST-aware edits, trace, and the agent boundary
-  deport    free a port by signalling its TCP and UDP holders
+  deport    free a safe external port
   gcal      Google Calendar across presets
   gdrive    local-first Google Drive sync
   gmail     Gmail send, list, spam clean, and the hourly timer
@@ -47,6 +47,7 @@ Usage:
   c3po tui tunnel
   c3po tui gdrive
   c3po tui pass
+  c3po tui deport
 
 screens:
   cyclotree    calls of one function, as a tree you move with hjkl
@@ -55,6 +56,7 @@ screens:
   tunnel       Cloudflare Tunnel route editor
   gdrive       Drive preset, then browse
   pass         1Password vaults, then copy one item
+  deport       occupied external ports, freed with dd
 
 c3po help -f tui <screen> explains one screen.
 `

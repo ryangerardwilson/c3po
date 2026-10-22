@@ -63,7 +63,7 @@ func TestHelpGoesToStdout(t *testing.T) {
 			t.Fatalf("%s: code %d out %q err %q", arg, code, out.String(), errb.String())
 		}
 	}
-	for _, want := range []string{"c3po deport <port>", "c3po deport 8082", "SIGTERM", "SIGKILL", "is free", "Exit 0"} {
+	for _, want := range []string{"c3po deport <port>", "c3po deport list", "c3po deport 8082", "c3po tui deport", "8000", "8999", "SIGTERM", "SIGKILL", "is free", "Exit 0"} {
 		if !strings.Contains(Help, want) {
 			t.Fatalf("help missing %q", want)
 		}
@@ -287,19 +287,39 @@ func listenHelper() {
 }
 
 func helperListen(proto string) (net.Addr, func(), error) {
+	addr := net.JoinHostPort("127.0.0.1", os.Getenv("DEPORT_PORT"))
 	if proto == "udp" {
-		conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+		conn, err := net.ListenPacket("udp", addr)
 		if err != nil {
 			return nil, nil, err
 		}
 		return conn.LocalAddr(), func() { conn.Close() }, nil
 	}
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, nil, err
 	}
 	go acceptAndClose(ln)
 	return ln.Addr(), func() { ln.Close() }, nil
+}
+
+func freeSafePort(t *testing.T) int {
+	t.Helper()
+	for port := externalMin; port <= externalMax; port++ {
+		tcp, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err != nil {
+			continue
+		}
+		tcp.Close()
+		udp, err := net.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err != nil {
+			continue
+		}
+		udp.Close()
+		return port
+	}
+	t.Skip("no free safe external port")
+	return 0
 }
 
 func acceptAndClose(ln net.Listener) {
@@ -315,7 +335,7 @@ func acceptAndClose(ln net.Listener) {
 func startHelper(t *testing.T, proto string, stubborn bool) (int, *exec.Cmd) {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^$")
-	cmd.Env = append(os.Environ(), "DEPORT_HELPER=listen", "DEPORT_PROTO="+proto)
+	cmd.Env = append(os.Environ(), "DEPORT_HELPER=listen", "DEPORT_PROTO="+proto, "DEPORT_PORT="+strconv.Itoa(freeSafePort(t)))
 	if stubborn {
 		cmd.Env = append(cmd.Env, "DEPORT_STUBBORN=1")
 	}

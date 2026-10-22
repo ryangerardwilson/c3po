@@ -177,7 +177,7 @@ func TestScreensAreOnlyUnderTUI(t *testing.T) {
 		t.Fatalf("tunnel open %d\n%s", code, out)
 	}
 	out, code = call("c3po", "tui")
-	for _, name := range []string{"\n  cyclotree", "\n  l ", "\n  o ", "\n  tunnel ", "\n  gdrive ", "\n  pass "} {
+	for _, name := range []string{"\n  cyclotree", "\n  l ", "\n  o ", "\n  tunnel ", "\n  gdrive ", "\n  pass ", "\n  deport "} {
 		if code != 0 || !bytes.Contains(out, []byte(name)) {
 			t.Fatalf("tui %d missing %q\n%s", code, name, out)
 		}
@@ -224,6 +224,24 @@ func TestPassScreenHelp(t *testing.T) {
 	}
 	out, code = call("c3po", "tui", "pass", "extra")
 	if code != 2 || !bytes.Contains(out, []byte("c3po tui pass")) {
+		t.Fatalf("extra %d\n%s", code, out)
+	}
+}
+
+func TestDeportScreenHelp(t *testing.T) {
+	out, code := call("c3po", "tui", "deport", "help")
+	for _, want := range []string{"8000 through 8999", "j and k move", "dd frees the selected port"} {
+		if code != 0 || !bytes.Contains(out, []byte(want)) {
+			t.Fatalf("help %d missing %q\n%s", code, want, out)
+		}
+	}
+	out, code = call("c3po", "help", "-f", "tui", "deport")
+	direct, directCode := call("c3po", "tui", "deport", "help")
+	if code != 0 || directCode != 0 || !bytes.Equal(out, direct) {
+		t.Fatalf("flag %d %d\n%s", code, directCode, out)
+	}
+	out, code = call("c3po", "tui", "deport", "extra")
+	if code != 2 || !bytes.Contains(out, []byte("c3po tui deport")) {
 		t.Fatalf("extra %d\n%s", code, out)
 	}
 }

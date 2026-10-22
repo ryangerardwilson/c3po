@@ -15,7 +15,11 @@ type killer interface {
 
 // free kills every process bound to port and waits until the port is clear.
 // A nil result with a nil error means the port was already free.
+// A port outside the safe external band is refused before any signal.
 func free(procRoot string, port int, k killer, sleep func(time.Duration)) ([]proc, error) {
+	if !externalPort(port) {
+		return nil, usageError(fmt.Sprintf("%d is not a safe external port", port))
+	}
 	found, err := boundProcesses(procRoot, port)
 	if err != nil || len(found) == 0 {
 		return nil, err
