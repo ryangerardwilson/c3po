@@ -177,7 +177,7 @@ func TestScreensAreOnlyUnderTUI(t *testing.T) {
 		t.Fatalf("tunnel open %d\n%s", code, out)
 	}
 	out, code = call("c3po", "tui")
-	for _, name := range []string{"\n  cyclotree", "\n  l ", "\n  o ", "\n  tunnel ", "\n  gdrive "} {
+	for _, name := range []string{"\n  cyclotree", "\n  l ", "\n  o ", "\n  tunnel ", "\n  gdrive ", "\n  pass "} {
 		if code != 0 || !bytes.Contains(out, []byte(name)) {
 			t.Fatalf("tui %d missing %q\n%s", code, name, out)
 		}
@@ -209,6 +209,22 @@ func TestGDriveScreenHelp(t *testing.T) {
 	out, code = call("c3po", "gdrive", "1", "browse")
 	if code != 2 || !bytes.Contains(out, []byte("unknown command")) {
 		t.Fatalf("browse %d\n%s", code, out)
+	}
+}
+
+func TestPassScreenHelp(t *testing.T) {
+	out, code := call("c3po", "tui", "pass", "help")
+	if code != 0 || !bytes.Contains(out, []byte("vault")) || !bytes.Contains(out, []byte("item")) || !bytes.Contains(out, []byte("enter copies the selected item")) || !bytes.Contains(out, []byte("secret is not printed")) {
+		t.Fatalf("help %d\n%s", code, out)
+	}
+	out, code = call("c3po", "help", "-f", "tui", "pass")
+	direct, directCode := call("c3po", "tui", "pass", "help")
+	if code != 0 || directCode != 0 || !bytes.Equal(out, direct) {
+		t.Fatalf("flag %d %d\n%s", code, directCode, out)
+	}
+	out, code = call("c3po", "tui", "pass", "extra")
+	if code != 2 || !bytes.Contains(out, []byte("c3po tui pass")) {
+		t.Fatalf("extra %d\n%s", code, out)
 	}
 }
 

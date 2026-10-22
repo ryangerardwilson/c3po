@@ -75,3 +75,19 @@ func TestMissingTokenStopsBeforeOp(t *testing.T) {
 		t.Fatalf("rc = %d stderr = %q", rc, errOut.String())
 	}
 }
+
+func TestScreenHelpDescribesCopy(t *testing.T) {
+	for _, needle := range []string{"vault", "item", "enter copies the selected item", "secret is not printed", "c3po pass"} {
+		if !strings.Contains(ScreenHelp, needle) {
+			t.Fatalf("screen help missing %q", needle)
+		}
+	}
+}
+
+func TestScreenNeedsAToken(t *testing.T) {
+	isolate(t)
+	var errOut bytes.Buffer
+	if rc := Screen(&bytes.Buffer{}, &errOut); rc != 1 || !strings.Contains(errOut.String(), "token is missing") {
+		t.Fatalf("rc = %d stderr = %q", rc, errOut.String())
+	}
+}

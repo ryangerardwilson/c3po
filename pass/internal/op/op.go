@@ -11,6 +11,12 @@ import (
 	"strings"
 )
 
+// Vault is one entry of op vault list --format=json.
+type Vault struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 // Item is one entry of op item list --long --format=json.
 type Item struct {
 	ID       string `json:"id"`
@@ -77,6 +83,19 @@ func (c Client) List(vault string) ([]Item, error) {
 		return nil, errors.New("Unable to process the 1Password item list.")
 	}
 	return items, nil
+}
+
+// Vaults returns the vaults this account can see.
+func (c Client) Vaults() ([]Vault, error) {
+	out, err := c.Runner.Run(c.Env, nil, c.Err, "vault", "list", "--format=json")
+	if err != nil {
+		return nil, errors.New("Unable to list 1Password vaults.")
+	}
+	var vaults []Vault
+	if err := json.Unmarshal(out, &vaults); err != nil {
+		return nil, errors.New("Unable to process the 1Password vault list.")
+	}
+	return vaults, nil
 }
 
 // Read returns the password, or the credential of an API credential.

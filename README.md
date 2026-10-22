@@ -1,6 +1,6 @@
 # c3po
 
-c3po is one CLI. The apps are `ast`, `deport`, `gcal`, `gdrive`, `gmail`, `pass`, `tunnel`, and `tui`. Terminal screens are only `c3po tui cyclotree`, `c3po tui l`, `c3po tui o`, `c3po tui tunnel`, and `c3po tui gdrive`.
+c3po is one CLI. The apps are `ast`, `deport`, `gcal`, `gdrive`, `gmail`, `pass`, `tunnel`, and `tui`. Terminal screens are only `c3po tui cyclotree`, `c3po tui l`, `c3po tui o`, `c3po tui tunnel`, `c3po tui gdrive`, and `c3po tui pass`.
 
 ```sh
 c3po ast [args...]
@@ -10,7 +10,7 @@ c3po gdrive [args...]
 c3po gmail [args...]
 c3po pass <vault> <item> [args...]
 c3po tunnel add|remove|list|start|stop|status|logs|run
-c3po tui cyclotree|l|o|tunnel|gdrive [args...]
+c3po tui cyclotree|l|o|tunnel|gdrive|pass [args...]
 c3po help [-f <category> [feature]]
 ```
 

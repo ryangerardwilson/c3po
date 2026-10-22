@@ -3,6 +3,7 @@
 package pass
 
 import (
+	"fmt"
 	"io"
 	"os"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/ryangerardwilson/c3po/pass/internal/cli"
 	"github.com/ryangerardwilson/c3po/pass/internal/clip"
 	"github.com/ryangerardwilson/c3po/pass/internal/op"
+	"github.com/ryangerardwilson/c3po/pass/internal/tui"
 )
 
 // Help is the full help for c3po pass.
@@ -44,6 +46,7 @@ global actions:
   c3po pass Root --show GH_EXAMPLE
   c3po pass Root --delete GH_EXAMPLE
 
+The item screen is c3po tui pass.
 One match is copied with wl-copy and is not printed. -l prints titles and
 usernames, never passwords. A secret is read from stdin. The token is
 OP_SERVICE_ACCOUNT_TOKEN, or the file named by
@@ -63,4 +66,39 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		Version: version.String(),
 	}
 	return runner.Run(args)
+}
+
+// ScreenHelp is the help for c3po tui pass.
+const ScreenHelp = `c3po tui pass
+browse 1Password vaults and copy one item
+
+  c3po tui pass
+    list vaults, open one, and copy an item
+  c3po tui pass help
+    show this help
+
+j and k move. l opens a vault. h goes back.
+enter copies the selected item. The secret is not printed.
+q quits.
+create, edit, show, delete, and search stay on c3po pass.
+`
+
+// Screen lists vaults, then copies one item. The secret is not printed.
+func Screen(stdout, stderr io.Writer) int {
+	env, err := op.Env()
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	runner := op.Exec{}
+	if err := runner.LookPath(); err != nil {
+		fmt.Fprintln(stderr, "op is required.")
+		return 1
+	}
+	client := op.Client{Runner: runner, Env: env, Err: stderr}
+	if err := tui.Run(client, clip.WLCopy{}); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	return 0
 }

@@ -7,7 +7,7 @@ c3po runs one app from the first argument.
 ## Requirements
 
 ### Requirement: The first argument selects an app
-`c3po ast` SHALL run the ast tool with the remaining arguments. `c3po deport`, `c3po gcal`, `c3po gdrive`, `c3po gmail`, `c3po pass`, and `c3po tunnel` SHALL run those tools with the remaining arguments. `c3po tui <screen>` SHALL be the only command that opens a terminal screen. The screens SHALL be `cyclotree`, `l`, `o`, `tunnel`, and `gdrive`. `c3po tui` with no screen SHALL list those screens and SHALL exit 0. An unknown screen SHALL exit 2 and SHALL list the screens. `c3po` with no tool SHALL list `ast`, `deport`, `gcal`, `gdrive`, `gmail`, `pass`, `tunnel`, and `tui`, and SHALL exit 0. An unknown command SHALL exit 2 and SHALL list the apps. The names `complexity`, `hide`, `visualize`, `vibetree`, `scout`, `cyclotree`, `l`, and `o` SHALL be unknown commands. `c3po tunnel open` SHALL exit 2.
+`c3po ast` SHALL run the ast tool with the remaining arguments. `c3po deport`, `c3po gcal`, `c3po gdrive`, `c3po gmail`, `c3po pass`, and `c3po tunnel` SHALL run those tools with the remaining arguments. `c3po tui <screen>` SHALL be the only command that opens a terminal screen. The screens SHALL be `cyclotree`, `l`, `o`, `tunnel`, `gdrive`, and `pass`. `c3po tui` with no screen SHALL list those screens and SHALL exit 0. An unknown screen SHALL exit 2 and SHALL list the screens. `c3po` with no tool SHALL list `ast`, `deport`, `gcal`, `gdrive`, `gmail`, `pass`, `tunnel`, and `tui`, and SHALL exit 0. An unknown command SHALL exit 2 and SHALL list the apps. The names `complexity`, `hide`, `visualize`, `vibetree`, `scout`, `cyclotree`, `l`, and `o` SHALL be unknown commands. `c3po tunnel open` SHALL exit 2.
 
 #### Scenario: c3po lists the apps
 - **WHEN** the operator runs `c3po`
@@ -36,7 +36,7 @@ c3po runs one app from the first argument.
 #### Scenario: tui lists the screens
 - **WHEN** the operator runs `c3po tui`
 - **THEN** the command SHALL exit 0
-- **AND** the text SHALL list `cyclotree`, `l`, `o`, `tunnel`, and `gdrive`
+- **AND** the text SHALL list `cyclotree`, `l`, `o`, `tunnel`, `gdrive`, and `pass`
 
 #### Scenario: Drive browse starts from tui gdrive
 - **WHEN** the operator runs `c3po tui gdrive help`
@@ -46,6 +46,13 @@ c3po runs one app from the first argument.
 - **AND** the text SHALL say u uploads into the open folder
 - **AND** the text SHALL say dd deletes the selected file
 - **AND** `c3po gdrive 1 browse` SHALL exit 2
+
+#### Scenario: Pass browse starts from tui pass
+- **WHEN** the operator runs `c3po tui pass help`
+- **THEN** the command SHALL exit 0
+- **AND** the text SHALL name a vault and an item
+- **AND** the text SHALL say enter copies the selected item
+- **AND** the text SHALL say the secret is not printed
 
 #### Scenario: An unknown screen is rejected
 - **WHEN** the operator runs `c3po tui nope`
@@ -71,7 +78,7 @@ Invoking the binary as `rgw-ast` SHALL run ast. The arguments after the program 
 - **AND** the text SHALL name the patch command
 
 ### Requirement: One help command
-`c3po help` SHALL exit 0, SHALL show `c3po help -f`, and SHALL list `ast`, `deport`, `gcal`, `gdrive`, `gmail`, `pass`, `tunnel`, and `tui`. `c3po help -f <category>` SHALL explain that category. `c3po help -f ast <feature>` SHALL explain that ast command. `c3po help -f tui` SHALL list `cyclotree`, `l`, `o`, `tunnel`, and `gdrive`. `c3po help -f tui <screen>` SHALL print the same text as `c3po tui <screen> help`. `c3po help -f tui cyclotree` SHALL describe `j` and `k`. `c3po help -f <app>` for each other app SHALL print the same text as `c3po <app> help`. An unknown category SHALL exit 2. An unknown ast feature SHALL exit 2. An unknown screen SHALL exit 2. A feature after an app other than ast or tui SHALL exit 2. `c3po help -f vibetree`, `c3po help -f cyclotree`, `c3po help -f l`, and `c3po help -f o` SHALL exit 2.
+`c3po help` SHALL exit 0, SHALL show `c3po help -f`, and SHALL list `ast`, `deport`, `gcal`, `gdrive`, `gmail`, `pass`, `tunnel`, and `tui`. `c3po help -f <category>` SHALL explain that category. `c3po help -f ast <feature>` SHALL explain that ast command. `c3po help -f tui` SHALL list `cyclotree`, `l`, `o`, `tunnel`, `gdrive`, and `pass`. `c3po help -f tui <screen>` SHALL print the same text as `c3po tui <screen> help`. `c3po help -f tui cyclotree` SHALL describe `j` and `k`. `c3po help -f <app>` for each other app SHALL print the same text as `c3po <app> help`. An unknown category SHALL exit 2. An unknown ast feature SHALL exit 2. An unknown screen SHALL exit 2. A feature after an app other than ast or tui SHALL exit 2. `c3po help -f vibetree`, `c3po help -f cyclotree`, `c3po help -f l`, and `c3po help -f o` SHALL exit 2.
 
 #### Scenario: Help shows the single form
 - **WHEN** the operator runs `c3po help`

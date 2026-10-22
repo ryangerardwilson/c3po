@@ -17,7 +17,7 @@ Usage:
   c3po gmail [args...]
   c3po pass <vault> <item> [args...]
   c3po tunnel add|remove|list|start|stop|status|logs|run
-  c3po tui cyclotree|l|o|tunnel|gdrive [args...]
+  c3po tui cyclotree|l|o|tunnel|gdrive|pass [args...]
   c3po version
   c3po help [-f <category> [feature]]
 
@@ -46,6 +46,7 @@ Usage:
   c3po tui o [args...]
   c3po tui tunnel
   c3po tui gdrive
+  c3po tui pass
 
 screens:
   cyclotree    calls of one function, as a tree you move with hjkl
@@ -53,6 +54,7 @@ screens:
   o            vim-inspired file navigator
   tunnel       Cloudflare Tunnel route editor
   gdrive       Drive preset, then browse
+  pass         1Password vaults, then copy one item
 
 c3po help -f tui <screen> explains one screen.
 `

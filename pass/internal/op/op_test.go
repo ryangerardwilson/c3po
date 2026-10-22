@@ -2,6 +2,7 @@ package op
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -146,5 +147,28 @@ func TestExecLookPathFailsWithoutOp(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	if err := (Exec{}).LookPath(); err == nil {
 		t.Fatal("op was found on an empty PATH")
+	}
+}
+
+type listed struct {
+	out  []byte
+	args []string
+}
+
+func (s *listed) LookPath() error { return nil }
+
+func (s *listed) Run(_ []string, _ []byte, _ io.Writer, args ...string) ([]byte, error) {
+	s.args = append([]string{}, args...)
+	return s.out, nil
+}
+
+func TestVaultsReadsNames(t *testing.T) {
+	src := &listed{out: []byte(`[{"id":"v1","name":"Root"}]`)}
+	got, err := (Client{Runner: src}).Vaults()
+	if err != nil || len(got) != 1 || got[0].ID != "v1" || got[0].Name != "Root" {
+		t.Fatalf("%v %#v", err, got)
+	}
+	if len(src.args) < 2 || src.args[0] != "vault" || src.args[1] != "list" {
+		t.Fatal(src.args)
 	}
 }
