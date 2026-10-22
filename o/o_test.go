@@ -40,6 +40,12 @@ func TestHelpAndVersionDoNotStartApp(t *testing.T) {
 	if !strings.Contains(Help, "c3po tui o pick from ~/src files py,md") {
 		t.Fatalf("help missing picker example: %s", Help)
 	}
+	if !strings.Contains(Help, "c3po tui o ~/Downloads") {
+		t.Fatalf("help missing path example: %s", Help)
+	}
+	if strings.Contains(Help, "c3po tui o open") {
+		t.Fatal("help still requires the word open")
+	}
 	if strings.Contains(Help, "upgrade") {
 		t.Fatal("help still lists upgrade")
 	}
@@ -72,9 +78,7 @@ func TestUsageErrors(t *testing.T) {
 		args []string
 		want string
 	}{
-		"unknown":       {[]string{"upgrade"}, Usage},
 		"config extra":  {[]string{"config", "x"}, Usage},
-		"open empty":    {[]string{"open"}, openUsage},
 		"reveal empty":  {[]string{"reveal"}, revealUsage},
 		"reveal two":    {[]string{"reveal", "a", "b"}, revealUsage},
 		"pick no from":  {[]string{"pick", "in", "/tmp"}, pickUsage},
@@ -174,6 +178,22 @@ func TestRevealStartsInParentAndTargetsPath(t *testing.T) {
 	}
 }
 
+func TestAWordThatIsNotACommandIsAPath(t *testing.T) {
+	noApp(t)
+	for _, args := range [][]string{{"upgrade"}, {"open"}, {"open", "Apps/xl"}} {
+		var stdout, stderr bytes.Buffer
+		if code := Run(args, &stdout, &stderr); code != 1 {
+			t.Fatalf("%v exit = %d", args, code)
+		}
+		if !strings.HasPrefix(strings.TrimSpace(stderr.String()), "Path not found: ") {
+			t.Fatalf("%v stderr = %q", args, stderr.String())
+		}
+		if strings.Contains(stderr.String(), "Use:") {
+			t.Fatalf("%v printed usage: %q", args, stderr.String())
+		}
+	}
+}
+
 func TestOpenDirectoryStartsNavigator(t *testing.T) {
 	tmp := t.TempDir()
 	var got app.Config
@@ -182,7 +202,7 @@ func TestOpenDirectoryStartsNavigator(t *testing.T) {
 		return app.Result{}, 3
 	})
 	var stdout, stderr bytes.Buffer
-	if code := Run([]string{"open", tmp}, &stdout, &stderr); code != 3 {
+	if code := Run([]string{tmp}, &stdout, &stderr); code != 3 {
 		t.Fatalf("open dir exit = %d", code)
 	}
 	realTmp, _ := filepath.EvalSymlinks(tmp)
@@ -200,14 +220,14 @@ func TestOpenRejectsMissingAndMixedTargets(t *testing.T) {
 	}
 	var stdout, stderr bytes.Buffer
 	missing := filepath.Join(tmp, "missing.txt")
-	if code := Run([]string{"open", missing}, &stdout, &stderr); code != 1 {
+	if code := Run([]string{missing}, &stdout, &stderr); code != 1 {
 		t.Fatalf("missing exit = %d", code)
 	}
 	if !strings.Contains(stderr.String(), "Path not found: ") {
 		t.Fatalf("missing stderr = %q", stderr.String())
 	}
 	stderr.Reset()
-	if code := Run([]string{"open", file, tmp}, &stdout, &stderr); code != 1 {
+	if code := Run([]string{file, tmp}, &stdout, &stderr); code != 1 {
 		t.Fatalf("mixed exit = %d", code)
 	}
 	if strings.TrimSpace(stderr.String()) != "Multiple open targets must all be files" {
@@ -274,7 +294,7 @@ func TestOpenTextFileUsesEditor(t *testing.T) {
 	}
 	t.Setenv("VISUAL", "true")
 	var stdout, stderr bytes.Buffer
-	if code := Run([]string{"open", target}, &stdout, &stderr); code != 0 {
+	if code := Run([]string{target}, &stdout, &stderr); code != 0 {
 		t.Fatalf("open exit = %d, stderr = %s", code, stderr.String())
 	}
 }

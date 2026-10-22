@@ -15,10 +15,10 @@ features:
   c3po tui o
 
   start from a directory or open one or more files
-  # open <path> [<path> ...]
-  c3po tui o open ~/Downloads
-  c3po tui o open ~/notes/todo.txt
-  c3po tui o open a.txt b.txt
+  # <path> [<path> ...]
+  c3po tui o ~/Downloads
+  c3po tui o ~/notes/todo.txt
+  c3po tui o a.txt b.txt
 
   reveal a path in its parent directory
   # reveal <path>
@@ -38,9 +38,9 @@ features:
   # config
   c3po tui o config
 
-open <dir> starts the navigator at that directory. open <file...> opens
-the files in $VISUAL, $EDITOR, or vim when every one is a text file, and
-hands each to xdg-open otherwise. Several targets must all be files.
+A directory starts the navigator at that directory. Files open in
+$VISUAL, $EDITOR, or vim when every one is a text file, and each goes
+to xdg-open otherwise. Several targets must all be files.
 reveal <path> starts in the parent directory with the target selected.
 pick and save print the chosen path(s) to stdout and write them to
 ${XDG_CACHE_HOME:-~/.cache}/c3po/o/picker-selection.txt.
@@ -73,8 +73,8 @@ Shell cd handoff: when O_SHELL_CD_FILE names a file, enter and n write the
 chosen directory to it, so a shell wrapper can cd there after exit.
 
 Exit 0 on success, 1 on bad usage, a missing path, or a terminal error.
-open and config exit with the editor's status.
+A path and config exit with the editor's status.
 `
 
-// Usage is printed after an unknown or malformed command.
-const Usage = "Use: c3po tui o | c3po tui o open <path> [<path> ...] | c3po tui o reveal <path> | c3po tui o pick from <dir> [files <exts>|directories] [multiple] | c3po tui o save from <dir> [extension <ext>] | c3po tui o config"
+// Usage is printed after a malformed command.
+const Usage = "Use: c3po tui o | c3po tui o <path> [<path> ...] | c3po tui o reveal <path> | c3po tui o pick from <dir> [files <exts>|directories] [multiple] | c3po tui o save from <dir> [extension <ext>] | c3po tui o config"

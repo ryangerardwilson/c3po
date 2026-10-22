@@ -1,5 +1,6 @@
 // Package o is the c3po tui o file navigator: a Vim-inspired terminal
-// file browser with open, reveal, pick, save, and config commands.
+// file browser. A path is given directly. reveal, pick, save, and config
+// stay named commands.
 package o
 
 import (
@@ -23,7 +24,6 @@ import (
 const shellCDEnv = "O_SHELL_CD_FILE"
 
 const (
-	openUsage   = "Use: c3po tui o open <path> [<path> ...]"
 	revealUsage = "Use: c3po tui o reveal <path>"
 	pickUsage   = "Use: c3po tui o pick from <dir> [files <exts>|directories] [multiple]"
 	saveUsage   = "Use: c3po tui o save from <dir> [extension <ext>]"
@@ -35,7 +35,6 @@ var runApp = app.Run
 type command func(args []string, stdout, stderr io.Writer) int
 
 var commands = map[string]command{
-	"open":   runOpen,
 	"reveal": runReveal,
 	"pick":   runPick,
 	"save":   runSave,
@@ -68,20 +67,13 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		start, _ := os.Getwd()
 		return runNavigator(app.Config{StartDir: start, Mode: app.ModeBrowse}, stdout, stderr)
 	}
-	run, ok := commands[args[0]]
-	if !ok {
-		fmt.Fprintln(stderr, Usage)
-		return 1
+	if run, ok := commands[args[0]]; ok {
+		return run(args, stdout, stderr)
 	}
-	return run(args, stdout, stderr)
+	return openPaths(args, stdout, stderr)
 }
 
-func runOpen(args []string, stdout, stderr io.Writer) int {
-	paths := args[1:]
-	if len(paths) == 0 {
-		fmt.Fprintln(stderr, openUsage)
-		return 1
-	}
+func openPaths(paths []string, stdout, stderr io.Writer) int {
 	targets := make([]string, 0, len(paths))
 	for _, arg := range paths {
 		target := fsnav.NormalizePath(arg)
