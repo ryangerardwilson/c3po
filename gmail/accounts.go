@@ -8,6 +8,7 @@ import (
 	"github.com/ryangerardwilson/c3po/gmail/internal/config"
 	"github.com/ryangerardwilson/c3po/gmail/internal/errs"
 	"github.com/ryangerardwilson/c3po/gmail/internal/pyjson"
+	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
 )
 
 func (e Env) accounts(params []string) (int, error) {
@@ -82,7 +83,8 @@ func (e Env) accountRows(app *config.App) []map[string]any {
 			sig = "present"
 		}
 		token := "missing"
-		if _, err := os.Stat(e.paths().TokenFile(acct.Email)); err == nil {
+		tokenPath := e.paths().TokenFile(acct.Email)
+		if ok, err := sqlxdb.Exists("gmail", "token", sqlxdb.Key(tokenPath), tokenPath); err == nil && ok {
 			token = "present"
 		}
 		rows = append(rows, map[string]any{

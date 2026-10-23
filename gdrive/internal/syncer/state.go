@@ -6,6 +6,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/ryangerardwilson/c3po/gdrive/internal/paths"
+	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
 )
 
 type LocalEntry struct {
@@ -56,10 +58,10 @@ func exists(path string) bool {
 
 func LoadState(preset, regID string) (map[string]StateEntry, error) {
 	path := StateFile(preset, regID)
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	data, err := sqlxdb.Read("gdrive", "state", sqlxdb.Key(path), path)
+	if errors.Is(err, os.ErrNotExist) {
 		return map[string]StateEntry{}, nil
 	}
-	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -86,15 +88,12 @@ func SaveState(preset, regID string, entries map[string]StateEntry) error {
 		return err
 	}
 	data = append(data, '\n')
-	return os.WriteFile(path, data, 0o600)
+	return sqlxdb.Write("gdrive", "state", sqlxdb.Key(path), path, data, 0o600)
 }
 
 func DeleteState(preset, regID string) error {
 	path := StateFile(preset, regID)
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return nil
-	}
-	return os.Remove(path)
+	return sqlxdb.Remove("gdrive", "state", sqlxdb.Key(path), path)
 }
 
 func SHA1File(path string) (string, error) {

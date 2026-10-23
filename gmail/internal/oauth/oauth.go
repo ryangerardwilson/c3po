@@ -143,10 +143,10 @@ func (o Options) AccessToken(email, clientSecretFile string) (string, error) {
 
 // savedToken returns "" when a new authorization is needed.
 func (o Options) savedToken(path string) (string, error) {
-	if _, err := os.Stat(path); err != nil {
+	tok, err := ReadToken(path)
+	if os.IsNotExist(err) {
 		return "", nil
 	}
-	tok, err := ReadToken(path)
 	if err != nil {
 		return "", errs.API("Failed to refresh Gmail token: %s", err.Error())
 	}

@@ -53,7 +53,7 @@ notes:
   the apex on port 8080. Adding a name creates a proxied CNAME when
   the name has no DNS yet; a name that points somewhere else is left
   alone and not saved. Removing a route leaves DNS as it is.
-  Routes live in ~/.config/c3po/tunnel/routes.json. Credentials come from
+  Routes live in the sqlx database c3po. Credentials come from
   the 1Password items CLOUDFLARE_TUNNEL_CREDENTIALS and
   CLOUDFLARE_API_TOKEN in the Root vault, read with the service
   account token in $OP_SERVICE_ACCOUNT_TOKEN_FILE

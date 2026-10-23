@@ -7,12 +7,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/ryangerardwilson/c3po/gcal/internal/pyfmt"
+	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
 )
 
 // GoogleTokenURI is used when a token file has no token_uri.
@@ -62,7 +62,7 @@ func toAny(ss []string) []any {
 // ReadToken loads a token file. It fails like google-auth when
 // refresh_token, client_id, or client_secret is missing.
 func ReadToken(path string) (*Token, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := sqlxdb.Read("gcal", "token", sqlxdb.Key(path), path)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +202,8 @@ func (t *Token) Write(path string) error {
 	for _, k := range extra {
 		pairs = append(pairs, pyfmt.Pair{Key: k, Value: plain(t.fields[k])})
 	}
-	return os.WriteFile(path, []byte(pyfmt.Dumps(pairs, -1)), 0o600)
+	body := []byte(pyfmt.Dumps(pairs, -1))
+	return sqlxdb.Write("gcal", "token", sqlxdb.Key(path), path, body, 0o600)
 }
 
 // plain turns decoded JSON numbers into values pyfmt can print.

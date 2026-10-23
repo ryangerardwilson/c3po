@@ -13,6 +13,7 @@ import (
 	"github.com/ryangerardwilson/c3po/gcal/internal/errs"
 	"github.com/ryangerardwilson/c3po/gcal/internal/oauth"
 	"github.com/ryangerardwilson/c3po/gcal/internal/pyfmt"
+	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
 )
 
 const emptyConfig = "{\"defaults\":{\"timezone\":\"UTC\"},\"accounts\":{}}\n"
@@ -90,7 +91,8 @@ func accountRows(e *env, app config.App) []accountRow {
 	for _, preset := range app.Presets() {
 		acct := app.Accounts[preset]
 		token := "missing"
-		if _, err := os.Stat(dirs.TokenFile(acct.Email)); err == nil {
+		tokenPath := dirs.TokenFile(acct.Email)
+		if ok, err := sqlxdb.Exists("gcal", "token", sqlxdb.Key(tokenPath), tokenPath); err == nil && ok {
 			token = "present"
 		}
 		rows = append(rows, accountRow{preset: preset, email: acct.Email, token: token})

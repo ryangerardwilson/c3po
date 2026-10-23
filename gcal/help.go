@@ -47,7 +47,7 @@ agent-safe workflow:
 
 paths:
   config  $XDG_CONFIG_HOME/c3po/gcal/config.json (default ~/.config/c3po/gcal/config.json)
-  tokens  $XDG_DATA_HOME/c3po/gcal/tokens/<email>.json (default ~/.local/share/c3po/gcal/tokens)
+  tokens  sqlx database c3po, app gcal, kind token
   times   YYYY-MM-DD HH:MM:SS in defaults.timezone
 
 exit: 0 ok, 1 unexpected failure, 2 usage, config, or Google API error

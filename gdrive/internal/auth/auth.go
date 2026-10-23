@@ -18,6 +18,7 @@ import (
 	"github.com/ryangerardwilson/c3po/gdrive/internal/config"
 	"github.com/ryangerardwilson/c3po/gdrive/internal/googleapi"
 	"github.com/ryangerardwilson/c3po/gdrive/internal/paths"
+	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
 )
 
 const localServerTimeout = 60 * time.Second
@@ -148,7 +149,7 @@ func LookupEmail(ctx context.Context, client *http.Client) (string, error) {
 // ReadToken reads a token file. It accepts the "token" key the Python app
 // wrote as well as "access_token".
 func ReadToken(path string) (*Token, error) {
-	data, err := os.ReadFile(path)
+	data, err := sqlxdb.Read("gdrive", "token", sqlxdb.Key(path), path)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +187,7 @@ func WriteToken(path string, token *Token) error {
 		return err
 	}
 	data = append(data, '\n')
-	return os.WriteFile(path, data, 0o600)
+	return sqlxdb.Write("gdrive", "token", sqlxdb.Key(path), path, data, 0o600)
 }
 
 func completeOAuth(oauthConfig *OAuthConfig, stdin io.Reader, stdout, stderr io.Writer) (*Token, error) {

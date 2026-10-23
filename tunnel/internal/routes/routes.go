@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
 	"github.com/ryangerardwilson/c3po/internal/xdg"
 )
 
@@ -49,7 +50,7 @@ func Path(home string) string {
 }
 
 func Load(path string) (File, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := sqlxdb.Read("tunnel", "routes", "routes", path)
 	if errors.Is(err, os.ErrNotExist) {
 		return Default(Zone), nil
 	}
@@ -104,24 +105,21 @@ func Save(path string, file File) error {
 		return err
 	}
 	raw = append(raw, '\n')
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return sqlxdb.Write("tunnel", "routes", "routes", path, raw, 0o600)
 }
 
 // EnsureFile returns the saved list, writing the apex route when the file is absent.
 func EnsureFile(path string) (File, error) {
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+	_, err := sqlxdb.Read("tunnel", "routes", "routes", path)
+	if errors.Is(err, os.ErrNotExist) {
 		file := Default(Zone)
 		if err := Save(path, file); err != nil {
 			return File{}, err
 		}
 		return file, nil
+	}
+	if err != nil {
+		return File{}, err
 	}
 	return Load(path)
 }

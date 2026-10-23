@@ -136,10 +136,10 @@ func (o Options) AccessToken(email, clientSecretFile string, scopes []string) (s
 // A token whose recorded scopes miss one of scopes is refreshed with
 // those scopes, so a refresh token that already holds them still works.
 func (o Options) savedToken(path string, scopes []string) (string, error) {
-	if _, err := os.Stat(path); err != nil {
+	tok, err := ReadToken(path)
+	if os.IsNotExist(err) {
 		return "", nil
 	}
-	tok, err := ReadToken(path)
 	if err != nil {
 		return "", err
 	}
