@@ -268,12 +268,11 @@ func TestXLScreen(t *testing.T) {
 		t.Fatalf("bare %d\n%s", code, out)
 	}
 	named, namedCode := call("xl", "help")
-	direct, directCode := call("c3po", "tui", "xl", "help")
-	if namedCode != 0 || directCode != 0 || !bytes.Equal(named, direct) {
-		t.Fatalf("name %d %d\n%s", namedCode, directCode, named)
+	if namedCode != 0 || bytes.Contains(named, []byte("A grid for a budget")) {
+		t.Fatalf("name %d\n%s", namedCode, named)
 	}
 	out, code = call("xl", "version")
-	if code != 0 || string(out) != "0.1.0\n" {
+	if code != 0 || string(out) == "0.1.0\n" || !bytes.Contains(out, []byte("c3po 0.5.0")) {
 		t.Fatalf("xl version %d\n%s", code, out)
 	}
 }

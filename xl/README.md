@@ -74,22 +74,18 @@ The same lists can live on their own sheets. `n` adds one. On the expenses sheet
 ```sh
 c3po tui xl
 c3po tui xl budget.xlsx
-xl
-xl budget
-xl budget.xlsx
-xl open budget.xlsx
-xl help
-xl version
+c3po tui xl open budget.xlsx
+c3po tui xl help
+c3po tui xl version
 ```
 
-`c3po tui xl` and `xl` in a terminal open a blank sheet. Without a terminal either one prints help. `xl budget` and `xl budget.xlsx` create or open `budget.xlsx`. A name that already ends in `.xlsx` is left as it is. `xl budget.csv` still loads that csv, and the workbook file is `budget.xlsx`.
+`c3po tui xl` in a terminal opens a blank sheet. Without a terminal it prints help. `c3po tui xl budget` and `c3po tui xl budget.xlsx` create or open `budget.xlsx`. A name that already ends in `.xlsx` is left as it is. `c3po tui xl budget.csv` still loads that csv, and the workbook file is `budget.xlsx`.
 
 ## Install
 
-The screen ships with c3po. `install.sh` from this checkout installs `c3po` and links `xl` to that binary.
+The screen ships with c3po. `install.sh` from this checkout installs `c3po`. There is no `xl` command.
 
 ```sh
 ./install.sh
 c3po tui xl help
-xl version
 ```

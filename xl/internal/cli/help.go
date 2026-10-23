@@ -13,25 +13,21 @@ const helpText = `xl
 A grid for a budget. Type expenses and income, keep formulas, save an xlsx.
 
 global actions:
-  xl help
+  c3po tui xl help
     show this help
-  xl version
-    print the installed version
+  c3po tui xl version
+    print the spreadsheet version
 
 features:
   open a blank sheet
   # open
   c3po tui xl
-  xl
-  xl open
 
   create or open an xlsx
   # <file>
   c3po tui xl budget
   c3po tui xl budget.xlsx
-  xl budget
-  xl budget.xlsx
-  xl open budget.xlsx
+  c3po tui xl open budget.xlsx
 
   work on more than one sheet
   # sheets

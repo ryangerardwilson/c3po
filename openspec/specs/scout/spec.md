@@ -134,12 +134,11 @@ Each app's config SHALL be `$XDG_CONFIG_HOME/c3po/<app>` when `XDG_CONFIG_HOME` 
 - **THEN** the legacy path SHALL be renamed under `c3po/<app>`
 - **AND** an existing c3po path SHALL be left as it is
 
-### Requirement: The xl name selects the spreadsheet
-Invoking the binary as `xl` SHALL run the spreadsheet screen. The arguments after the program name SHALL be the spreadsheet arguments. `xl help` SHALL print the same text as `c3po tui xl help`. `xl version` SHALL print `0.1.0`.
+### Requirement: The program name xl does not select the spreadsheet
+Invoking the binary as `xl` SHALL NOT run the spreadsheet. `xl version` SHALL NOT print `0.1.0`. The installer SHALL NOT create an `xl` link. The installer SHALL remove an `xl` symlink that points at the c3po binary.
 
-#### Scenario: xl help matches the screen
-- **WHEN** the operator runs `xl help`
-- **THEN** the command SHALL exit 0
-- **AND** the text SHALL match `c3po tui xl help`
-- **AND** `xl version` SHALL print `0.1.0`
+#### Scenario: The program name is not the spreadsheet
+- **WHEN** the operator runs the binary as `xl version`
+- **THEN** the text SHALL NOT be `0.1.0`
+- **AND** `xl help` SHALL NOT describe the budget grid
 

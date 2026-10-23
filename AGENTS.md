@@ -3,7 +3,7 @@
 c3po is one CLI. Apps are top-level commands, `c3po <name>`. The apps are `ast`, `deport`, `gcal`, `gdrive`, `gmail`, `pass`, `tunnel`, and `tui`. Terminal screens are only `c3po tui cyclotree`, `c3po tui l`, `c3po tui o`, `c3po tui tunnel`, `c3po tui gdrive`, `c3po tui pass`, `c3po tui deport`, and `c3po tui xl`.
 
 - `ast` is the tree in `ast/`. Its command is `c3po ast`.
-- A terminal screen is only `c3po tui <name>`. The screens are `cyclotree`, `l`, `o`, `tunnel`, `gdrive`, `pass`, `deport`, and `xl`. `xl` is the spreadsheet. The `xl` command is this binary.
+- A terminal screen is only `c3po tui <name>`. The screens are `cyclotree`, `l`, `o`, `tunnel`, `gdrive`, `pass`, `deport`, and `xl`. `xl` is the spreadsheet. It is not a separate command.
 - `deport` frees a safe external port, 8000 through 8999. The screen is `c3po tui deport`. `gcal` is Google Calendar. `gdrive` syncs Google Drive. `gmail` is the Gmail desk. `pass` is the 1Password interface. The item screen is `c3po tui pass`. `tunnel` publishes Cloudflare Tunnel routes. The route screen is `c3po tui tunnel`.
 - A new app is a new top-level name, with its own package. A new screen is a name under `c3po tui`.
 

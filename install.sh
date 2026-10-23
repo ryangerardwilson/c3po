@@ -18,7 +18,7 @@ Usage:
   install.sh help            Show this help
 
 Installs to \$C3PO_INSTALL_DIR or ~/.local/bin.
-Links rgw-ast and xl to the same binary and removes cx and complexity links that point at it.
+Links rgw-ast to the same binary and removes xl, cx, and complexity links that point at it.
 EOF
 }
 
@@ -101,7 +101,7 @@ install_from_source() {
   (cd "$source_path" && GOWORK=off CGO_ENABLED=0 go build -ldflags "$ldflags" -o "$INSTALL_DIR/$APP" ./cmd/c3po)
   chmod 755 "$INSTALL_DIR/$APP"
   link_name rgw-ast
-  link_name xl
+  remove_compat_link xl
   remove_compat_link cx
   remove_compat_link complexity
   "$INSTALL_DIR/$APP" version

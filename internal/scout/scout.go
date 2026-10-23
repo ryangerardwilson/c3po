@@ -64,22 +64,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	switch toolOf(args[0]) {
 	case "ast":
 		return ast.Run(args[1:], stdout, stderr)
-	case "xl":
-		return xl.Run(args[1:], stdout, stderr)
 	default:
 		return c3po(args[1:], stdout, stderr)
 	}
 }
 
 func toolOf(argv0 string) string {
-	switch filepath.Base(argv0) {
-	case "rgw-ast":
+	if filepath.Base(argv0) == "rgw-ast" {
 		return "ast"
-	case "xl":
-		return "xl"
-	default:
-		return ""
 	}
+	return ""
 }
 
 func c3po(args []string, stdout, stderr io.Writer) int {
