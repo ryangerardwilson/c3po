@@ -40,7 +40,8 @@ features:
 
 A directory starts the navigator at that directory. Files open in
 $VISUAL, $EDITOR, or vim when every one is a text file, and each goes
-to xdg-open otherwise. Several targets must all be files.
+to xdg-open otherwise. A file ending in .xlsx opens in xl. Several
+targets must all be files.
 reveal <path> starts in the parent directory with the target selected.
 pick and save print the chosen path(s) to stdout and write them to
 ${XDG_CACHE_HOME:-~/.cache}/c3po/o/picker-selection.txt.

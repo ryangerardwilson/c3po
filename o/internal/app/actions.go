@@ -97,13 +97,20 @@ func (m model) pickEntry(entry fsnav.Entry) (model, tui.Cmd) {
 	return m, nil
 }
 
-// openEntry opens a file. Text files run the editor on the terminal and
-// the screen returns when it exits; other files go to xdg-open.
+// openEntry opens a file. A workbook runs the xl screen on the terminal
+// and the navigator returns when it exits. Text files run the editor the
+// same way. Other files go to xdg-open.
 func (m model) openEntry(entry fsnav.Entry) (model, tui.Cmd) {
 	info, err := os.Stat(entry.Path)
 	if err != nil || info.IsDir() {
 		m.status = "failed to open " + entry.Name
 		return m, nil
+	}
+	if opener.IsWorkbook(entry.Path) {
+		name := entry.Name
+		return m, tui.Exec(opener.WorkbookCommand(entry.Path), func(err error) tui.Msg {
+			return openedMsg{name: name, ok: err == nil}
+		})
 	}
 	if !fsnav.IsTextLike(entry.Path) {
 		_ = opener.OpenDetached(entry.Path)

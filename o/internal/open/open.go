@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/ryangerardwilson/c3po/o/internal/fsnav"
 )
@@ -20,24 +21,55 @@ func Editor() string {
 	return "vim"
 }
 
-// OpenFiles opens every path in the editor when all of them are text,
-// and otherwise hands each one to a detached opener. It returns the
-// editor's exit code, or 0 when the files were handed off.
+// OpenFiles opens every path in the editor when all of them are text.
+// A workbook opens in the xl screen, in the foreground. Anything else
+// is handed to a detached opener. The return value is the first
+// foreground failure, or 0 when every file was handed off.
 func OpenFiles(paths []string) int {
 	if len(paths) == 0 {
 		return 0
 	}
-	if !allTextLike(paths) {
-		for _, path := range paths {
-			_ = OpenDetached(path)
-		}
-		return 0
+	if allTextLike(paths) {
+		cmd := exec.Command(Editor(), paths...)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return exitCode(cmd.Run())
 	}
-	cmd := exec.Command(Editor(), paths...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return exitCode(cmd.Run())
+	code := 0
+	for _, path := range paths {
+		if IsWorkbook(path) {
+			cmd := WorkbookCommand(path)
+			cmd.Stdin = os.Stdin
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			if c := exitCode(cmd.Run()); c != 0 && code == 0 {
+				code = c
+			}
+			continue
+		}
+		_ = detached(path)
+	}
+	return code
+}
+
+// detached starts a non-workbook opener. Tests replace it.
+var detached = OpenDetached
+
+// IsWorkbook reports an xlsx path. The suffix match ignores case.
+func IsWorkbook(path string) bool {
+	return strings.EqualFold(filepath.Ext(path), ".xlsx")
+}
+
+// WorkbookCommand starts the xl screen on one workbook. Tests replace it.
+var WorkbookCommand = defaultWorkbookCommand
+
+func defaultWorkbookCommand(path string) *exec.Cmd {
+	exe, err := os.Executable()
+	if err != nil || exe == "" {
+		exe = "c3po"
+	}
+	return exec.Command(exe, "tui", "xl", path)
 }
 
 // EditorCommand is the foreground editor command for one file. The

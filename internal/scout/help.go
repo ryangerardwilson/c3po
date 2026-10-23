@@ -17,7 +17,7 @@ Usage:
   c3po gmail [args...]
   c3po pass <vault> <item> [args...]
   c3po tunnel add|remove|list|start|stop|status|logs|run
-  c3po tui cyclotree|l|o|tunnel|gdrive|pass|deport [args...]
+  c3po tui cyclotree|l|o|tunnel|gdrive|pass|deport|xl [args...]
   c3po version
   c3po help [-f <category> [feature]]
 
@@ -48,6 +48,7 @@ Usage:
   c3po tui gdrive
   c3po tui pass
   c3po tui deport
+  c3po tui xl [file]
 
 screens:
   cyclotree    calls of one function, as a tree you move with hjkl
@@ -57,6 +58,7 @@ screens:
   gdrive       Drive preset, then browse
   pass         1Password vaults, then copy one item
   deport       occupied external ports, freed with dd
+  xl           spreadsheet for a budget workbook
 
 c3po help -f tui <screen> explains one screen.
 `
