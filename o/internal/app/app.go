@@ -71,6 +71,11 @@ type model struct {
 	showHidden   bool
 	input        string
 	filtering    bool
+	commanding   bool
+	clipSet      bool
+	clipCut      bool
+	clipPath     string
+	deleteArmed  bool
 	marks        map[string]bool
 	status       string
 	showHelp     bool

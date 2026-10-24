@@ -59,3 +59,27 @@ func TestChooseRejectsAnEmptyList(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestPresetShortcutsStayBehindQuestionMark(t *testing.T) {
+	p := newPicker(presets())
+	if strings.Contains(p.frame(), "j/k move") || !strings.Contains(p.frame(), "a@b.c") {
+		t.Fatalf("list\n%s", p.frame())
+	}
+	p.key("?")
+	if p.cursor != 0 || p.preset != "" || !strings.Contains(p.frame(), "select") || !strings.Contains(p.frame(), "quit") {
+		t.Fatalf("help\n%s", p.frame())
+	}
+	p.key("j")
+	if p.cursor != 0 || !p.help {
+		t.Fatalf("cursor %d", p.cursor)
+	}
+	p.key("esc")
+	if p.help || !strings.Contains(p.frame(), "a@b.c") || strings.Contains(p.frame(), "j/k move") {
+		t.Fatalf("esc\n%s", p.frame())
+	}
+	p.key("?")
+	p.key("q")
+	if !p.quit {
+		t.Fatal("q")
+	}
+}

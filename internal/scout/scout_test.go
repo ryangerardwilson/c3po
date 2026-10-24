@@ -5,9 +5,9 @@ import (
 	"testing"
 )
 
-var portedScouts = []string{"deport", "gcal", "gdrive", "gmail", "pass", "tunnel", "tui"}
+var portedScouts = []string{"deport", "gcal", "gdrive", "gmail", "pass", "slack", "tunnel", "tui"}
 
-var retiredScouts = []string{"complexity", "hide", "visualize", "vibetree", "iha", "cx"}
+var retiredScouts = []string{"complexity", "hide", "visualize", "vibetree", "iha", "cx", "sluser"}
 
 func TestScoutListsTools(t *testing.T) {
 	out, code := call("c3po")
@@ -162,7 +162,7 @@ func TestVersion(t *testing.T) {
 }
 
 func TestScreensAreOnlyUnderTUI(t *testing.T) {
-	for _, name := range []string{"cyclotree", "l", "o", "xl"} {
+	for _, name := range []string{"cyclotree", "l", "o", "xl", "looptab"} {
 		out, code := call("c3po", name, "help")
 		if code != 2 || !bytes.Contains(out, []byte("unknown command")) {
 			t.Fatalf("%s code %d\n%s", name, code, out)
@@ -177,7 +177,7 @@ func TestScreensAreOnlyUnderTUI(t *testing.T) {
 		t.Fatalf("tunnel open %d\n%s", code, out)
 	}
 	out, code = call("c3po", "tui")
-	for _, name := range []string{"\n  cyclotree", "\n  l ", "\n  o ", "\n  tunnel ", "\n  gdrive ", "\n  pass ", "\n  deport ", "\n  xl "} {
+	for _, name := range []string{"\n  cyclotree", "\n  l ", "\n  o ", "\n  tunnel ", "\n  gdrive ", "\n  pass ", "\n  deport ", "\n  xl ", "\n  looptab "} {
 		if code != 0 || !bytes.Contains(out, []byte(name)) {
 			t.Fatalf("tui %d missing %q\n%s", code, name, out)
 		}
@@ -274,6 +274,29 @@ func TestXLScreen(t *testing.T) {
 	out, code = call("xl", "version")
 	if code != 0 || string(out) == "0.1.0\n" || !bytes.Contains(out, []byte("c3po 0.5.0")) {
 		t.Fatalf("xl version %d\n%s", code, out)
+	}
+}
+
+func TestLooptabScreen(t *testing.T) {
+	out, code := call("c3po", "tui", "looptab", "help")
+	if code != 0 || !bytes.Contains(out, []byte("enter runs the selected job now")) || !bytes.Contains(out, []byte("c3po tui looptab")) {
+		t.Fatalf("help %d\n%s", code, out)
+	}
+	same, sameCode := call("c3po", "help", "-f", "tui", "looptab")
+	if sameCode != 0 || !bytes.Equal(out, same) {
+		t.Fatalf("flag %d\n%s", sameCode, same)
+	}
+	out, code = call("c3po", "tui", "looptab", "version")
+	if code != 0 || !bytes.Contains(out, []byte("c3po 0.5.0")) {
+		t.Fatalf("version %d\n%s", code, out)
+	}
+	out, code = call("c3po", "tui", "looptab", "extra")
+	if code != 2 || !bytes.Contains(out, []byte("c3po tui looptab")) {
+		t.Fatalf("extra %d\n%s", code, out)
+	}
+	out, code = call("c3po", "looptab")
+	if code != 2 || !bytes.Contains(out, []byte("unknown command")) {
+		t.Fatalf("bare %d\n%s", code, out)
 	}
 }
 

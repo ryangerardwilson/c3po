@@ -2,7 +2,6 @@ package app
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -162,38 +161,10 @@ func (m *model) toggleMark() {
 	m.move(1)
 }
 
-func (m *model) copySelection() {
-	paths := markedPaths(m.marks)
-	if len(paths) == 0 && len(m.entries) > 0 {
-		paths = []string{m.entries[m.selected].Path}
-	}
-	if len(paths) == 0 {
-		return
-	}
-	cmd := execCommand("wl-copy")
-	if cmd == nil {
-		m.status = "wl-copy not found"
-		return
-	}
-	cmd.Stdin = strings.NewReader(strings.Join(paths, "\n"))
-	if err := cmd.Run(); err != nil {
-		m.status = "copy failed"
-		return
-	}
-	m.status = "copied"
-}
-
 func markedPaths(marks map[string]bool) []string {
 	paths := make([]string, 0, len(marks))
 	for path := range marks {
 		paths = append(paths, path)
 	}
 	return paths
-}
-
-func execCommand(name string, args ...string) *exec.Cmd {
-	if _, err := exec.LookPath(name); err != nil {
-		return nil
-	}
-	return exec.Command(name, args...)
 }

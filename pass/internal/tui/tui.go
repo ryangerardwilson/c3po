@@ -55,6 +55,7 @@ type model struct {
 	err       error
 	width     int
 	height    int
+	help      bool
 }
 
 // Run opens the vault list. q leaves it.
@@ -85,6 +86,19 @@ func (m *model) loop(term screen) error {
 
 // handleKey applies one key and reports whether the screen quits.
 func (m *model) handleKey(key string) bool {
+	if m.help {
+		switch key {
+		case "?", "esc":
+			m.help = false
+		case "ctrl+c", "q":
+			return true
+		}
+		return false
+	}
+	if key == "?" {
+		m.help = true
+		return false
+	}
 	switch key {
 	case "ctrl+c", "q", "esc":
 		return true
@@ -192,18 +206,34 @@ func (m *model) clamp() int {
 }
 
 func (m *model) view() string {
+	if m.help {
+		return m.helpView()
+	}
 	var b strings.Builder
 	title := "pass - vaults"
 	if m.vaultName != "" {
 		title = "pass - " + m.vaultName
 	}
-	fmt.Fprintf(&b, "%s\n", paint(styleTitle, title))
-	fmt.Fprintf(&b, "%s\n\n", paint(styleMuted, "j/k move  l open  h up  enter copy  q quit"))
+	fmt.Fprintf(&b, "%s\n\n", paint(styleTitle, title))
 	m.writeRows(&b)
 	if m.status != "" {
 		fmt.Fprintf(&b, "\n%s\n", paint(styleMuted, m.status))
 	}
 	return b.String()
+}
+
+func (m *model) helpView() string {
+	lines := []string{
+		paint(styleTitle, "pass"),
+		"",
+		"j/k    move",
+		"l      open",
+		"h      up",
+		"enter  copy",
+		"?      shortcuts",
+		"q      quit",
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
 
 func (m *model) writeRows(b *strings.Builder) {
@@ -228,7 +258,7 @@ func (m *model) writeRows(b *strings.Builder) {
 }
 
 func (m *model) window() (int, int) {
-	rows := m.height - 5
+	rows := m.height - 4
 	if m.height <= 0 || rows <= 0 || len(m.rows) <= rows {
 		return 0, len(m.rows)
 	}

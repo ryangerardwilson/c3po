@@ -1,0 +1,998 @@
+package app
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"mime"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+)
+
+type SlackClient struct {
+	Token      string
+	HTTPClient *http.Client
+	// Verbose receives progress lines (pagination, rate limits). Typically stderr.
+	Verbose io.Writer
+	// Sleep is used for rate-limit backoff; nil means time.Sleep.
+	Sleep func(time.Duration)
+}
+
+var slackAPIBase = "https://slack.com/api/"
+
+func (c SlackClient) logf(format string, args ...any) {
+	if c.Verbose == nil {
+		return
+	}
+	fmt.Fprintf(c.Verbose, "slack: "+format+"\n", args...)
+}
+
+func (c SlackClient) sleep(d time.Duration) {
+	if d <= 0 {
+		return
+	}
+	if c.Sleep != nil {
+		c.Sleep(d)
+		return
+	}
+	time.Sleep(d)
+}
+
+func shortCursor(cursor string) string {
+	cursor = strings.TrimSpace(cursor)
+	if cursor == "" {
+		return "-"
+	}
+	if len(cursor) <= 12 {
+		return cursor
+	}
+	return cursor[:6] + "…" + cursor[len(cursor)-4:]
+}
+
+func retryAfterDuration(resp *http.Response, decoded map[string]any) time.Duration {
+	if resp != nil {
+		if raw := strings.TrimSpace(resp.Header.Get("Retry-After")); raw != "" {
+			if seconds, err := strconv.Atoi(raw); err == nil && seconds > 0 {
+				return time.Duration(seconds) * time.Second
+			}
+			if when, err := http.ParseTime(raw); err == nil {
+				if wait := time.Until(when); wait > 0 {
+					return wait
+				}
+			}
+		}
+	}
+	if decoded != nil {
+		if seconds := intValue(decoded["retry_after"], 0); seconds > 0 {
+			return time.Duration(seconds) * time.Second
+		}
+	}
+	return 2 * time.Second
+}
+
+type PostTarget struct {
+	Kind      string
+	ChannelID string
+	UserID    string
+}
+
+type MessageEntry struct {
+	SortTS       float64        `json:"sort_ts"`
+	Email        string         `json:"email"`
+	DMID         string         `json:"dm_id"`
+	ChannelID    string         `json:"channel_id"`
+	Surface      string         `json:"surface"`
+	Conversation string         `json:"conversation"`
+	UserID       string         `json:"user_id"`
+	Members      string         `json:"members"`
+	Message      map[string]any `json:"message"`
+	Sender       map[string]any `json:"sender"`
+	Unread       bool           `json:"unread"`
+}
+
+type ConversationRow struct {
+	ChannelID     string
+	Surface       string
+	Conversation  string
+	Name          string
+	Email         string
+	Members       string
+	UserID        string
+	LatestTS      string
+	LastRead      string
+	Unread        int
+	HistoryLoaded bool
+	Info          map[string]any
+	Messages      []MessageEntry
+}
+
+func tokenKind(token string) string {
+	switch {
+	case strings.HasPrefix(token, "xoxp-"):
+		return "user"
+	case strings.HasPrefix(token, "xoxb-"):
+		return "bot"
+	default:
+		return "unknown"
+	}
+}
+
+func requireUserToken(token string, missing string) (string, error) {
+	if token == "" {
+		return "", UsageError{Message: missing}
+	}
+	if tokenKind(token) != "user" {
+		return "", UsageError{Message: "Slack token must be a user token (xoxp-)."}
+	}
+	return token, nil
+}
+
+func readTokenFile(path string) string {
+	path = expandPath(path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func tokenMap(cfg map[string]any) map[string]string {
+	out := map[string]string{}
+	raw := asMap(cfg["token"])
+	if value := strings.TrimSpace(str(raw["user"])); value != "" {
+		out["user"] = value
+	}
+	if out["user"] == "" {
+		for _, key := range []string{"user_token", "slack_user_token", "token"} {
+			if value := strings.TrimSpace(str(cfg[key])); value != "" {
+				out["user"] = value
+				break
+			}
+		}
+	}
+	return out
+}
+
+func directToken(cfg map[string]any, keys ...string) string {
+	tokens := tokenMap(cfg)
+	for _, key := range keys {
+		if key != "user" {
+			continue
+		}
+		if value := strings.TrimSpace(tokens[key]); value != "" {
+			return value
+		}
+		if value := strings.TrimSpace(str(cfg[key])); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func hasToken(cfg map[string]any, kind string) bool {
+	if kind != "user" {
+		return false
+	}
+	return directToken(cfg, "user") != ""
+}
+
+func resolveUserToken(cfg map[string]any, missing string) (string, error) {
+	token := firstNonEmpty(
+		directToken(cfg, "user"),
+		getenv("SLACK_USER_TOKEN"),
+		getenv("SLACK_TOKEN"),
+		readTokenFile(defaultUserTokenFile),
+	)
+	return requireUserToken(token, missing)
+}
+
+func resolveToken(cfg map[string]any) (string, error) {
+	return resolveUserToken(cfg, "Missing Slack user token (xoxp-). Set SLACK_USER_TOKEN or add token.user in c3po slack config.")
+}
+
+func resolveListToken(cfg map[string]any) (string, error) {
+	return resolveUserToken(cfg, "Missing Slack user token (xoxp-). For message listing, add token.user in c3po slack config or set SLACK_USER_TOKEN.")
+}
+
+func resolveLookupToken(cfg map[string]any, fallback string) (string, error) {
+	token := firstNonEmpty(directToken(cfg, "user"), getenv("SLACK_USER_TOKEN"), readTokenFile(defaultUserTokenFile), fallback)
+	if token == "" {
+		return "", nil
+	}
+	return requireUserToken(token, "Missing Slack user token (xoxp-).")
+}
+
+func resolveDirectPostToken(cfg map[string]any, fallback string) string {
+	token := firstNonEmpty(directToken(cfg, "user"), getenv("SLACK_USER_TOKEN"), readTokenFile(defaultUserTokenFile), fallback)
+	if tokenKind(token) != "user" {
+		return ""
+	}
+	return token
+}
+
+func resolveMarkReadToken(cfg map[string]any) (string, error) {
+	return resolveUserToken(cfg, "mark all read requires a user token (xoxp-) with im:write, mpim:write, groups:write, and channels:write for every conversation type.")
+}
+
+func (rt *Runtime) slackClient(token string) SlackClient {
+	client := rt.HTTPClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+	return SlackClient{Token: token, HTTPClient: client}
+}
+
+func (c SlackClient) Request(method string, payload map[string]string, useForm bool, httpMethod string, allowError bool) (map[string]any, error) {
+	if httpMethod == "" {
+		httpMethod = http.MethodPost
+	}
+	endpoint := slackAPIBase + method
+	reqURL := endpoint
+	contentType := "application/json; charset=utf-8"
+	var bodyBytes []byte
+	if strings.EqualFold(httpMethod, http.MethodGet) {
+		values := url.Values{}
+		for key, value := range payload {
+			values.Set(key, value)
+		}
+		if encoded := values.Encode(); encoded != "" {
+			reqURL += "?" + encoded
+		}
+	} else if useForm {
+		values := url.Values{}
+		for key, value := range payload {
+			values.Set(key, value)
+		}
+		bodyBytes = []byte(values.Encode())
+		contentType = "application/x-www-form-urlencoded"
+	} else {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return nil, err
+		}
+		bodyBytes = data
+	}
+
+	httpClient := c.HTTPClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+
+	for attempt := 0; attempt <= maxRateLimitRetries; attempt++ {
+		var body io.Reader
+		if bodyBytes != nil {
+			body = bytes.NewReader(bodyBytes)
+		}
+		req, err := http.NewRequest(httpMethod, reqURL, body)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+		req.Header.Set("Content-Type", contentType)
+		req.Header.Set("Accept", "application/json")
+		c.logf("api method=%s attempt=%d", method, attempt+1)
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		data, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			return nil, err
+		}
+		var decoded map[string]any
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			return nil, fmt.Errorf("Slack API %s returned invalid JSON: %w", method, err)
+		}
+		rateLimited := resp.StatusCode == http.StatusTooManyRequests || str(decoded["error"]) == "ratelimited"
+		if rateLimited {
+			wait := retryAfterDuration(resp, decoded)
+			if attempt >= maxRateLimitRetries {
+				c.logf("rate_limited method=%s giving_up after=%d wait_would_be=%s", method, attempt+1, wait)
+				return decoded, fmt.Errorf("Slack API %s rate limited after %d retries", method, attempt+1)
+			}
+			c.logf("rate_limited method=%s attempt=%d retry_after=%s", method, attempt+1, wait)
+			c.sleep(wait)
+			continue
+		}
+		if decoded["ok"] != true && !allowError {
+			errText := firstNonEmpty(str(decoded["error"]), "unknown_error")
+			return decoded, fmt.Errorf("Slack API %s failed: %s", method, errText)
+		}
+		return decoded, nil
+	}
+	return nil, fmt.Errorf("Slack API %s failed: rate_limited", method)
+}
+
+func (c SlackClient) AuthTest() (map[string]any, error) {
+	return c.Request("auth.test", map[string]string{}, false, http.MethodPost, false)
+}
+
+func listAPI(client SlackClient, method string, params map[string]string, key string) ([]map[string]any, error) {
+	var rows []map[string]any
+	cursor := ""
+	page := 0
+	for {
+		page++
+		payload := map[string]string{}
+		for k, v := range params {
+			payload[k] = v
+		}
+		if cursor != "" {
+			payload["cursor"] = cursor
+		}
+		client.logf("paginate method=%s page=%d cursor=%s rows_so_far=%d", method, page, shortCursor(cursor), len(rows))
+		data, err := client.Request(method, payload, false, http.MethodGet, false)
+		if err != nil {
+			return nil, err
+		}
+		before := len(rows)
+		for _, raw := range asList(data[key]) {
+			if item := asMap(raw); len(item) > 0 {
+				rows = append(rows, item)
+			}
+		}
+		cursor = strings.TrimSpace(str(asMap(data["response_metadata"])["next_cursor"]))
+		client.logf("paginate method=%s page=%d fetched=%d total=%d next_cursor=%s", method, page, len(rows)-before, len(rows), shortCursor(cursor))
+		if cursor == "" {
+			break
+		}
+	}
+	return rows, nil
+}
+
+func channelNameQuery(value string) string {
+	raw := strings.TrimSpace(value)
+	if raw == "" {
+		return ""
+	}
+	if strings.HasPrefix(raw, "#") {
+		raw = strings.TrimSpace(raw[1:])
+	}
+	if raw == "" || strings.Contains(raw, "@") || strings.Contains(raw, ":") {
+		return ""
+	}
+	if conversationIDRE.MatchString(raw) || userIDRE.MatchString(raw) {
+		return ""
+	}
+	return strings.ToLower(raw)
+}
+
+func listMemberChannels(client SlackClient) ([]map[string]any, error) {
+	return listAPI(client, "users.conversations", map[string]string{
+		"types":            "public_channel,private_channel",
+		"exclude_archived": "true",
+		"limit":            "200",
+	}, "channels")
+}
+
+func listMemberDMs(client SlackClient) ([]map[string]any, error) {
+	return listAPI(client, "users.conversations", map[string]string{
+		"types":            "im,mpim",
+		"exclude_archived": "true",
+		"limit":            "200",
+	}, "channels")
+}
+
+func lookupChannelIDByName(client SlackClient, value string) (string, error) {
+	query := channelNameQuery(value)
+	if query == "" {
+		return "", nil
+	}
+	channels, err := listMemberChannels(client)
+	if err != nil {
+		return "", err
+	}
+	var matches []map[string]any
+	for _, channel := range channels {
+		name := strings.ToLower(firstNonEmpty(str(channel["name"]), str(channel["name_normalized"])))
+		if name == query {
+			matches = append(matches, channel)
+		}
+	}
+	if len(matches) == 0 {
+		return "", nil
+	}
+	if len(matches) > 1 {
+		ids := make([]string, 0, len(matches))
+		for _, channel := range matches {
+			ids = append(ids, str(channel["id"]))
+		}
+		sort.Strings(ids)
+		return "", UsageError{Message: fmt.Sprintf("Multiple Slack channels named %q. Use an explicit channel id: %s", query, strings.Join(ids, ", "))}
+	}
+	return str(matches[0]["id"]), nil
+}
+
+func lookupUserIDByEmail(client SlackClient, email string) (string, error) {
+	data, err := client.Request("users.lookupByEmail", map[string]string{"email": email}, false, http.MethodGet, false)
+	if err != nil {
+		return "", err
+	}
+	user := asMap(data["user"])
+	id := str(user["id"])
+	if id == "" {
+		return "", fmt.Errorf("No Slack user id found for email: %s", email)
+	}
+	return id, nil
+}
+
+func getUserInfo(client SlackClient, userID string) (map[string]any, error) {
+	data, err := client.Request("users.info", map[string]string{"user": userID}, false, http.MethodGet, false)
+	if err != nil {
+		return nil, err
+	}
+	user := asMap(data["user"])
+	if len(user) == 0 {
+		return nil, fmt.Errorf("No Slack user found for id: %s", userID)
+	}
+	return user, nil
+}
+
+func openDM(client SlackClient, userID string) (string, error) {
+	data, err := client.Request("conversations.open", map[string]string{"users": userID}, false, http.MethodPost, false)
+	if err != nil {
+		return "", err
+	}
+	channelID := str(asMap(data["channel"])["id"])
+	if channelID == "" {
+		return "", fmt.Errorf("Unable to open Slack DM with user: %s", userID)
+	}
+	return channelID, nil
+}
+
+func resolvePostTarget(rt *Runtime, recipient string, contacts Contacts, postClient SlackClient, lookupClient SlackClient, directClient SlackClient) (PostTarget, error) {
+	value := strings.TrimSpace(recipient)
+	if mapped := contacts[value]; mapped != "" {
+		value = mapped
+	}
+	if channelID, _, ok := parseMessageID(value); ok {
+		return PostTarget{Kind: "message", ChannelID: channelID}, nil
+	}
+	if conversationIDRE.MatchString(value) {
+		return PostTarget{Kind: "channel", ChannelID: value}, nil
+	}
+	if userIDRE.MatchString(value) {
+		channelID, err := openDM(directClient, value)
+		if err != nil {
+			return PostTarget{}, err
+		}
+		return PostTarget{Kind: "user", ChannelID: channelID, UserID: value}, nil
+	}
+	if channelID, err := lookupChannelIDByName(lookupClient, value); err != nil {
+		return PostTarget{}, err
+	} else if channelID != "" {
+		return PostTarget{Kind: "channel_name", ChannelID: channelID}, nil
+	}
+	if strings.Contains(value, "@") {
+		userID, err := lookupUserIDByEmail(lookupClient, value)
+		if err != nil {
+			return PostTarget{}, err
+		}
+		channelID, err := openDM(directClient, userID)
+		if err != nil {
+			return PostTarget{}, err
+		}
+		return PostTarget{Kind: "email", ChannelID: channelID, UserID: userID}, nil
+	}
+	_ = rt
+	_ = postClient
+	return PostTarget{}, UsageError{Message: fmt.Sprintf("Unable to resolve Slack target: %s (use contact, email, #channel, channel id, or message id)", recipient)}
+}
+
+func sendPost(client SlackClient, channelID, text, threadTS string) (string, error) {
+	payload := map[string]string{
+		"channel": channelID,
+		"text":    text,
+	}
+	if threadTS != "" {
+		payload["thread_ts"] = threadTS
+	}
+	data, err := client.Request("chat.postMessage", payload, false, http.MethodPost, false)
+	if err != nil {
+		return "", err
+	}
+	return str(data["ts"]), nil
+}
+
+func deleteMessage(client SlackClient, channelID, messageTS string) error {
+	_, err := client.Request("chat.delete", map[string]string{
+		"channel": channelID,
+		"ts":      messageTS,
+	}, false, http.MethodPost, false)
+	return err
+}
+
+func editMessage(client SlackClient, channelID, messageTS, text string) error {
+	_, err := client.Request("chat.update", map[string]string{
+		"channel": channelID,
+		"ts":      messageTS,
+		"text":    text,
+	}, false, http.MethodPost, false)
+	return err
+}
+
+func resolveReplyThreadTS(client SlackClient, channelID, messageTS string) (string, error) {
+	data, err := client.Request("conversations.replies", map[string]string{
+		"channel":   channelID,
+		"ts":        messageTS,
+		"limit":     "1",
+		"inclusive": "true",
+	}, false, http.MethodGet, false)
+	if err != nil {
+		return "", err
+	}
+	messages := asList(data["messages"])
+	if len(messages) == 0 {
+		return "", fmt.Errorf("Message not found: %s:%s", channelID, messageTS)
+	}
+	message := asMap(messages[0])
+	threadTS := firstNonEmpty(str(message["thread_ts"]), str(message["ts"]), messageTS)
+	return threadTS, nil
+}
+
+func expandExistingPath(path string, kind string) (string, error) {
+	expanded := expandPath(path)
+	info, err := os.Stat(expanded)
+	if err != nil {
+		return "", fmt.Errorf("%s path not found: %s", kind, path)
+	}
+	if info.IsDir() && kind != "attachment" {
+		return "", fmt.Errorf("%s path is a directory: %s", kind, path)
+	}
+	return expanded, nil
+}
+
+func zipDirectory(dirPath string) (string, func(), error) {
+	base := filepath.Base(dirPath)
+	temp, err := os.CreateTemp("", base+"-*.zip")
+	if err != nil {
+		return "", nil, err
+	}
+	temp.Close()
+	cleanup := func() { _ = os.Remove(temp.Name()) }
+	err = zipDir(dirPath, temp.Name())
+	if err != nil {
+		cleanup()
+		return "", nil, err
+	}
+	return temp.Name(), cleanup, nil
+}
+
+func uploadExternalFile(client SlackClient, channelID, threadTS, path, filename string) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	data, err := client.Request("files.getUploadURLExternal", map[string]string{
+		"filename": filename,
+		"length":   strconv.FormatInt(info.Size(), 10),
+	}, true, http.MethodPost, false)
+	if err != nil {
+		return "", err
+	}
+	uploadURL := str(data["upload_url"])
+	fileID := str(data["file_id"])
+	if uploadURL == "" || fileID == "" {
+		return "", fmt.Errorf("Slack did not return upload URL for %s", filename)
+	}
+	if err := uploadRawFile(client.HTTPClient, uploadURL, path, filename); err != nil {
+		return "", err
+	}
+	filePayload, _ := json.Marshal([]map[string]string{{"id": fileID, "title": filename}})
+	payload := map[string]string{
+		"channel_id": channelID,
+		"files":      string(filePayload),
+	}
+	if threadTS != "" {
+		payload["thread_ts"] = threadTS
+	}
+	if _, err := client.Request("files.completeUploadExternal", payload, true, http.MethodPost, false); err != nil {
+		return "", err
+	}
+	return fileID, nil
+}
+
+func uploadRawFile(httpClient *http.Client, uploadURL, path, filename string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	req, err := http.NewRequest(http.MethodPost, uploadURL, file)
+	if err != nil {
+		return err
+	}
+	if contentType := mime.TypeByExtension(filepath.Ext(filename)); contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	} else {
+		req.Header.Set("Content-Type", "application/octet-stream")
+	}
+	if info, err := file.Stat(); err == nil {
+		req.ContentLength = info.Size()
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		data, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("file upload failed: %s %s", resp.Status, strings.TrimSpace(string(data)))
+	}
+	return nil
+}
+
+func escapeQuotes(value string) string {
+	return strings.ReplaceAll(value, `"`, `\"`)
+}
+
+func completeUploadExternalBatch(client SlackClient, channelID, threadTS, initialComment string, paths []string) ([]string, string, error) {
+	if len(paths) == 0 {
+		return nil, "", nil
+	}
+	type uploadJob struct {
+		path     string
+		filename string
+		cleanup  func()
+	}
+	var jobs []uploadJob
+	for _, rawPath := range paths {
+		path, err := expandExistingPath(rawPath, "attachment")
+		if err != nil {
+			for _, job := range jobs {
+				job.cleanup()
+			}
+			return nil, "", err
+		}
+		cleanup := func() {}
+		info, err := os.Stat(path)
+		if err != nil {
+			for _, job := range jobs {
+				job.cleanup()
+			}
+			return nil, "", err
+		}
+		filename := filepath.Base(path)
+		if info.IsDir() {
+			zipped, clean, err := zipDirectory(path)
+			if err != nil {
+				for _, job := range jobs {
+					job.cleanup()
+				}
+				return nil, "", err
+			}
+			path = zipped
+			cleanup = clean
+			filename = filepath.Base(rawPath) + ".zip"
+		}
+		jobs = append(jobs, uploadJob{path: path, filename: filename, cleanup: cleanup})
+	}
+	defer func() {
+		for _, job := range jobs {
+			job.cleanup()
+		}
+	}()
+
+	fileEntries := make([]map[string]string, 0, len(jobs))
+	uploaded := make([]string, 0, len(jobs))
+	for _, job := range jobs {
+		info, err := os.Stat(job.path)
+		if err != nil {
+			return nil, "", err
+		}
+		data, err := client.Request("files.getUploadURLExternal", map[string]string{
+			"filename": job.filename,
+			"length":   strconv.FormatInt(info.Size(), 10),
+		}, true, http.MethodPost, false)
+		if err != nil {
+			return nil, "", err
+		}
+		uploadURL := str(data["upload_url"])
+		fileID := str(data["file_id"])
+		if uploadURL == "" || fileID == "" {
+			return nil, "", fmt.Errorf("Slack did not return upload URL for %s", job.filename)
+		}
+		if err := uploadRawFile(client.HTTPClient, uploadURL, job.path, job.filename); err != nil {
+			return nil, "", err
+		}
+		fileEntries = append(fileEntries, map[string]string{"id": fileID, "title": job.filename})
+		uploaded = append(uploaded, job.filename)
+	}
+	filesJSON, err := json.Marshal(fileEntries)
+	if err != nil {
+		return nil, "", err
+	}
+	payload := map[string]string{
+		"channel_id": channelID,
+		"files":      string(filesJSON),
+	}
+	if strings.TrimSpace(initialComment) != "" {
+		payload["initial_comment"] = strings.TrimSpace(initialComment)
+	}
+	if threadTS != "" {
+		payload["thread_ts"] = threadTS
+	}
+	data, err := client.Request("files.completeUploadExternal", payload, true, http.MethodPost, false)
+	if err != nil {
+		return nil, "", err
+	}
+	shareTS := ""
+	for _, filePayload := range asList(data["files"]) {
+		fileMap := asMap(filePayload)
+		shares := asMap(fileMap["shares"])
+		for _, shareList := range shares {
+			for _, rawShare := range asList(shareList) {
+				share := asMap(rawShare)
+				if ts := str(share["ts"]); ts != "" {
+					shareTS = ts
+					break
+				}
+			}
+			if shareTS != "" {
+				break
+			}
+		}
+		if shareTS != "" {
+			break
+		}
+	}
+	return uploaded, shareTS, nil
+}
+
+func sendAttachments(client SlackClient, channelID, threadTS string, paths []string) ([]string, error) {
+	var uploaded []string
+	for _, rawPath := range paths {
+		path, err := expandExistingPath(rawPath, "attachment")
+		if err != nil {
+			return nil, err
+		}
+		cleanup := func() {}
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, err
+		}
+		filename := filepath.Base(path)
+		if info.IsDir() {
+			zipped, clean, err := zipDirectory(path)
+			if err != nil {
+				return nil, err
+			}
+			path = zipped
+			cleanup = clean
+			filename = filepath.Base(rawPath) + ".zip"
+		}
+		fileID, err := uploadExternalFile(client, channelID, threadTS, path, filename)
+		cleanup()
+		if err != nil {
+			return nil, err
+		}
+		uploaded = append(uploaded, fileID)
+	}
+	return uploaded, nil
+}
+
+func isMessageID(value string) bool {
+	_, _, ok := parseMessageID(value)
+	return ok
+}
+
+func parseMessageID(value string) (string, string, bool) {
+	match := messageIDRE.FindStringSubmatch(value)
+	if len(match) != 3 {
+		return "", "", false
+	}
+	return match[1], match[2], true
+}
+
+func messageID(channelID, ts string) string {
+	return channelID + ":" + ts
+}
+
+func tsFloat(value string) float64 {
+	parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil {
+		return 0
+	}
+	return parsed
+}
+
+func extractTS(payload map[string]any) string {
+	for _, key := range []string{"ts", "latest"} {
+		if value := str(payload[key]); value != "" {
+			return value
+		}
+	}
+	if latest := asMap(payload["latest"]); len(latest) > 0 {
+		return str(latest["ts"])
+	}
+	return ""
+}
+
+func messageText(message map[string]any) string {
+	text := strings.TrimSpace(str(message["text"]))
+	if text != "" {
+		return text
+	}
+	if files := asList(message["files"]); len(files) > 0 {
+		var names []string
+		for _, raw := range files {
+			file := asMap(raw)
+			if name := firstNonEmpty(str(file["name"]), str(file["title"]), str(file["id"])); name != "" {
+				names = append(names, name)
+			}
+		}
+		if len(names) > 0 {
+			return "files: " + strings.Join(names, ", ")
+		}
+	}
+	return "-"
+}
+
+func messageFiles(message map[string]any) []map[string]any {
+	var files []map[string]any
+	for _, raw := range asList(message["files"]) {
+		if file := asMap(raw); len(file) > 0 {
+			files = append(files, file)
+		}
+	}
+	return files
+}
+
+func summarizeAttachments(message map[string]any) string {
+	files := messageFiles(message)
+	if len(files) == 0 {
+		return "-"
+	}
+	var names []string
+	for _, file := range files {
+		names = append(names, firstNonEmpty(str(file["name"]), str(file["title"]), str(file["id"]), "file"))
+	}
+	return strings.Join(names, ",")
+}
+
+func formatTS(value string) string {
+	seconds := tsFloat(value)
+	if seconds <= 0 {
+		return "-"
+	}
+	return time.Unix(int64(seconds), 0).Local().Format("2006-01-02 15:04")
+}
+
+func conversationSurface(info map[string]any, channelID string) string {
+	switch {
+	case boolValue(info["is_im"]) || strings.HasPrefix(channelID, "D"):
+		return "dm"
+	case boolValue(info["is_mpim"]) || strings.HasPrefix(channelID, "G"):
+		return "group_dm"
+	case boolValue(info["is_private"]) || strings.HasPrefix(channelID, "C") && str(info["is_private"]) == "true":
+		return "private_channel"
+	default:
+		return "channel"
+	}
+}
+
+func channelName(channel map[string]any, channelID string) string {
+	return firstNonEmpty(str(channel["name"]), str(channel["user"]), channelID)
+}
+
+func displayUser(user map[string]any, fallback string) string {
+	profile := asMap(user["profile"])
+	return firstNonEmpty(str(profile["display_name"]), str(profile["real_name"]), str(user["real_name"]), str(user["name"]), fallback)
+}
+
+func userEmail(user map[string]any, fallback string) string {
+	return firstNonEmpty(str(asMap(user["profile"])["email"]), fallback)
+}
+
+func senderInfo(client SlackClient, message map[string]any, userCache map[string]map[string]any) map[string]any {
+	userID := str(message["user"])
+	if userID == "" {
+		userID = str(message["bot_id"])
+	}
+	if userID == "" {
+		return map[string]any{"id": "-", "name": "unknown", "email": "-"}
+	}
+	if userCache == nil {
+		userCache = map[string]map[string]any{}
+	}
+	user, ok := userCache[userID]
+	if !ok {
+		loaded, err := getUserInfo(client, userID)
+		if err == nil {
+			user = loaded
+			userCache[userID] = loaded
+		}
+	}
+	return map[string]any{
+		"id":    userID,
+		"name":  displayUser(user, userID),
+		"email": userEmail(user, "-"),
+		"label": displayUser(user, userID),
+	}
+}
+
+func entrySummary(entry MessageEntry) map[string]any {
+	ts := str(entry.Message["ts"])
+	summary := map[string]any{
+		"message_id":      messageID(entry.ChannelID, ts),
+		"ts":              ts,
+		"surface":         entry.Surface,
+		"conversation":    entry.Conversation,
+		"sender":          str(entry.Sender["name"]),
+		"sender_id":       str(entry.Sender["id"]),
+		"sender_email":    str(entry.Sender["email"]),
+		"text":            messageText(entry.Message),
+		"date":            formatTS(ts),
+		"unread":          entry.Unread,
+		"attachments":     summarizeAttachments(entry.Message),
+		"channel_id":      entry.ChannelID,
+		"conversation_id": entry.ChannelID,
+	}
+	if threadTS := str(entry.Message["thread_ts"]); threadTS != "" {
+		summary["thread_ts"] = threadTS
+	}
+	if replyCount := entry.Message["reply_count"]; replyCount != nil {
+		summary["reply_count"] = replyCount
+	}
+	if latestReply := str(entry.Message["latest_reply"]); latestReply != "" {
+		summary["latest_reply"] = latestReply
+	}
+	return summary
+}
+
+func listEntryFields(entry MessageEntry) []kv {
+	summary := entrySummary(entry)
+	return []kv{
+		{"surface", str(summary["surface"])},
+		{"conversation", str(summary["conversation"])},
+		{"sender", str(summary["sender"])},
+		{"date", str(summary["date"])},
+		{"unread", str(summary["unread"])},
+		{"message_id", str(summary["message_id"])},
+		{"text", compactText(str(summary["text"]))},
+		{"attachments", str(summary["attachments"])},
+	}
+}
+
+func inspectEntryFields(entry MessageEntry) []kv {
+	summary := entrySummary(entry)
+	text := messageText(entry.Message)
+	if text == "" || text == "-" {
+		text = str(summary["text"])
+	}
+	return []kv{
+		{"surface", str(summary["surface"])},
+		{"conversation", str(summary["conversation"])},
+		{"sender", str(summary["sender"])},
+		{"date", str(summary["date"])},
+		{"unread", str(summary["unread"])},
+		{"message_id", str(summary["message_id"])},
+		{"text", text},
+		{"attachments", str(summary["attachments"])},
+	}
+}
+
+func compactText(value string) string {
+	value = strings.Join(strings.Fields(value), " ")
+	if value == "" {
+		return "-"
+	}
+	if len(value) > 240 {
+		return value[:237] + "..."
+	}
+	return value
+}
+
+func sortEntriesLatest(entries []MessageEntry) {
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].SortTS > entries[j].SortTS
+	})
+}

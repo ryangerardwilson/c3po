@@ -26,9 +26,8 @@ Normal mode is the default.
 - `o` inserts a blank row below the cursor. `O` inserts one above. The cursor stays on the new row in normal mode. References to this sheet move with the rows. A range grows when the new row is inside it or directly under it.
 - `[` and `]` move to the previous and next sheet. The cursor on each sheet is kept, and the mode returns to normal.
 - `n` adds a sheet. `R` renames the current sheet. Enter confirms the name and stays on the cell. Esc cancels.
-- `:` opens a command line. `:w` saves. A sheet with no path asks for one. `:w path` saves to that file. `:wq` saves and quits. `:q` quits.
+- `:` opens a command line. `:w` saves. A sheet with no path asks for one. `:w path` saves to that file. `:wq` saves and quits. `:q!` quits and discards unsaved changes.
 - `/` searches this sheet. A match is the typed cell or the value it shows. Case is ignored. `ctrl-n` and `ctrl-p` move to the next and previous match.
-- `q` quits. A modified workbook asks before discarding.
 
 ## Formulas
 

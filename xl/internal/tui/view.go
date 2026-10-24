@@ -225,8 +225,6 @@ func (m *model) formulaLine() string {
 		name = "help"
 	case modeSave:
 		name = "save"
-	case modeQuit:
-		name = "quit"
 	case modeRename:
 		name = "rename"
 	case modeCommand:
@@ -265,8 +263,6 @@ func (m *model) promptLine() string {
 	switch m.mode {
 	case modeSave:
 		return fit("save as: "+cursorText(m.saveBuf, m.saveCur)+"   enter save   esc cancel", m.width)
-	case modeQuit:
-		return fit("save changes?  y save and quit   n discard   esc cancel", m.width)
 	case modeRename:
 		return fit("rename sheet: "+cursorText(m.saveBuf, m.saveCur)+"   enter rename   esc cancel", m.width)
 	case modeCommand:
@@ -293,10 +289,10 @@ func helpBody() []string {
 		"[ ]               previous and next sheet",
 		"n                 new sheet",
 		"R                 rename sheet",
-		":w :wq :q        save, save and quit",
+		":w :wq :q!       save, save and quit, discard",
 		"/ ctrl-n/p       search, next, previous",
 		"o O               insert row below, above",
-		"q                 quit",
+		"dd                delete the current row",
 		"=Income!B1",
 		"=SUM(Income!B1:B2)",
 		"=E4-B5",

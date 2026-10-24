@@ -97,8 +97,8 @@ func TestRendererRewritesPreviousFrameInPlace(t *testing.T) {
 	}
 	r.paint("a")
 	second := out.String()
-	if !strings.HasPrefix(second, "\x1b[2A\r") || !strings.Contains(second, "\x1b[J") {
-		t.Fatalf("second frame = %q", second)
+	if !strings.HasPrefix(second, "\x1b[4A\r") || strings.Contains(second, "\x1b[J") || r.lines != 5 {
+		t.Fatalf("second frame = %q lines = %d", second, r.lines)
 	}
 	out.Reset()
 	r.stop()

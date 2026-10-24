@@ -41,6 +41,9 @@ func (r *renderer) frame(view string) string {
 	if r.height > 0 && len(lines) > r.height {
 		lines = lines[len(lines)-r.height:]
 	}
+	for r.height > 0 && len(lines) < r.height {
+		lines = append(lines, "")
+	}
 	var b strings.Builder
 	if r.lines > 1 {
 		fmt.Fprintf(&b, "\x1b[%dA", r.lines-1)

@@ -37,6 +37,7 @@ type model struct {
 	open        func(string) error
 	pick        func() (string, error)
 	armed       bool
+	help        bool
 }
 
 type stackItem struct {
@@ -83,6 +84,21 @@ func (m *model) loop(term screen) error {
 
 // handleKey applies one key and reports whether the navigator quits.
 func (m *model) handleKey(key string) bool {
+	if m.help {
+		switch key {
+		case "?", "esc":
+			m.help = false
+		case "ctrl+c", "q":
+			return true
+		}
+		return false
+	}
+	if key == "?" {
+		m.help = true
+		m.armed = false
+		m.status = ""
+		return false
+	}
 	if m.armed {
 		m.armed = false
 		if key == "d" {
@@ -187,9 +203,11 @@ func (m *model) clampedCursor() int {
 }
 
 func (m *model) View() string {
+	if m.help {
+		return m.helpView()
+	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s\n", paintStyle(styleTitle, "gdrive browse - "+m.pathLabel))
-	fmt.Fprintf(&b, "%s\n\n", paintStyle(styleMuted, "j/k move  l folder  h up  enter browser  u upload  dd delete  q quit"))
+	fmt.Fprintf(&b, "%s\n\n", paintStyle(styleTitle, "gdrive browse - "+m.pathLabel))
 	m.writeEntries(&b)
 	if m.status != "" {
 		style := styleMuted
@@ -199,6 +217,22 @@ func (m *model) View() string {
 		fmt.Fprintf(&b, "\n%s\n", paintStyle(style, m.status))
 	}
 	return b.String()
+}
+
+func (m *model) helpView() string {
+	lines := []string{
+		paintStyle(styleTitle, "gdrive"),
+		"",
+		"j/k    move",
+		"l      open a folder",
+		"h      up",
+		"enter  open in the browser",
+		"u      upload",
+		"dd     delete the selected file",
+		"?      shortcuts",
+		"q      quit",
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
 
 func (m *model) writeEntries(b *strings.Builder) {
@@ -226,7 +260,7 @@ func (m *model) writeEntries(b *strings.Builder) {
 // window is the slice of entries that fits under the header and above
 // the status line, kept around the cursor.
 func (m *model) window() (int, int) {
-	rows := m.height - 5
+	rows := m.height - 4
 	if m.height <= 0 || rows <= 0 || len(m.entries) <= rows {
 		return 0, len(m.entries)
 	}

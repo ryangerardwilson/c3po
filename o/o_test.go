@@ -49,6 +49,15 @@ func TestHelpAndVersionDoNotStartApp(t *testing.T) {
 	if strings.Contains(Help, "upgrade") {
 		t.Fatal("help still lists upgrade")
 	}
+	if !strings.Contains(Help, "x                cut the current file or directory") || !strings.Contains(Help, "p                paste into the listed directory") {
+		t.Fatal("help missing cut and paste")
+	}
+	if strings.Contains(Help, "wl-copy") {
+		t.Fatal("help still copies paths with wl-copy")
+	}
+	if !strings.Contains(Help, "dd               delete the current file or directory") {
+		t.Fatal("help missing delete")
+	}
 
 	var stdout, stderr bytes.Buffer
 	if code := Run([]string{"version"}, &stdout, &stderr); code != 0 {

@@ -79,3 +79,22 @@ func TestHReturnsToTheVaultList(t *testing.T) {
 		t.Fatalf("%q %#v", m.vaultName, m.rows)
 	}
 }
+
+func TestShortcutsStayBehindQuestionMark(t *testing.T) {
+	m, _, _ := sample()
+	if strings.Contains(m.view(), "j/k move") || !strings.Contains(m.view(), "Root") {
+		t.Fatalf("list\n%s", m.view())
+	}
+	if m.handleKey("?") || !strings.Contains(m.view(), "open") || !strings.Contains(m.view(), "copy") {
+		t.Fatalf("help\n%s", m.view())
+	}
+	if m.handleKey("j") || m.cursor != 0 || !m.help {
+		t.Fatalf("cursor %d", m.cursor)
+	}
+	if m.handleKey("esc") || m.help || !strings.Contains(m.view(), "Root") || strings.Contains(m.view(), "j/k move") {
+		t.Fatalf("esc\n%s", m.view())
+	}
+	if m.handleKey("?") || !m.handleKey("q") {
+		t.Fatal("q")
+	}
+}

@@ -17,10 +17,13 @@ func TestViewListsRoute(t *testing.T) {
 		service: true,
 	}
 	view := m.View()
-	for _, want := range []string{"lab", "lab.ryangerardwilson.com", "9090", "up", "service running", "a add"} {
+	for _, want := range []string{"lab", "lab.ryangerardwilson.com", "9090", "up", "service running"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("missing %q\n%s", want, view)
 		}
+	}
+	if strings.Contains(view, "a add") {
+		t.Fatalf("legend on the list\n%s", view)
 	}
 	if strings.Contains(view, "\x1b") {
 		t.Fatalf("plain view has escapes\n%q", view)
@@ -119,5 +122,41 @@ func TestDecodeKeys(t *testing.T) {
 		if got != want {
 			t.Fatalf("decode %q want %q", got, want)
 		}
+	}
+}
+
+func TestShortcutsStayBehindQuestionMark(t *testing.T) {
+	m := model{
+		file: routes.File{Zone: routes.Zone, Routes: []routes.Route{
+			{Name: "lab", Port: 9090},
+			{Name: "notes", Port: 9091},
+		}},
+		mode: modeList,
+	}
+	if strings.Contains(m.View(), "a add") || !strings.Contains(m.View(), "lab") {
+		t.Fatalf("list\n%s", m.View())
+	}
+	if m.key("?") != actNone || !strings.Contains(m.View(), "add") || !strings.Contains(m.View(), "remove") || !strings.Contains(m.View(), "quit") {
+		t.Fatalf("help\n%s", m.View())
+	}
+	if m.key("j") != actNone || m.cursor != 0 || !m.help {
+		t.Fatalf("cursor %d", m.cursor)
+	}
+	if m.key("esc") != actNone || m.help || !strings.Contains(m.View(), "lab") || strings.Contains(m.View(), "a add") {
+		t.Fatalf("esc\n%s", m.View())
+	}
+	m.key("?")
+	if m.key("q") != actQuit {
+		t.Fatal("q")
+	}
+	add := newModel(t.TempDir(), routes.File{Zone: routes.Zone, Routes: []routes.Route{{Name: "lab", Port: 9090}}}, false)
+	add.key("a")
+	if add.mode != modeAdd || !strings.Contains(add.View(), "enter save") || !strings.Contains(add.View(), "esc cancel") {
+		t.Fatalf("add\n%s", add.View())
+	}
+	add.key("esc")
+	add.key("d")
+	if !strings.Contains(add.View(), "remove lab? y or n") {
+		t.Fatalf("confirm\n%s", add.View())
 	}
 }

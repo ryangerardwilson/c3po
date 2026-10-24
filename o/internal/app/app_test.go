@@ -212,6 +212,18 @@ func TestHelpDocumentsDotEntryToggle(t *testing.T) {
 	if !strings.Contains(help, "= / -") {
 		t.Fatalf("help missing preview depth controls:\n%s", help)
 	}
+	if !strings.Contains(help, "!                  touch, mkdir, or rm") {
+		t.Fatalf("help missing command prompt:\n%s", help)
+	}
+	if !strings.Contains(help, "x                  cut the current file or directory") || !strings.Contains(help, "p                  paste into this directory") {
+		t.Fatalf("help missing cut and paste:\n%s", help)
+	}
+	if strings.Contains(help, "wl-copy") {
+		t.Fatalf("help still copies paths with wl-copy:\n%s", help)
+	}
+	if !strings.Contains(help, "dd                 delete the current file or directory") {
+		t.Fatalf("help missing delete:\n%s", help)
+	}
 }
 
 func TestListingRevealsStructureThenLabelsSequentially(t *testing.T) {
@@ -339,11 +351,11 @@ func TestVisibleWindowControlsAnimationTarget(t *testing.T) {
 		m.previewRows[i] = fsnav.PreviewRow{IsRoot: true, RootIndex: i}
 	}
 	start, end := m.visibleWindow()
-	if start != 12 || end != 20 {
-		t.Fatalf("visible window = %d..%d, want 12..20", start, end)
+	if start != 9 || end != 20 {
+		t.Fatalf("visible window = %d..%d, want 9..20", start, end)
 	}
-	if got := m.animationTargetSteps(); got != 16 {
-		t.Fatalf("animationTargetSteps() = %d, want 16", got)
+	if got := m.animationTargetSteps(); got != 22 {
+		t.Fatalf("animationTargetSteps() = %d, want 22", got)
 	}
 }
 

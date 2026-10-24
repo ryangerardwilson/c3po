@@ -20,6 +20,7 @@ type picker struct {
 	cursor  int
 	preset  string
 	quit    bool
+	help    bool
 }
 
 func newPicker(presets []Item) *picker {
@@ -63,7 +64,18 @@ func (p *picker) finished() bool {
 }
 
 func (p *picker) key(k string) {
+	if p.help {
+		switch k {
+		case "?", "esc":
+			p.help = false
+		case "q", "ctrl+c":
+			p.quit = true
+		}
+		return
+	}
 	switch k {
+	case "?":
+		p.help = true
 	case "q", "esc", "ctrl+c":
 		p.quit = true
 	case "j", "down":
@@ -90,9 +102,19 @@ func (p *picker) move(delta, n int) {
 }
 
 func (p *picker) frame() string {
+	if p.help {
+		lines := []string{
+			paintStyle(styleTitle, "gdrive preset"),
+			"",
+			"j/k    move",
+			"enter  select",
+			"?      shortcuts",
+			"q      quit",
+		}
+		return strings.Join(lines, "\n") + "\n"
+	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s\n", paintStyle(styleTitle, "gdrive preset"))
-	fmt.Fprintf(&b, "%s\n\n", paintStyle(styleMuted, "j/k move  enter select  q quit"))
+	fmt.Fprintf(&b, "%s\n\n", paintStyle(styleTitle, "gdrive preset"))
 	for idx, item := range p.presets {
 		prefix, style := "  ", ""
 		if idx == p.cursor {

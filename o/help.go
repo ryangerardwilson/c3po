@@ -55,11 +55,15 @@ keys:
                    and exit; pick/save: same as l
   h or left        parent directory
   /                enter or clear the filter
+  !                touch, mkdir, or rm in this directory
   r                reload the listing now
   .                show or hide dot entries (hidden by default)
   = / -            increase or decrease the nesting preview depth
   m                mark or unmark the current item
-  y                copy marked paths, or the current path, with wl-copy
+  x                cut the current file or directory
+  y                copy the current file or directory
+  p                paste into the listed directory
+  dd               delete the current file or directory
   n                cd the invoking shell into the current directory and exit
   ~                home directory
   ?                toggle the key help
@@ -69,6 +73,18 @@ Listings reveal in a staged cascade. Text-file labels brighten with their
 line count relative to the largest text file shown. The listing is polled
 every 500ms, so outside creations, deletions, renames, and edits appear on
 their own.
+
+! asks for one command, touch, mkdir, or rm, and runs it in the listed
+directory. mkdir may take -p. Esc cancels the prompt.
+
+x cuts the current file or directory. y copies it. p pastes that item
+into the listed directory under the same name. A copy stays staged. A
+cut is cleared after it lands. A name that already exists is left
+alone, and a directory is not pasted into itself.
+
+dd deletes the current file or directory. The first d arms the chord
+and shows d. Esc cancels it. Any other key clears the arm and runs as
+a normal motion.
 
 Shell cd handoff: when O_SHELL_CD_FILE names a file, enter and n write the
 chosen directory to it, so a shell wrapper can cd there after exit.

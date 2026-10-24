@@ -26,14 +26,13 @@ R                 rename the sheet
 :w                save
 :w path           save to a path
 :wq               save and quit
-:q                quit
+:q!               discard and quit
 /                 search this sheet
 ctrl-n / ctrl-p   next and previous match
-q                 quit
 ?                 keys and formulas
 ```
 
-`h`, `j`, `k`, and `l` move only in normal mode. In insert mode they are letters. `n` and `R` are letters while editing. `[` and `]` switch sheets only in normal mode. Enter in normal mode edits the current cell. Enter while editing commits the cell and moves to the cell below in normal mode. While editing, ctrl-a and ctrl-e move to the ends of the cell, alt-f and alt-b move by word, and ctrl-w deletes the word behind the cursor. `:` opens a command line. `:w` saves, and a sheet with no path asks for one. `:wq` saves and quits. `:q` quits. `/` searches this sheet for text in a cell or in the value it shows, ignoring case. ctrl-n and ctrl-p move to the next and previous match. `o` inserts a blank row below the cursor and `O` inserts one above. The cursor stays on the new row in normal mode. References to this sheet move with the rows. A range grows when the new row is inside it or directly under it.
+`h`, `j`, `k`, and `l` move only in normal mode. In insert mode they are letters. `n` and `R` are letters while editing. `[` and `]` switch sheets only in normal mode. Enter in normal mode edits the current cell. Enter while editing commits the cell and moves to the cell below in normal mode. While editing, ctrl-a and ctrl-e move to the ends of the cell, alt-f and alt-b move by word, and ctrl-w deletes the word behind the cursor. `:` opens a command line. `:w` saves, and a sheet with no path asks for one. `:wq` saves and quits. `:q!` quits and discards unsaved changes. `/` searches this sheet for text in a cell or in the value it shows, ignoring case. ctrl-n and ctrl-p move to the next and previous match. `o` inserts a blank row below the cursor and `O` inserts one above. The cursor stays on the new row in normal mode. References to this sheet move with the rows. A range grows when the new row is inside it or directly under it.
 
 ## Formulas
 

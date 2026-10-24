@@ -15,8 +15,10 @@ import (
 	"github.com/ryangerardwilson/c3po/internal/version"
 	"github.com/ryangerardwilson/c3po/internal/xdg"
 	"github.com/ryangerardwilson/c3po/l"
+	"github.com/ryangerardwilson/c3po/looptab"
 	"github.com/ryangerardwilson/c3po/o"
 	"github.com/ryangerardwilson/c3po/pass"
+	"github.com/ryangerardwilson/c3po/slack"
 	"github.com/ryangerardwilson/c3po/tunnel"
 	"github.com/ryangerardwilson/c3po/xl"
 )
@@ -31,6 +33,7 @@ var apps = map[string]runFunc{
 	"gdrive": gdrive.Run,
 	"gmail":  gmail.Run,
 	"pass":   pass.Run,
+	"slack":  slack.Run,
 	"tunnel": tunnel.Run,
 	"tui":    dispatchTUI,
 }
@@ -44,6 +47,7 @@ var screens = map[string]runFunc{
 	"pass":      passScreen,
 	"deport":    deportScreen,
 	"xl":        xl.Run,
+	"looptab":   looptab.Run,
 }
 
 // Main runs c3po from process arguments.

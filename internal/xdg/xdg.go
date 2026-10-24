@@ -92,7 +92,18 @@ func Migrate() error {
 	configBase := ConfigBase(home)
 	dataBase := envOr(os.Getenv("XDG_DATA_HOME"), filepath.Join(home, ".local", "share"))
 	cacheBase := envOr(os.Getenv("XDG_CACHE_HOME"), filepath.Join(home, ".cache"))
-	pairs := [][2]string{
+	stateBase := envOr(os.Getenv("XDG_STATE_HOME"), filepath.Join(home, ".local", "state"))
+	pairs := legacyPairs(configBase, dataBase, cacheBase, stateBase)
+	for _, pair := range pairs {
+		if err = move(pair[0], pair[1]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func legacyPairs(configBase, dataBase, cacheBase, stateBase string) [][2]string {
+	return [][2]string{
 		{App(configBase, "ast"), filepath.Join(configBase, "rgw-ast")},
 		{App(configBase, "gcal"), filepath.Join(configBase, "gcal")},
 		{App(configBase, "gdrive"), filepath.Join(configBase, "gdrive")},
@@ -100,18 +111,14 @@ func Migrate() error {
 		{App(configBase, "o"), filepath.Join(configBase, "o")},
 		{filepath.Join(App(configBase, "pass"), "service-account-token"), filepath.Join(configBase, "op", "service-account-token")},
 		{App(configBase, "tunnel"), filepath.Join(configBase, "tunnel")},
+		{App(configBase, "slack"), filepath.Join(configBase, "sluser")},
 		{App(dataBase, "gcal"), filepath.Join(dataBase, "gcal")},
 		{App(dataBase, "gdrive"), filepath.Join(dataBase, "gdrive")},
 		{App(dataBase, "gmail"), filepath.Join(dataBase, "gmail")},
 		{App(cacheBase, "ast"), filepath.Join(cacheBase, "rgw-ast")},
 		{filepath.Join(App(cacheBase, "o"), "picker-selection.txt"), filepath.Join(cacheBase, "o", "picker-selection.txt")},
+		{App(stateBase, "slack"), filepath.Join(stateBase, "sluser")},
 	}
-	for _, pair := range pairs {
-		if err = move(pair[0], pair[1]); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func envOr(value, fallback string) string {

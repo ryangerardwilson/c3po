@@ -117,6 +117,10 @@ type callExpr struct {
 
 func (e numberExpr) eval(*Sheet, map[visit]bool) Value { return num(e.n) }
 
+type errorExpr struct{ code string }
+
+func (e errorExpr) eval(*Sheet, map[visit]bool) Value { return errv(e.code) }
+
 func (e cellExpr) eval(s *Sheet, stack map[visit]bool) Value {
 	target := s.resolve(e.sheet)
 	if target == nil {
@@ -398,9 +402,20 @@ func (p *parser) parsePrimary() (expr, error) {
 		return p.parseQuotedRef()
 	case ch == '$' || isLetter(ch):
 		return p.parseIdent()
+	case ch == '#':
+		return p.parseRefError()
 	default:
 		return nil, errSyntax
 	}
+}
+
+func (p *parser) parseRefError() (expr, error) {
+	const token = "#REF!"
+	if !strings.HasPrefix(p.s[p.i:], token) {
+		return nil, errSyntax
+	}
+	p.i += len(token)
+	return errorExpr{code: "#REF"}, nil
 }
 
 func (p *parser) parseNumber() (expr, error) {

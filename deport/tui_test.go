@@ -169,3 +169,33 @@ func TestDDKeepsTheRowWhenThePortStaysTaken(t *testing.T) {
 		t.Fatalf("last\n%s", last)
 	}
 }
+
+func TestShortcutsStayBehindQuestionMark(t *testing.T) {
+	m := &model{
+		rows:   twoPorts(),
+		height: 24,
+		width:  80,
+		release: func(int) ([]proc, error) {
+			t.Fatal("freed a port")
+			return nil, nil
+		},
+	}
+	if strings.Contains(m.view(), "j/k move") || !strings.Contains(m.view(), "8080") {
+		t.Fatalf("list\n%s", m.view())
+	}
+	if m.handleKey("?") || !strings.Contains(m.view(), "dd") || !strings.Contains(m.view(), "quit") {
+		t.Fatalf("help\n%s", m.view())
+	}
+	if m.handleKey("j") || m.cursor != 0 || !m.help {
+		t.Fatalf("cursor %d", m.cursor)
+	}
+	if m.handleKey("d") || m.handleKey("d") || !m.help {
+		t.Fatal("dd acted during help")
+	}
+	if m.handleKey("esc") || m.help || !strings.Contains(m.view(), "8080") || strings.Contains(m.view(), "j/k move") {
+		t.Fatalf("esc\n%s", m.view())
+	}
+	if m.handleKey("?") || !m.handleKey("q") {
+		t.Fatal("q")
+	}
+}

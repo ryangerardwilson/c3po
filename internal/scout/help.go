@@ -16,8 +16,9 @@ Usage:
   c3po gdrive [args...]
   c3po gmail [args...]
   c3po pass <vault> <item> [args...]
+  c3po slack [args...]
   c3po tunnel add|remove|list|start|stop|status|logs|run
-  c3po tui cyclotree|l|o|tunnel|gdrive|pass|deport|xl [args...]
+  c3po tui cyclotree|l|o|tunnel|gdrive|pass|deport|xl|looptab [args...]
   c3po version
   c3po help [-f <category> [feature]]
 
@@ -34,6 +35,7 @@ const appText = `apps:
   gdrive    local-first Google Drive sync
   gmail     Gmail send, list, spam clean, and the hourly timer
   pass      1Password vaults and items
+  slack     Slack messages across presets
   tunnel    Cloudflare Tunnel routes for ryangerardwilson.com
   tui       terminal screens
 `
@@ -49,6 +51,7 @@ Usage:
   c3po tui pass
   c3po tui deport
   c3po tui xl [file]
+  c3po tui looptab
 
 screens:
   cyclotree    calls of one function, as a tree you move with hjkl
@@ -59,6 +62,7 @@ screens:
   pass         1Password vaults, then copy one item
   deport       occupied external ports, freed with dd
   xl           spreadsheet for a budget workbook
+  looptab      Looptab jobs, run one now
 
 c3po help -f tui <screen> explains one screen.
 `

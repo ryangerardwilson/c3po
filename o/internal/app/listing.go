@@ -106,8 +106,16 @@ func (m model) animationTargetSteps() int {
 	return (end - start) * 2
 }
 
+func (m model) listingRows() int {
+	rows := m.height - 3
+	if rows < 1 {
+		return 1
+	}
+	return rows
+}
+
 func (m model) visibleWindow() (int, int) {
-	visible := max(8, m.height-6)
+	visible := m.listingRows()
 	selectedRow := 0
 	for index, row := range m.previewRows {
 		if row.IsRoot && row.RootIndex == m.selected {

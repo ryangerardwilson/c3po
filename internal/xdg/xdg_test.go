@@ -145,3 +145,24 @@ func TestMigrateNoopsWhileTesting(t *testing.T) {
 		t.Fatal("migrate ran during tests")
 	}
 }
+
+func TestLegacyPairsAdoptSluser(t *testing.T) {
+	pairs := legacyPairs("/cfg", "/data", "/cache", "/state")
+	wantConfig := [2]string{App("/cfg", "slack"), "/cfg/sluser"}
+	wantState := [2]string{App("/state", "slack"), "/state/sluser"}
+	foundConfig, foundState := false, false
+	for _, pair := range pairs {
+		if pair == wantConfig {
+			foundConfig = true
+		}
+		if pair == wantState {
+			foundState = true
+		}
+		if pair[1] == "/cfg/slack" || pair[1] == "/state/slack" {
+			t.Fatalf("official slack path is a migration source: %s", pair[1])
+		}
+	}
+	if !foundConfig || !foundState {
+		t.Fatalf("missing slack adoption: %v", pairs)
+	}
+}

@@ -20,7 +20,6 @@ const (
 	modeInsert
 	modeHelp
 	modeSave
-	modeQuit
 	modeRename
 	modeCommand
 	modeSearch
@@ -43,6 +42,7 @@ type model struct {
 	width, height  int
 	color          bool
 	flash          string
+	deleteArmed    bool
 	edit           []rune
 	cur            int
 	saveBuf        []rune
@@ -88,8 +88,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			next, cmd = m.onSave(msg)
 		case modeRename:
 			next, cmd = m.onRename(msg)
-		case modeQuit:
-			next, cmd = m.onQuit(msg)
 		case modeCommand:
 			next, cmd = m.onCommand(msg)
 		case modeSearch:
@@ -110,7 +108,24 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) onNormal(k tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch k.String() {
+	key := k.String()
+	if m.deleteArmed {
+		m.deleteArmed = false
+		if key == "d" {
+			if m.mode == modeNormal {
+				m.deleteRow()
+			}
+			return m, nil
+		}
+		if key == "esc" {
+			return m, nil
+		}
+	} else if key == "d" && m.mode == modeNormal {
+		m.deleteArmed = true
+		m.flash = "d"
+		return m, nil
+	}
+	switch key {
 	case "h", "left":
 		m.move(-1, 0)
 	case "l", "right":
@@ -187,8 +202,6 @@ func (m *model) onNormal(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.mode == modeNormal {
 			m.insertRow(false)
 		}
-	case "q", "ctrl+c":
-		return m.askQuit()
 	case ":":
 		m.beginCommand()
 	case "/":
@@ -276,7 +289,8 @@ func (m *model) onInsert(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.insertRune(' ')
 	case "ctrl+c":
 		m.commit()
-		return m.askQuit()
+		m.mode = modeNormal
+		m.anchorC, m.anchorR = m.col, m.row
 	}
 	return m, nil
 }
@@ -335,32 +349,6 @@ func (m *model) onSave(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case " ":
 		m.insertSave(' ')
 	case "ctrl+c":
-		m.quitAfterSave = false
-		m.mode = modeNormal
-	}
-	return m, nil
-}
-
-func (m *model) onQuit(k tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch k.String() {
-	case "y":
-		if m.sheet.Path == "" {
-			m.quitAfterSave = true
-			m.modeBeforeSave = modeNormal
-			m.mode = modeSave
-			m.saveBuf = nil
-			m.saveCur = 0
-			return m, nil
-		}
-		if err := m.sheet.Save(); err != nil {
-			m.flash = err.Error()
-			m.mode = modeNormal
-			return m, nil
-		}
-		return m, tea.Quit
-	case "n":
-		return m, tea.Quit
-	case "esc":
 		m.quitAfterSave = false
 		m.mode = modeNormal
 	}
@@ -533,8 +521,12 @@ func (m *model) runCommand() (tea.Model, tea.Cmd) {
 		return m.writeAnd(arg, false)
 	case "wq":
 		return m.writeAnd(arg, true)
-	case "q":
-		return m.askQuit()
+	case "q!":
+		if arg != "" {
+			m.flash = "unknown command"
+			return m, nil
+		}
+		return m, tea.Quit
 	default:
 		m.flash = "unknown command"
 		return m, nil
@@ -708,6 +700,17 @@ func (m *model) beginRename() {
 	m.saveCur = len(m.saveBuf)
 }
 
+func (m *model) deleteRow() {
+	if !m.sheet.DeleteRow(m.row) {
+		m.flash = "edge"
+		return
+	}
+	if m.row >= m.sheet.Rows {
+		m.row = m.sheet.Rows - 1
+	}
+	m.anchorC, m.anchorR = m.col, m.row
+}
+
 func (m *model) insertRow(below bool) {
 	at := m.row
 	if below {
@@ -879,14 +882,6 @@ func (m *model) step(dc, dr int, keepAnchor bool) bool {
 	}
 	m.reveal()
 	return true
-}
-
-func (m *model) askQuit() (tea.Model, tea.Cmd) {
-	if !m.sheet.Dirty {
-		return m, tea.Quit
-	}
-	m.mode = modeQuit
-	return m, nil
 }
 
 func (m *model) pageRows() int {

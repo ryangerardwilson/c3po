@@ -30,6 +30,7 @@ type model struct {
 	height  int
 	load    func() ([]occupant, error)
 	release func(port int) ([]proc, error)
+	help    bool
 }
 
 func runScreen(e env) error {
@@ -80,6 +81,21 @@ func (m *model) refresh() {
 
 // handleKey applies one key and reports whether the screen quits.
 func (m *model) handleKey(key string) bool {
+	if m.help {
+		switch key {
+		case "?", "esc":
+			m.help = false
+		case "ctrl+c", "q":
+			return true
+		}
+		return false
+	}
+	if key == "?" {
+		m.help = true
+		m.armed = false
+		m.status = ""
+		return false
+	}
 	if m.armed {
 		m.armed = false
 		if key == "d" {
@@ -143,9 +159,11 @@ func (m *model) clamp() int {
 }
 
 func (m *model) view() string {
+	if m.help {
+		return m.helpView()
+	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s\n", paintStyle(styleTitle, "deport"))
-	fmt.Fprintf(&b, "%s\n\n", paintStyle(styleMuted, "j/k move  dd free  q quit"))
+	fmt.Fprintf(&b, "%s\n\n", paintStyle(styleTitle, "deport"))
 	if len(m.rows) == 0 {
 		b.WriteString("no occupied external ports\n")
 	} else {
@@ -170,8 +188,20 @@ func (m *model) view() string {
 	return b.String()
 }
 
+func (m *model) helpView() string {
+	lines := []string{
+		paintStyle(styleTitle, "deport"),
+		"",
+		"j/k    move",
+		"dd     free the selected port",
+		"?      shortcuts",
+		"q      quit",
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
 func (m *model) window() (int, int) {
-	rows := m.height - 4
+	rows := m.height - 3
 	if m.height <= 0 || rows < 1 || len(m.rows) <= rows {
 		return 0, len(m.rows)
 	}

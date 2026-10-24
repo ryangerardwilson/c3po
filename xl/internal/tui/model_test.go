@@ -114,17 +114,32 @@ func TestTypingCursorSitsOnTheShade(t *testing.T) {
 }
 
 func TestQuitDirtyThenDiscard(t *testing.T) {
-	m := ready(sheet.Blank())
-	m = press(m, runeKey('i'), runes("Rent"), tea.KeyMsg{Type: tea.KeyEsc}, runeKey('q'))
-	if m.mode != modeQuit {
-		t.Fatal("q did not ask")
+	path := filepath.Join(t.TempDir(), "budget.xlsx")
+	s := sheet.Blank()
+	s.Path = path
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
 	}
-	next, cmd := m.Update(runeKey('n'))
+	m := ready(s)
+	m = press(m, runeKey('i'), runes("Rent"), tea.KeyMsg{Type: tea.KeyEsc})
+	m = press(m, runeKey('q'), tea.KeyMsg{Type: tea.KeyCtrlC})
+	if m.mode != modeNormal || m.sheet.Source(0, 0) != "Rent" {
+		t.Fatalf("keys mode %d %q", m.mode, m.sheet.Source(0, 0))
+	}
+	m = press(m, runeKey(':'), runeKey('q'), tea.KeyMsg{Type: tea.KeyEnter})
+	if m.mode != modeNormal || m.flash != "unknown command" || m.sheet.Source(0, 0) != "Rent" {
+		t.Fatalf(":q mode %d flash %q", m.mode, m.flash)
+	}
+	next, cmd := pressCmd(m, runeKey(':'), runes("q!"), tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
-		t.Fatal("discard did not quit")
+		t.Fatal(":q! did not quit")
 	}
-	if next.(*model).sheet.Dirty == false {
-		t.Fatal("discard saved")
+	loaded, err := sheet.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Source(0, 0) != "" || next.sheet.Source(0, 0) != "Rent" {
+		t.Fatalf("file %q sheet %q", loaded.Source(0, 0), next.sheet.Source(0, 0))
 	}
 }
 
@@ -424,8 +439,8 @@ func TestCommandBarCancelUnknownAndQuit(t *testing.T) {
 		t.Fatalf("unknown mode %d flash %q dirty %v", m.mode, m.flash, m.sheet.Dirty)
 	}
 	m = press(m, runeKey(':'), runeKey('q'), tea.KeyMsg{Type: tea.KeyEnter})
-	if m.mode != modeQuit {
-		t.Fatalf(":q mode %d", m.mode)
+	if m.mode != modeNormal || m.flash != "unknown command" || m.sheet.Source(0, 0) != "Rent" {
+		t.Fatalf(":q mode %d flash %q", m.mode, m.flash)
 	}
 	m = press(m, tea.KeyMsg{Type: tea.KeyEsc}, runeKey('i'), runes("x"), tea.KeyMsg{Type: tea.KeyCtrlS})
 	if m.mode != modeInsert || m.sheet.Source(0, 0) != "Rent" || string(m.edit) != "Rentx" {
@@ -433,7 +448,7 @@ func TestCommandBarCancelUnknownAndQuit(t *testing.T) {
 	}
 	help := press(ready(sheet.Blank()), runeKey('?'))
 	view := help.View()
-	if strings.Contains(view, "ctrl-s") || !strings.Contains(view, ":w :wq :q") || !strings.Contains(view, "ctrl-n/p") || !strings.Contains(view, "=Income!B1") {
+	if strings.Contains(view, "ctrl-s") || strings.Contains(view, "save changes") || !strings.Contains(view, ":w :wq :q!") || !strings.Contains(view, "ctrl-n/p") || !strings.Contains(view, "=Income!B1") {
 		t.Fatalf("help:\n%s", view)
 	}
 }
@@ -569,7 +584,7 @@ func TestOAndOInsertRows(t *testing.T) {
 		t.Fatalf("edge flash %q row %d %q", m.flash, m.row, m.sheet.Source(0, sheet.MaxRow-1))
 	}
 	help := press(ready(sheet.Blank()), runeKey('?'))
-	if !strings.Contains(help.View(), "insert row below") || !strings.Contains(help.View(), "=Income!B1") {
+	if !strings.Contains(help.View(), "insert row below") || !strings.Contains(help.View(), "delete the current row") || !strings.Contains(help.View(), "=Income!B1") {
 		t.Fatalf("help:\n%s", help.View())
 	}
 }

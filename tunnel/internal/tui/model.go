@@ -40,6 +40,7 @@ type model struct {
 	service bool
 	local   map[int]bool
 	color   bool
+	help    bool
 }
 
 func newModel(home string, file routes.File, color bool) model {
@@ -68,7 +69,19 @@ func (m *model) key(k string) action {
 }
 
 func (m *model) keyList(k string) action {
+	if m.help {
+		switch k {
+		case "?", "esc":
+			m.help = false
+		case "q", "ctrl+c":
+			return actQuit
+		}
+		return actNone
+	}
 	switch k {
+	case "?":
+		m.help = true
+		return actNone
 	case "q", "esc", "ctrl+c":
 		return actQuit
 	case "j", "down":
@@ -174,6 +187,9 @@ func (m *model) scan() {
 }
 
 func (m model) View() string {
+	if m.help {
+		return m.viewHelp()
+	}
 	var b strings.Builder
 	b.WriteString(m.bold("tunnel") + "  " + m.dim(routes.Zone) + "\n")
 	state := "service stopped"
@@ -189,6 +205,19 @@ func (m model) View() string {
 	}
 	b.WriteString("\n")
 	return b.String()
+}
+
+func (m model) viewHelp() string {
+	lines := []string{
+		m.bold("tunnel"),
+		"",
+		"j/k    move",
+		"a      add",
+		"d      remove",
+		"?      shortcuts",
+		"q      quit",
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
 
 func (m model) viewRoutes(b *strings.Builder) {
@@ -221,8 +250,6 @@ func (m model) viewFooter(b *strings.Builder) {
 		b.WriteString(m.dim("enter save    esc cancel"))
 	case modeConfirm:
 		b.WriteString("remove " + m.file.Routes[m.cursor].Name + "? y or n")
-	default:
-		b.WriteString(m.dim("a add    d remove    q quit"))
 	}
 }
 

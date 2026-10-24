@@ -28,14 +28,17 @@ var browseKeys = map[string]keyHandler{
 	"l":      model.activate,
 	"enter":  model.accept,
 	"/":      keyFilter,
+	"!":      keyCommand,
 	"=":      keyDeeper,
 	"+":      keyDeeper,
 	"-":      keyShallower,
 	"_":      keyShallower,
 	".":      keyDots,
 	"m":      keyMark,
-	"n":      keyShellCD,
+	"x":      keyCut,
 	"y":      keyCopy,
+	"p":      keyPaste,
+	"n":      keyShellCD,
 	"~":      keyHome,
 }
 
@@ -43,8 +46,23 @@ func (m model) updateKey(msg tui.KeyMsg) (tui.Model, tui.Cmd) {
 	key := msg.String()
 	animationGeneration := m.animationGeneration
 	watchGeneration := m.watchGeneration
+	if m.commanding {
+		return m.withAnimation(m.commandKey(msg, key), nil, animationGeneration, watchGeneration)
+	}
 	if m.filtering {
 		return m.withAnimation(m.filterKey(msg, key), nil, animationGeneration, watchGeneration)
+	}
+	if m.deleteArmed {
+		m.deleteArmed = false
+		if key == "d" {
+			m.deleteCurrent()
+			return m.withAnimation(m, nil, animationGeneration, watchGeneration)
+		}
+		if key == "esc" {
+			m.status = ""
+			return m, nil
+		}
+		m.status = ""
 	}
 	if key == "ctrl+c" || key == "q" {
 		return m, tui.Quit
@@ -54,6 +72,10 @@ func (m model) updateKey(msg tui.KeyMsg) (tui.Model, tui.Cmd) {
 	}
 	handler, ok := browseKeys[key]
 	if !ok {
+		if key == "d" {
+			m.deleteArmed = true
+			m.status = "d"
+		}
 		return m, nil
 	}
 	next, cmd := handler(m)
@@ -123,6 +145,42 @@ func keyParent(m model) (model, tui.Cmd) {
 	return m, nil
 }
 
+func keyCommand(m model) (model, tui.Cmd) {
+	m.filtering = false
+	m.commanding = true
+	m.input = ""
+	m.status = "touch, mkdir, or rm"
+	return m, nil
+}
+
+func (m model) commandKey(msg tui.KeyMsg, key string) model {
+	switch key {
+	case "esc", "ctrl+c":
+		m.commanding = false
+		m.input = ""
+		m.status = "command cancelled"
+	case "enter":
+		line := strings.TrimSpace(m.input)
+		m.commanding = false
+		m.input = ""
+		status, path, err := applyFileCommand(m.currentDir, line)
+		if err != nil {
+			m.status = err.Error()
+			return m
+		}
+		m.reload()
+		m.selectPath(path)
+		m.status = status
+	case "backspace", "ctrl+h":
+		m.input = trimLastRune(m.input)
+	default:
+		if len(msg.Runes) > 0 {
+			m.input += string(msg.Runes)
+		}
+	}
+	return m
+}
+
 func keyFilter(m model) (model, tui.Cmd) {
 	if m.filter != "" {
 		m.filter = ""
@@ -182,8 +240,18 @@ func keyShellCD(m model) (model, tui.Cmd) {
 	return m, tui.Quit
 }
 
+func keyCut(m model) (model, tui.Cmd) {
+	m.stageClip(true)
+	return m, nil
+}
+
 func keyCopy(m model) (model, tui.Cmd) {
-	m.copySelection()
+	m.stageClip(false)
+	return m, nil
+}
+
+func keyPaste(m model) (model, tui.Cmd) {
+	m.pasteClip()
 	return m, nil
 }
 
