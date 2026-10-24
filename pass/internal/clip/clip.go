@@ -4,6 +4,7 @@ package clip
 import (
 	"errors"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -17,13 +18,18 @@ type Clipboard interface {
 type WLCopy struct{}
 
 // Copy sends text to wl-copy on stdin.
+// wl-copy forks and the child serves the clipboard. A stderr Writer that is
+// not an *os.File is fed by a pipe, and Wait stays blocked while that child
+// holds the pipe, so the screen never reads another key.
 func (WLCopy) Copy(text string, stderr io.Writer) error {
 	if _, err := exec.LookPath("wl-copy"); err != nil {
 		return errors.New("wl-copy is required.")
 	}
 	cmd := exec.Command("wl-copy")
 	cmd.Stdin = strings.NewReader(text)
-	cmd.Stderr = stderr
+	if file, ok := stderr.(*os.File); ok {
+		cmd.Stderr = file
+	}
 	if err := cmd.Run(); err != nil {
 		return errors.New("Unable to copy to the clipboard.")
 	}
