@@ -26,6 +26,11 @@ func (e Env) dispatch(args []string) (int, error) {
 			return 0, errs.Usage("Use: c3po gmail spam clean")
 		}
 		return e.spamCleanAll()
+	case "tidy":
+		if len(args) != 1 {
+			return 0, errs.Usage("Use: c3po gmail tidy")
+		}
+		return e.tidy()
 	case "delete":
 		if len(args) != 2 || args[1] != "unread" {
 			return 0, errs.Usage("Use: c3po gmail delete unread")

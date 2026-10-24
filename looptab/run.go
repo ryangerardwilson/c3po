@@ -1,4 +1,4 @@
-// Package looptab is the c3po tui looptab screen.
+// Package looptab is c3po looptab and the c3po tui looptab screen.
 package looptab
 
 import (

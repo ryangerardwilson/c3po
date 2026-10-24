@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-var portedScouts = []string{"deport", "gcal", "gdrive", "gmail", "pass", "slack", "tunnel", "tui"}
+var portedScouts = []string{"deport", "gcal", "gdrive", "gmail", "looptab", "pass", "slack", "tunnel", "tui"}
 
 var retiredScouts = []string{"complexity", "hide", "visualize", "vibetree", "iha", "cx", "sluser"}
 
@@ -162,7 +162,7 @@ func TestVersion(t *testing.T) {
 }
 
 func TestScreensAreOnlyUnderTUI(t *testing.T) {
-	for _, name := range []string{"cyclotree", "l", "o", "xl", "looptab"} {
+	for _, name := range []string{"cyclotree", "l", "o", "xl"} {
 		out, code := call("c3po", name, "help")
 		if code != 2 || !bytes.Contains(out, []byte("unknown command")) {
 			t.Fatalf("%s code %d\n%s", name, code, out)
@@ -294,9 +294,9 @@ func TestLooptabScreen(t *testing.T) {
 	if code != 2 || !bytes.Contains(out, []byte("c3po tui looptab")) {
 		t.Fatalf("extra %d\n%s", code, out)
 	}
-	out, code = call("c3po", "looptab")
-	if code != 2 || !bytes.Contains(out, []byte("unknown command")) {
-		t.Fatalf("bare %d\n%s", code, out)
+	out, code = call("c3po", "looptab", "help")
+	if code != 0 || !bytes.Contains(out, []byte("in vim")) {
+		t.Fatalf("command %d\n%s", code, out)
 	}
 }
 

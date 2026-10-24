@@ -27,15 +27,16 @@ type runFunc func([]string, io.Writer, io.Writer) int
 
 // apps maps each app name to its entrypoint.
 var apps = map[string]runFunc{
-	"ast":    ast.Run,
-	"deport": deport.Run,
-	"gcal":   gcal.Run,
-	"gdrive": gdrive.Run,
-	"gmail":  gmail.Run,
-	"pass":   pass.Run,
-	"slack":  slack.Run,
-	"tunnel": tunnel.Run,
-	"tui":    dispatchTUI,
+	"ast":     ast.Run,
+	"deport":  deport.Run,
+	"gcal":    gcal.Run,
+	"gdrive":  gdrive.Run,
+	"gmail":   gmail.Run,
+	"looptab": looptab.Command,
+	"pass":    pass.Run,
+	"slack":   slack.Run,
+	"tunnel":  tunnel.Run,
+	"tui":     dispatchTUI,
 }
 
 var screens = map[string]runFunc{

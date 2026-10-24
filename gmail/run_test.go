@@ -40,8 +40,8 @@ func TestHelpVersionAndUsage(t *testing.T) {
 
 func TestSpamCleanAllPresets(t *testing.T) {
 	box := &fakeBox{ids: map[string][]string{
-		"from:spam@evil.test": {"m3"},
-		"from:clickup.com":    {"m1"},
+		"from:spam@evil.test":   {"m3"},
+		"from:clickup.com":      {"m1"},
 		"from:mail.clickup.com": {"m1", "m2"},
 	}}
 	out, err, code := run(t, box, []string{"spam", "clean"})
@@ -131,6 +131,8 @@ type fakeBox struct {
 	queries    []string
 	limits     []int
 	trashed    []string
+	ones       []string
+	reads      []string
 	raw        []byte
 	sentID     string
 	sentThread string
@@ -164,8 +166,16 @@ func (f *fakeBox) TrashIDs(ids []string) (int, error) {
 	f.trashed = append(f.trashed, ids...)
 	return len(ids), nil
 }
-func (f *fakeBox) TrashOne(string) error { return nil }
-func (f *fakeBox) Modify(id string, _, _ []string) (string, string, error) {
+func (f *fakeBox) TrashOne(id string) error {
+	f.ones = append(f.ones, id)
+	return nil
+}
+func (f *fakeBox) Modify(id string, _, remove []string) (string, string, error) {
+	for _, label := range remove {
+		if label == "UNREAD" {
+			f.reads = append(f.reads, id)
+		}
+	}
 	parts := strings.Split(f.modify, " ")
 	if len(parts) == 2 {
 		return parts[0], parts[1], nil
@@ -173,7 +183,7 @@ func (f *fakeBox) Modify(id string, _, _ []string) (string, string, error) {
 	return id, "", nil
 }
 func (f *fakeBox) BatchModify(ids, _, _ []string) (int, error) { return len(ids), nil }
-func (f *fakeBox) Attachment(string, string) ([]byte, error)     { return nil, nil }
+func (f *fakeBox) Attachment(string, string) ([]byte, error)   { return nil, nil }
 func (f *fakeBox) UnreadSenders(func(string, int, int)) (map[string]int, error) {
 	return map[string]int{}, nil
 }
