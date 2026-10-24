@@ -217,7 +217,7 @@ func (m *model) view() string {
 	fmt.Fprintf(&b, "%s\n\n", paint(styleTitle, title))
 	m.writeRows(&b)
 	if m.status != "" {
-		fmt.Fprintf(&b, "\n%s\n", paint(styleMuted, m.status))
+		fmt.Fprintf(&b, "\n%s\n", paint(styleMuted, truncate(oneLine(m.status), m.width)))
 	}
 	return b.String()
 }
@@ -248,15 +248,18 @@ func (m *model) writeRows(b *strings.Builder) {
 		if i == m.cursor {
 			prefix, style = "> ", styleActive
 		}
-		text := row.name
+		text := oneLine(row.name)
 		if row.detail != "" {
-			text += "  " + row.detail
+			text += "  " + oneLine(row.detail)
 		}
 		b.WriteString(paint(style, truncate(prefix+text, m.width)))
 		b.WriteByte('\n')
 	}
 }
 
+// window is the rows that fit under the title and above the copy status.
+// Those four lines stay reserved while the status is empty, so the list
+// does not jump when a copy lands.
 func (m *model) window() (int, int) {
 	rows := m.height - 4
 	if m.height <= 0 || rows <= 0 || len(m.rows) <= rows {
@@ -320,8 +323,19 @@ func paint(style, text string) string {
 }
 
 func truncate(value string, width int) string {
-	if width <= 4 || len(value) <= width {
+	// A line as wide as the terminal wraps and scrolls the screen, which
+	// pushes the cursor row out of the visible frame.
+	if width <= 4 {
 		return value
 	}
-	return value[:width-3] + "..."
+	limit := width - 1
+	if len(value) <= limit {
+		return value
+	}
+	return value[:limit-3] + "..."
+}
+
+func oneLine(value string) string {
+	value = strings.ReplaceAll(value, "\r", " ")
+	return strings.ReplaceAll(value, "\n", " ")
 }

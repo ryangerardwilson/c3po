@@ -98,3 +98,104 @@ func TestShortcutsStayBehindQuestionMark(t *testing.T) {
 		t.Fatal("q")
 	}
 }
+
+func TestCopiedItemStaysOnScreenWhileJKMoves(t *testing.T) {
+	items := make([]op.Item, 40)
+	for i := range items {
+		title := itemTitle(i)
+		items[i] = op.Item{ID: "id-" + title[:7], Title: title, Category: "LOGIN"}
+		items[i].Vault.ID = "vault-1"
+	}
+	src := &fakeSource{
+		vaults: []op.Vault{{ID: "vault-1", Name: "Wiom"}},
+		items:  items,
+		secret: "secret-value",
+	}
+	m := &model{src: src, clip: &fakeClip{}, width: 84, height: 37}
+	m.loadVaults()
+	if m.handleKey("enter") || m.vaultName != "Wiom" {
+		t.Fatalf("vault %q", m.vaultName)
+	}
+	if m.handleKey("enter") || !strings.HasPrefix(m.status, "copied ") {
+		t.Fatal(m.status)
+	}
+	for i := 0; i < len(m.rows); i++ {
+		if m.cursor != i {
+			t.Fatalf("cursor %d want %d", m.cursor, i)
+		}
+		line := cursorLine(m.view())
+		if !strings.Contains(line, m.rows[i].name[:7]) {
+			t.Fatalf("row %d line %q", i, line)
+		}
+		assertFrame(t, m)
+		if i+1 < len(m.rows) && m.handleKey("j") {
+			t.Fatal("j quit")
+		}
+	}
+	if m.handleKey("k") || m.cursor != len(m.rows)-2 {
+		t.Fatalf("k cursor %d", m.cursor)
+	}
+	line := cursorLine(m.view())
+	if !strings.Contains(line, m.rows[m.cursor].name[:7]) {
+		t.Fatalf("k line %q", line)
+	}
+	assertFrame(t, m)
+}
+
+func TestPaintPinsEachLineToItsRow(t *testing.T) {
+	frame := "pass - Wiom\n\n> ITEM\ncopied ITEM_00\n"
+	got := paintBytes(frame, 37)
+	if strings.Contains(got, "\n") {
+		t.Fatal("paint wrote a newline")
+	}
+	for _, seq := range []string{"\x1b[?7l", "\x1b[1;1H", "\x1b[2;1H", "\x1b[4;1H", "\x1b[5;1H\x1b[J", "\x1b[?7h"} {
+		if !strings.Contains(got, seq) {
+			t.Fatalf("missing %q", seq)
+		}
+	}
+}
+
+func itemTitle(i int) string {
+	return "ITEM_" + string(rune('0'+i/10)) + string(rune('0'+i%10)) + "_" + strings.Repeat("LongTitle_", 8)
+}
+
+func assertFrame(t *testing.T, m *model) {
+	t.Helper()
+	frame := m.view()
+	if strings.Contains(frame, "secret-value") {
+		t.Fatal("frame printed the secret")
+	}
+	lines := strings.Split(strings.TrimSuffix(frame, "\n"), "\n")
+	if len(lines) > m.height {
+		t.Fatalf("%d lines in a %d-row terminal", len(lines), m.height)
+	}
+	for _, line := range lines {
+		if n := len(stripANSI(line)); n >= m.width {
+			t.Fatalf("line width %d", n)
+		}
+	}
+}
+
+func cursorLine(frame string) string {
+	for _, line := range strings.Split(frame, "\n") {
+		plain := stripANSI(line)
+		if strings.HasPrefix(plain, "> ") {
+			return plain
+		}
+	}
+	return ""
+}
+
+func stripANSI(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] != 0x1b {
+			b.WriteByte(s[i])
+			continue
+		}
+		for i < len(s) && s[i] != 'm' {
+			i++
+		}
+	}
+	return b.String()
+}

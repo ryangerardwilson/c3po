@@ -22,7 +22,7 @@ func openTerminal() (*terminal, error) {
 }
 
 func (t *terminal) close() {
-	_, _ = t.out.WriteString("\x1b[?25h\x1b[?1049l")
+	_, _ = t.out.WriteString("\x1b[?7h\x1b[?25h\x1b[?1049l")
 	if t.restore != nil {
 		t.restore()
 		t.restore = nil
@@ -34,18 +34,28 @@ func (t *terminal) size() (int, int) {
 }
 
 func (t *terminal) paint(frame string) {
+	_, height := t.size()
+	_, _ = t.out.WriteString(paintBytes(frame, height))
+}
+
+// paintBytes pins each line to its row. A newline after a full-width line
+// scrolls the terminal, and the next frame then paints over the shifted
+// screen, so j and k look stuck after the copy status appears.
+func paintBytes(frame string, height int) string {
 	lines := strings.Split(strings.TrimSuffix(frame, "\n"), "\n")
-	var b strings.Builder
-	b.WriteString("\x1b[H")
-	for i, line := range lines {
-		if i > 0 {
-			b.WriteByte('\n')
-		}
-		b.WriteString(line)
-		b.WriteString("\x1b[K")
+	if height > 0 && len(lines) > height {
+		lines = lines[:height]
 	}
-	b.WriteString("\x1b[J")
-	_, _ = t.out.WriteString(b.String())
+	var b strings.Builder
+	b.WriteString("\x1b[?7l")
+	for i, line := range lines {
+		fmt.Fprintf(&b, "\x1b[%d;1H%s\x1b[K", i+1, line)
+	}
+	if height <= 0 || len(lines) < height {
+		fmt.Fprintf(&b, "\x1b[%d;1H\x1b[J", len(lines)+1)
+	}
+	b.WriteString("\x1b[?7h")
+	return b.String()
 }
 
 func (t *terminal) readKey() (string, error) {
