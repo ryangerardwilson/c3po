@@ -46,7 +46,6 @@ type Env struct {
 	Ask            func(prompt string) (string, error)
 	HTTP           *http.Client
 	Decide         func([]mailBrief) (map[string]mailVerdict, error)
-	OpenAIKey      func() (string, error)
 }
 
 // Run runs c3po gmail and returns the exit code.

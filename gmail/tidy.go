@@ -1,15 +1,10 @@
 package gmail
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"net/http"
-	"os"
-	"os/exec"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/ryangerardwilson/c3po/gmail/internal/config"
 	"github.com/ryangerardwilson/c3po/gmail/internal/errs"
@@ -20,8 +15,6 @@ const (
 	unreadQuery    = "is:unread -in:sent"
 	minAction      = 0.8
 	minDisposable  = 0.9
-	wiomVault      = "Wiom"
-	wiomOpenAIItem = "WIOM_OPENAI_API_KEY"
 )
 
 func (e Env) tidy() (int, error) {
@@ -169,66 +162,15 @@ func (e Env) decide(mail []mailBrief) (map[string]mailVerdict, error) {
 	if e.Decide != nil {
 		return e.Decide(mail)
 	}
-	key, err := e.openAIKey()
+	if testing.Testing() {
+		return nil, fmt.Errorf("grok is required to classify unread mail")
+	}
+	out, err := classifyMail(nil, mail)
 	if err != nil {
+		if errors.Is(err, errGrokMissing) {
+			return nil, fmt.Errorf("grok is required to classify unread mail")
+		}
 		return nil, err
 	}
-	return classifyMail(e.httpClient(), decisionsURL, key, mail)
-}
-
-func (e Env) openAIKey() (string, error) {
-	if e.OpenAIKey != nil {
-		key, err := e.OpenAIKey()
-		if err != nil {
-			return "", err
-		}
-		if strings.TrimSpace(key) == "" {
-			return "", fmt.Errorf("OPENAI_API_KEY is required to classify unread mail")
-		}
-		return strings.TrimSpace(key), nil
-	}
-	if key := strings.TrimSpace(os.Getenv("OPENAI_API_KEY")); key != "" {
-		return key, nil
-	}
-	if testing.Testing() {
-		return "", fmt.Errorf("OPENAI_API_KEY is required to classify unread mail")
-	}
-	key, err := wiomOpenAIKey()
-	if err != nil {
-		return "", fmt.Errorf("OPENAI_API_KEY is required to classify unread mail: %s", err.Error())
-	}
-	if strings.TrimSpace(key) == "" {
-		return "", fmt.Errorf("OPENAI_API_KEY is required to classify unread mail")
-	}
-	return strings.TrimSpace(key), nil
-}
-
-func wiomOpenAIKey() (string, error) {
-	bin, err := exec.LookPath("c3po")
-	if err != nil {
-		return "", errors.New("c3po is not on PATH")
-	}
-	cmd := exec.Command(bin, "pass", wiomVault, wiomOpenAIItem)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = wiomOpenAIItem + " was not read from the Wiom vault"
-		}
-		return "", errors.New(msg)
-	}
-	key := strings.TrimSpace(stdout.String())
-	if key == "" || strings.Contains(key, "\n") {
-		return "", errors.New(wiomOpenAIItem + " was not read from the Wiom vault")
-	}
-	return key, nil
-}
-
-func (e Env) httpClient() *http.Client {
-	if e.HTTP != nil {
-		return e.HTTP
-	}
-	return &http.Client{Timeout: 60 * time.Second}
+	return out, nil
 }

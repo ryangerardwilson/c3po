@@ -4,25 +4,34 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
 
-const (
-	decisionsURL   = "https://api.openai.com/v1/decisions"
-	decisionsModel = "gpt-6-luna"
-	decisionChunk  = 150
-)
+const decisionChunk = 150
 
 const decisionRubric = `Classify each unread message.
 trash: sales, promo, newsletter, digest, iOS or TestFlight, Naukri or a job board, a Slack automated summary, a failed GitHub or gh run, ClickUp, bank marketing about features, schemes, offers, cards, loans, insurance, or app upsells, and cold outreach that looks personal. A human-looking From name still means trash when the mail is sales, lead-gen, a demo booking, link-building, a partnership pitch, or a nurture sequence.
 read: a receipt, an invoice, or other automated mail that should be kept and marked read.
 keep: direct human mail, security, fraud, OTP, login, or legal, regulatory, or tax mail. Leave it unread.
 A disposable sender is a bulk, automated, or one-off promo address that should be added to the spam list. A person, a bank, a government office, and a sender of receipts or security mail is not disposable.`
+
+const decisionAsk = `For evidence index N, emit answer aN (type choice, choice trash, read, or keep, confidence from 0 to 1) and answer dN (type predicate, probability from 0 to 1). Index 0 uses a0 and d0.`
+
+const decisionSchema = `{"type":"object","additionalProperties":false,"required":["answers"],"properties":{"answers":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["name","type"],"properties":{"name":{"type":"string"},"type":{"type":"string","enum":["choice","predicate"]},"choice":{"type":"string","enum":["trash","read","keep"]},"confidence":{"type":"number"},"probability":{"type":"number"}}}}}}`
+
+const grokDisallowedTools = "read_file,grep,list_dir,web_search,web_fetch,write,search_replace,run_terminal_cmd,task,Agent,hashline_read,hashline_grep,hashline_edit"
+
+var (
+	errGrokMissing = errors.New("grok is not on PATH")
+	errGrokFailed  = errors.New("grok classify failed")
+	errGrokEmpty   = errors.New("grok classify returned no decisions")
+)
 
 type mailBrief struct {
 	Preset  string
@@ -42,15 +51,17 @@ func mailKey(preset, id string) string {
 	return preset + "\x1f" + id
 }
 
-func classifyMail(client *http.Client, endpoint, key string, mail []mailBrief) (map[string]mailVerdict, error) {
-	if strings.TrimSpace(key) == "" {
-		return nil, fmt.Errorf("OPENAI_API_KEY is required to classify unread mail")
+type grokRunner func(prompt string) ([]byte, error)
+
+// classifyMail asks grok for the same choice and disposable answers a decisions
+// call returned. The process gets an empty directory and one turn so it cannot
+// walk a repository or run Gmail commands.
+func classifyMail(run grokRunner, mail []mailBrief) (map[string]mailVerdict, error) {
+	if len(mail) == 0 {
+		return map[string]mailVerdict{}, nil
 	}
-	if client == nil {
-		client = &http.Client{Timeout: 60 * time.Second}
-	}
-	if endpoint == "" {
-		endpoint = decisionsURL
+	if run == nil {
+		run = runGrok
 	}
 	out := map[string]mailVerdict{}
 	for start := 0; start < len(mail); start += decisionChunk {
@@ -58,7 +69,7 @@ func classifyMail(client *http.Client, endpoint, key string, mail []mailBrief) (
 		if end > len(mail) {
 			end = len(mail)
 		}
-		part, err := decideChunk(client, endpoint, key, mail[start:end])
+		part, err := decideChunk(run, mail[start:end])
 		if err != nil {
 			return nil, err
 		}
@@ -69,9 +80,23 @@ func classifyMail(client *http.Client, endpoint, key string, mail []mailBrief) (
 	return out, nil
 }
 
-func decideChunk(client *http.Client, endpoint, key string, mail []mailBrief) (map[string]mailVerdict, error) {
+func decideChunk(run grokRunner, mail []mailBrief) (map[string]mailVerdict, error) {
+	prompt, err := decisionPrompt(mail)
+	if err != nil {
+		return nil, err
+	}
+	raw, err := run(prompt)
+	if err != nil {
+		if errors.Is(err, errGrokMissing) || errors.Is(err, errGrokFailed) || errors.Is(err, errGrokEmpty) {
+			return nil, err
+		}
+		return nil, errGrokFailed
+	}
+	return parseGrokDecisions(raw, mail)
+}
+
+func decisionPrompt(mail []mailBrief) (string, error) {
 	evidence := make([]map[string]any, len(mail))
-	questions := make([]any, 0, len(mail)*2)
 	for i, brief := range mail {
 		evidence[i] = map[string]any{
 			"index":   i,
@@ -79,39 +104,79 @@ func decideChunk(client *http.Client, endpoint, key string, mail []mailBrief) (m
 			"subject": clip(brief.Subject, 300),
 			"snippet": clip(brief.Snippet, 500),
 		}
-		questions = append(questions, choiceQuestion(i), predicateQuestion(i))
 	}
-	payload := map[string]any{
-		"model": decisionsModel,
-		"input": []any{
-			map[string]any{"role": "developer", "content": decisionRubric},
-			map[string]any{"role": "user", "content": []any{
-				map[string]any{"type": "input_text", "text": "Question aN and dN refer to evidence index N."},
-				map[string]any{"type": "input_json", "data": evidence},
-			}},
-		},
-		"questions": questions,
-	}
-	body, err := json.Marshal(payload)
+	raw, err := json.Marshal(evidence)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	return decisionRubric + "\n\n" + decisionAsk + "\n" + string(raw), nil
+}
+
+func grokArgs(dir, promptFile string) []string {
+	return []string{
+		"--no-auto-update",
+		"--cwd", dir,
+		"--max-turns", "1",
+		"--no-subagents",
+		"--disable-web-search",
+		"--no-plan",
+		"--verbatim",
+		"--system-prompt-override", decisionRubric,
+		"--disallowed-tools", grokDisallowedTools,
+		"--prompt-file", promptFile,
+		"--json-schema", decisionSchema,
+		"--output-format", "json",
+	}
+}
+
+func runGrok(prompt string) ([]byte, error) {
+	bin, err := exec.LookPath("grok")
+	if err != nil {
+		return nil, errGrokMissing
+	}
+	dir, err := os.MkdirTemp("", "c3po-gmail-tidy-")
+	if err != nil {
+		return nil, errGrokFailed
+	}
+	defer os.RemoveAll(dir)
+	promptFile := filepath.Join(dir, "prompt.txt")
+	if err := os.WriteFile(promptFile, []byte(prompt), 0o600); err != nil {
+		return nil, errGrokFailed
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
+	cmd := exec.CommandContext(ctx, bin, grokArgs(dir, promptFile)...)
+	cmd.Dir = dir
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, errGrokFailed
 	}
-	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(key))
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
+	return stdout.Bytes(), nil
+}
+
+func parseGrokDecisions(raw []byte, mail []mailBrief) (map[string]mailVerdict, error) {
+	var envelope struct {
+		Type       string          `json:"type"`
+		Text       string          `json:"text"`
+		Structured json.RawMessage `json:"structuredOutput"`
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		_, _ = io.Copy(io.Discard, resp.Body)
-		return nil, fmt.Errorf("decisions api returned %d", resp.StatusCode)
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return nil, errGrokEmpty
+	}
+	if envelope.Type == "error" {
+		return nil, errGrokFailed
+	}
+	body := bytes.TrimSpace(envelope.Structured)
+	if len(body) == 0 || bytes.Equal(body, []byte("null")) {
+		body = []byte(strings.TrimSpace(envelope.Text))
+	} else if body[0] == '"' {
+		var text string
+		if err := json.Unmarshal(body, &text); err != nil {
+			return nil, errGrokEmpty
+		}
+		body = []byte(text)
 	}
 	var parsed struct {
 		Answers []struct {
@@ -122,8 +187,8 @@ func decideChunk(client *http.Client, endpoint, key string, mail []mailBrief) (m
 			Probability float64 `json:"probability"`
 		} `json:"answers"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return nil, err
+	if err := json.Unmarshal(body, &parsed); err != nil || len(parsed.Answers) == 0 {
+		return nil, errGrokEmpty
 	}
 	out := make(map[string]mailVerdict, len(mail))
 	for _, brief := range mail {
@@ -151,27 +216,6 @@ func decideChunk(client *http.Client, endpoint, key string, mail []mailBrief) (m
 		out[id] = verdict
 	}
 	return out, nil
-}
-
-func choiceQuestion(i int) map[string]any {
-	return map[string]any{
-		"type":         "choice",
-		"name":         fmt.Sprintf("a%d", i),
-		"instructions": fmt.Sprintf("For evidence index %d, choose trash, read, or keep.", i),
-		"choices": []map[string]string{
-			{"value": "trash", "description": "Sales, promo, newsletter, digest, TestFlight, job board, Slack summary, failed GitHub run, ClickUp, bank marketing, or cold outreach, including mail with a human-looking From name."},
-			{"value": "read", "description": "A receipt, invoice, or other automated mail to keep and mark read."},
-			{"value": "keep", "description": "Direct human mail, or security, fraud, OTP, login, legal, regulatory, or tax mail. Leave it unread."},
-		},
-	}
-}
-
-func predicateQuestion(i int) map[string]any {
-	return map[string]any{
-		"type":         "predicate",
-		"name":         fmt.Sprintf("d%d", i),
-		"instructions": fmt.Sprintf("For evidence index %d, the From address is a disposable sender that should be added to the spam list.", i),
-	}
 }
 
 func answerIndex(name string) (string, int, bool) {

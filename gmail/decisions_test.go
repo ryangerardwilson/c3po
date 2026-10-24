@@ -2,71 +2,56 @@ package gmail
 
 import (
 	"encoding/json"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 )
 
-func TestDecisionsMapsAnswers(t *testing.T) {
-	var bodies [][]byte
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer test-key" {
-			t.Errorf("auth %q", r.Header.Get("Authorization"))
+func TestGrokMapsAnswers(t *testing.T) {
+	var prompts []string
+	run := func(prompt string) ([]byte, error) {
+		prompts = append(prompts, prompt)
+		i := strings.LastIndex(prompt, "\n[")
+		if i < 0 {
+			t.Fatal("evidence missing")
 		}
-		body, _ := io.ReadAll(r.Body)
-		bodies = append(bodies, body)
-		var req struct {
-			Model     string `json:"model"`
-			Questions []struct {
-				Name string `json:"name"`
-				Type string `json:"type"`
-			} `json:"questions"`
+		var evidence []struct {
+			From string `json:"from"`
 		}
-		if err := json.Unmarshal(body, &req); err != nil {
+		if err := json.Unmarshal([]byte(prompt[i+1:]), &evidence); err != nil {
 			t.Fatal(err)
 		}
-		if req.Model != decisionsModel {
-			t.Errorf("model %s", req.Model)
-		}
-		n := len(req.Questions) / 2
-		promo := strings.Contains(string(body), "promo@bulk.test")
-		answers := make([]map[string]any, 0, len(req.Questions))
-		for i := 0; i < n; i++ {
-			choice := "keep"
-			conf := 0.0
-			prob := 0.0
-			if i == 0 && promo {
-				choice, conf, prob = "trash", 1, 1
+		answers := make([]map[string]any, 0, len(evidence)*2)
+		for n, row := range evidence {
+			choice, conf, prob := "keep", 0.0, 0.0
+			if n == 0 && row.From == "promo@bulk.test" {
+				choice, conf, prob = "trash", 1.0, 1.0
 			}
 			answers = append(answers,
-				map[string]any{"type": "choice", "name": req.Questions[i*2].Name, "choice": choice, "confidence": conf},
-				map[string]any{"type": "predicate", "name": req.Questions[i*2+1].Name, "probability": prob},
+				map[string]any{"type": "choice", "name": "a" + itoa(n), "choice": choice, "confidence": conf},
+				map[string]any{"type": "predicate", "name": "d" + itoa(n), "probability": prob},
 			)
 		}
-		_ = json.NewEncoder(w).Encode(map[string]any{"answers": answers})
-	}))
-	defer srv.Close()
-
+		body, err := json.Marshal(map[string]any{"answers": answers})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return json.Marshal(map[string]any{"structuredOutput": json.RawMessage(body), "text": string(body)})
+	}
 	mail := make([]mailBrief, 151)
 	for i := range mail {
 		mail[i] = mailBrief{Preset: "1", ID: itoa(i), From: "a@b.test", Subject: "s", Snippet: "n"}
 	}
 	mail[0].ID = "first"
 	mail[0].From = "promo@bulk.test"
-	got, err := classifyMail(srv.Client(), srv.URL, "test-key", mail)
+	got, err := classifyMail(run, mail)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(bodies) != 2 {
-		t.Fatalf("requests %d", len(bodies))
+	if len(prompts) != 2 {
+		t.Fatalf("calls %d", len(prompts))
 	}
-	if !strings.Contains(string(bodies[0]), `"name":"a0"`) || !strings.Contains(string(bodies[0]), `"name":"d0"`) {
-		t.Fatalf("questions %s", bodies[0])
-	}
-	if !strings.Contains(string(bodies[0]), "gpt-6-luna") {
-		t.Fatalf("model missing %s", bodies[0])
+	if !strings.Contains(prompts[0], "a0") || !strings.Contains(prompts[0], "d0") || !strings.Contains(prompts[0], "promo@bulk.test") {
+		t.Fatalf("prompt %s", prompts[0])
 	}
 	first := got[mailKey("1", "first")]
 	if first.Action != "trash" || first.Confidence != 1 || first.Disposable != 1 {
@@ -78,14 +63,24 @@ func TestDecisionsMapsAnswers(t *testing.T) {
 	}
 }
 
-func TestDecisionsRejectsABadStatus(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "secret-body", http.StatusBadGateway)
-	}))
-	defer srv.Close()
-	_, err := classifyMail(srv.Client(), srv.URL, "test-key", []mailBrief{{Preset: "1", ID: "m"}})
-	if err == nil || err.Error() != "decisions api returned 502" || strings.Contains(err.Error(), "secret-body") {
+func TestGrokRejectsAnErrorEnvelope(t *testing.T) {
+	_, err := classifyMail(func(string) ([]byte, error) {
+		return []byte(`{"type":"error","message":"secret-body"}`), nil
+	}, []mailBrief{{Preset: "1", ID: "m"}})
+	if err == nil || err.Error() != "grok classify failed" || strings.Contains(err.Error(), "secret-body") {
 		t.Fatalf("err %v", err)
+	}
+}
+
+func TestGrokArgsAreOneTurn(t *testing.T) {
+	args := strings.Join(grokArgs("/tmp/empty", "/tmp/empty/prompt.txt"), "\n")
+	for _, want := range []string{"--max-turns\n1", "--json-schema\n", "--cwd\n/tmp/empty", "--prompt-file\n/tmp/empty/prompt.txt", "--no-subagents", "--disable-web-search", "--verbatim", "run_terminal_cmd"} {
+		if !strings.Contains(args, want) {
+			t.Fatalf("missing %q\n%s", want, args)
+		}
+	}
+	if strings.Contains(args, "--always-approve") {
+		t.Fatal("always-approve")
 	}
 }
 

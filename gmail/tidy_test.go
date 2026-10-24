@@ -36,16 +36,15 @@ func TestTidyNoUnreadSkipsDecisions(t *testing.T) {
 	}
 }
 
-func TestTidyMissingKeyLeavesMail(t *testing.T) {
-	t.Setenv("OPENAI_API_KEY", "")
+func TestTidyMissingGrokLeavesMail(t *testing.T) {
 	e, boxes := tidyEnv(t, []api.Message{{
 		ID: "m1", Headers: map[string]string{"from": "Promo <promo@bulk.test>", "subject": "Sale"}, Snippet: "50% off",
 	}})
 	var out, err bytes.Buffer
 	e.Stdout, e.Stderr = &out, &err
 	code := e.runCode([]string{"tidy"})
-	if code != 1 || !strings.Contains(err.String(), "OPENAI_API_KEY is required to classify unread mail") {
-		t.Fatalf("missing key %d %s", code, err.String())
+	if code != 1 || !strings.Contains(err.String(), "grok is required to classify unread mail") {
+		t.Fatalf("missing grok %d %s", code, err.String())
 	}
 	if len(boxes["1"].ones) != 0 || len(boxes["1"].reads) != 0 {
 		t.Fatalf("mail changed ones=%v reads=%v", boxes["1"].ones, boxes["1"].reads)
@@ -53,7 +52,6 @@ func TestTidyMissingKeyLeavesMail(t *testing.T) {
 }
 
 func TestTidyAppliesVerdicts(t *testing.T) {
-	t.Setenv("OPENAI_API_KEY", "")
 	msgs := []api.Message{
 		{ID: "t1", Headers: map[string]string{"from": "Promo <promo@bulk.test>", "subject": "Sale"}, Snippet: "50% off"},
 		{ID: "r1", Headers: map[string]string{"from": "Billing <bill@shop.test>", "subject": "Receipt"}, Snippet: "thanks for your order"},
