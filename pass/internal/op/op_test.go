@@ -2,6 +2,7 @@ package op
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -153,13 +154,14 @@ func TestExecLookPathFailsWithoutOp(t *testing.T) {
 type listed struct {
 	out  []byte
 	args []string
+	err  error
 }
 
 func (s *listed) LookPath() error { return nil }
 
 func (s *listed) Run(_ []string, _ []byte, _ io.Writer, args ...string) ([]byte, error) {
 	s.args = append([]string{}, args...)
-	return s.out, nil
+	return s.out, s.err
 }
 
 func TestVaultsReadsNames(t *testing.T) {
@@ -170,5 +172,33 @@ func TestVaultsReadsNames(t *testing.T) {
 	}
 	if len(src.args) < 2 || src.args[0] != "vault" || src.args[1] != "list" {
 		t.Fatal(src.args)
+	}
+}
+
+func TestDeleteRunsItemDelete(t *testing.T) {
+	src := &listed{}
+	if err := (Client{Runner: src}).Delete("Root", "abc"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(src.args, " ") != "item delete abc --vault Root" {
+		t.Fatal(src.args)
+	}
+}
+
+func TestDeleteRequiresIDs(t *testing.T) {
+	src := &listed{}
+	if err := (Client{Runner: src}).Delete("", "abc"); err == nil || src.args != nil {
+		t.Fatalf("%v %v", err, src.args)
+	}
+	if err := (Client{Runner: src}).Delete("Root", ""); err == nil || src.args != nil {
+		t.Fatalf("%v %v", err, src.args)
+	}
+}
+
+func TestDeleteReportsAnOpFailure(t *testing.T) {
+	src := &listed{err: errors.New("no")}
+	err := (Client{Runner: src}).Delete("Root", "abc")
+	if err == nil || err.Error() != "Unable to delete the 1Password item." {
+		t.Fatal(err)
 	}
 }

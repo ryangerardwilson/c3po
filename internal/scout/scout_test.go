@@ -214,7 +214,7 @@ func TestGDriveScreenHelp(t *testing.T) {
 
 func TestPassScreenHelp(t *testing.T) {
 	out, code := call("c3po", "tui", "pass", "help")
-	if code != 0 || !bytes.Contains(out, []byte("vault")) || !bytes.Contains(out, []byte("item")) || !bytes.Contains(out, []byte("enter copies the selected item")) || !bytes.Contains(out, []byte("secret is not printed")) {
+	if code != 0 || !bytes.Contains(out, []byte("vault")) || !bytes.Contains(out, []byte("item")) || !bytes.Contains(out, []byte("enter copies the selected item")) || !bytes.Contains(out, []byte("secret is not printed")) || !bytes.Contains(out, []byte("dd deletes the selected item")) {
 		t.Fatalf("help %d\n%s", code, out)
 	}
 	out, code = call("c3po", "help", "-f", "tui", "pass")

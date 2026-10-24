@@ -77,7 +77,7 @@ func TestMissingTokenStopsBeforeOp(t *testing.T) {
 }
 
 func TestScreenHelpDescribesCopy(t *testing.T) {
-	for _, needle := range []string{"vault", "item", "enter copies the selected item", "secret is not printed", "c3po pass"} {
+	for _, needle := range []string{"vault", "item", "enter copies the selected item", "secret is not printed", "dd deletes the selected item", "c3po pass"} {
 		if !strings.Contains(ScreenHelp, needle) {
 			t.Fatalf("screen help missing %q", needle)
 		}

@@ -79,8 +79,9 @@ browse 1Password vaults and copy one item
 
 j and k move. l opens a vault. h goes back.
 enter copies the selected item. The secret is not printed.
+dd deletes the selected item.
 q quits.
-create, edit, show, delete, and search stay on c3po pass.
+create, edit, show, and search stay on c3po pass.
 `
 
 // Screen lists vaults, then copies one item. The secret is not printed.

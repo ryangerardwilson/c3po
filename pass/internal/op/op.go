@@ -133,3 +133,14 @@ func (c Client) Do(stdin []byte, args ...string) error {
 	_, err := c.Runner.Run(c.Env, stdin, c.Err, args...)
 	return err
 }
+
+// Delete removes one item from a vault. The secret is not read.
+func (c Client) Delete(vault, id string) error {
+	if vault == "" || id == "" {
+		return errors.New("1Password did not provide the IDs needed to delete the item.")
+	}
+	if err := c.Do(nil, "item", "delete", id, "--vault", vault); err != nil {
+		return errors.New("Unable to delete the 1Password item.")
+	}
+	return nil
+}

@@ -42,6 +42,7 @@ The navigator, deport, Drive browse, the Drive preset list, pass, the tunnel rou
 - **WHEN** the operator presses `?` on the pass vault list, then `j`, then Esc
 - **THEN** the view before `?` SHALL NOT contain `j/k move`
 - **AND** the open list SHALL name open and copy
+- **AND** the open list SHALL name `dd`
 - **AND** `j` SHALL leave the cursor on the same row
 - **AND** Esc SHALL show the vault list again
 
@@ -70,4 +71,49 @@ The navigator, deport, Drive browse, the Drive preset list, pass, the tunnel rou
 - **WHEN** cyclotree is showing the tree and the operator has not pressed `?`
 - **THEN** the tree SHALL NOT show the shortcut list
 - **AND** the bottom SHALL show the call chain and the focused path
+
+### Requirement: dd deletes the selected pass item
+On `c3po tui pass`, the first `d` SHALL arm deletion and SHALL show `d`. A second `d` SHALL delete the selected item from its open vault and SHALL reload that vault. The cursor SHALL stay at the same index, clamped to the remaining rows. The status SHALL be `deleted` followed by the item title. The secret SHALL stay unread and unprinted. Esc SHALL cancel the arm and SHALL leave the screen open. Any other key SHALL clear the arm and SHALL run as that key. `?` SHALL clear the arm and SHALL open the shortcut list. While the shortcut list is open, `d` SHALL leave the item in place. A vault row SHALL stay, and the status SHALL be `dd deletes an item`. An empty item list SHALL report `no items`. An empty vault list SHALL report `no vaults`. A failed delete SHALL leave the item in place and SHALL show the failure on the status line.
+
+#### Scenario: dd deletes the selected item
+- **WHEN** the operator presses `dd` on an item in an open vault
+- **THEN** that item SHALL be removed from the vault
+- **AND** the listing SHALL show the remaining items
+- **AND** the cursor SHALL stay at the same index
+- **AND** the status SHALL name the deleted title
+- **AND** the view SHALL NOT contain the secret
+
+#### Scenario: Another key cancels the arm
+- **WHEN** the operator presses `d` and then `j` on an item list
+- **THEN** the item SHALL remain
+- **AND** the cursor SHALL move
+
+#### Scenario: Esc cancels the arm
+- **WHEN** the operator presses `d` and then Esc on an item
+- **THEN** the item SHALL remain
+- **AND** the screen SHALL stay open
+
+#### Scenario: dd leaves a vault
+- **WHEN** the operator presses `dd` on a vault row
+- **THEN** the vault SHALL remain
+- **AND** the status SHALL be `dd deletes an item`
+
+#### Scenario: An empty item list reports no items
+- **WHEN** the operator presses `dd` in a vault that has no items
+- **THEN** the status SHALL be `no items`
+
+#### Scenario: An empty vault list reports no vaults
+- **WHEN** the operator presses `dd` and no vaults are listed
+- **THEN** the status SHALL be `no vaults`
+
+#### Scenario: A failed delete leaves the item
+- **WHEN** deleting the selected item fails
+- **THEN** the item SHALL remain
+- **AND** the status SHALL report the failure
+- **AND** the view SHALL NOT contain the secret
+
+#### Scenario: Help ignores d
+- **WHEN** the shortcut list is open and the operator presses `d`
+- **THEN** the item SHALL remain
+- **AND** the shortcut list SHALL stay open
 

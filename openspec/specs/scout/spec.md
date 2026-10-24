@@ -51,6 +51,7 @@ c3po runs one app from the first argument.
 - **AND** the text SHALL name a vault and an item
 - **AND** the text SHALL say enter copies the selected item
 - **AND** the text SHALL say the secret is not printed
+- **AND** the text SHALL say dd deletes the selected item
 
 #### Scenario: Deport lists safe external ports
 - **WHEN** the operator runs `c3po tui deport help`

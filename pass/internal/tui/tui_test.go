@@ -8,11 +8,18 @@ import (
 	"github.com/ryangerardwilson/c3po/pass/internal/op"
 )
 
+type deletedCall struct {
+	vault string
+	id    string
+}
+
 type fakeSource struct {
-	vaults []op.Vault
-	items  []op.Item
-	secret string
-	reads  int
+	vaults    []op.Vault
+	items     []op.Item
+	secret    string
+	reads     int
+	deleted   []deletedCall
+	deleteErr error
 }
 
 func (f *fakeSource) Vaults() ([]op.Vault, error) { return f.vaults, nil }
@@ -22,6 +29,21 @@ func (f *fakeSource) List(string) ([]op.Item, error) { return f.items, nil }
 func (f *fakeSource) Read(string, string, string) (string, error) {
 	f.reads++
 	return f.secret, nil
+}
+
+func (f *fakeSource) Delete(vault, id string) error {
+	f.deleted = append(f.deleted, deletedCall{vault: vault, id: id})
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	kept := make([]op.Item, 0, len(f.items))
+	for _, item := range f.items {
+		if item.ID != id {
+			kept = append(kept, item)
+		}
+	}
+	f.items = kept
+	return nil
 }
 
 type fakeClip struct{ text string }
@@ -85,7 +107,7 @@ func TestShortcutsStayBehindQuestionMark(t *testing.T) {
 	if strings.Contains(m.view(), "j/k move") || !strings.Contains(m.view(), "Root") {
 		t.Fatalf("list\n%s", m.view())
 	}
-	if m.handleKey("?") || !strings.Contains(m.view(), "open") || !strings.Contains(m.view(), "copy") {
+	if m.handleKey("?") || !strings.Contains(m.view(), "open") || !strings.Contains(m.view(), "copy") || !strings.Contains(m.view(), "dd") {
 		t.Fatalf("help\n%s", m.view())
 	}
 	if m.handleKey("j") || m.cursor != 0 || !m.help {

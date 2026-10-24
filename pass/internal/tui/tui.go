@@ -23,6 +23,7 @@ type Source interface {
 	Vaults() ([]op.Vault, error)
 	List(vault string) ([]op.Item, error)
 	Read(vaultID, id, category string) (string, error)
+	Delete(vault, id string) error
 }
 
 // Copier receives a secret. The screen does not print that secret.
@@ -56,6 +57,7 @@ type model struct {
 	width     int
 	height    int
 	help      bool
+	armed     bool
 }
 
 // Run opens the vault list. q leaves it.
@@ -97,6 +99,23 @@ func (m *model) handleKey(key string) bool {
 	}
 	if key == "?" {
 		m.help = true
+		m.armed = false
+		m.status = ""
+		return false
+	}
+	if m.armed {
+		m.armed = false
+		if key == "d" {
+			return m.deleteItem()
+		}
+		if key == "esc" {
+			m.status = ""
+			return false
+		}
+		m.status = ""
+	} else if key == "d" {
+		m.armed = true
+		m.status = "d"
 		return false
 	}
 	switch key {
@@ -230,6 +249,7 @@ func (m *model) helpView() string {
 		"l      open",
 		"h      up",
 		"enter  copy",
+		"dd     delete",
 		"?      shortcuts",
 		"q      quit",
 	}
