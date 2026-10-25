@@ -23,7 +23,7 @@ var readTools = map[string]bool{
 	"read": true, "readfile": true, "view": true, "viewfile": true,
 }
 
-// read judges a host file read the way rgw-ast read does: a text file longer
+// read judges a host file read the way c3po ast read does: a text file longer
 // than max_read_lines needs a limit of at most max_read_lines.
 func (j *judge) read(input map[string]any, cwd string) (Decision, error) {
 	target := targetPath(input, cwd)
@@ -50,34 +50,34 @@ func (j *judge) read(input map[string]any, cwd string) (Decision, error) {
 	if end > n {
 		end = n
 	}
-	return deny(fmt.Sprintf("enforced workspace %s: %s has %d lines, over max_read_lines %d. Pass limit <= %d to Read, or run: rgw-ast read %s --lines %d-%d",
+	return deny(fmt.Sprintf("enforced workspace %s: %s has %d lines, over max_read_lines %d. Pass limit <= %d to Read, or run: c3po ast read %s --lines %d-%d",
 		repo, filepath.Base(target), n, max, max, j.pathArg(repo, target, cwd), start, end)), nil
 }
 
-// fileDenyReason names the rgw-ast command that makes the same change.
+// fileDenyReason names the c3po ast command that makes the same change.
 func (j *judge) fileDenyReason(repo, target, tool, cwd string) string {
 	p := j.pathArg(repo, target, cwd)
 	head := "enforced workspace " + repo + ": " + tool + " is denied here. "
 	st, err := os.Stat(target)
 	switch {
 	case err != nil:
-		return head + "To create the file run: rgw-ast create " + p + " --expect-absent --parents --stdin"
+		return head + "To create the file run: c3po ast create " + p + " --expect-absent --parents --stdin"
 	case !st.Mode().IsRegular():
-		return head + "Use rgw-ast patch/create/move/delete on the files inside it."
+		return head + "Use c3po ast patch/create/move/delete on the files inside it."
 	}
 	sum, err := hashFile(target)
 	if err != nil {
-		sum = "<sha from rgw-ast hash " + p + ">"
+		sum = "<sha from c3po ast hash " + p + ">"
 	}
 	switch normalizeTool(tool) {
 	case "delete", "deletefile":
-		return head + "Run: rgw-ast delete " + p + " --expect-hash " + sum
+		return head + "Run: c3po ast delete " + p + " --expect-hash " + sum
 	}
-	return head + "Run: rgw-ast patch " + p + " --expect-hash " + sum + " --old <text> --new <text>" +
-		" (or --old-file/--new-file; --all for every occurrence). Several files at once: rgw-ast apply --from-file <manifest.json|git diff>."
+	return head + "Run: c3po ast patch " + p + " --expect-hash " + sum + " --old <text> --new <text>" +
+		" (or --old-file/--new-file; --all for every occurrence). Several files at once: c3po ast apply --from-file <manifest.json|git diff>."
 }
 
-// pathArg is how an rgw-ast command started from cwd should name target:
+// pathArg is how an c3po ast command started from cwd should name target:
 // relative to the repository when cwd is in it, otherwise absolute.
 func (j *judge) pathArg(repo, target, cwd string) string {
 	if j.override == "" {

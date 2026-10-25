@@ -92,7 +92,7 @@ func (r Runner) Run(args []string) int {
 			return ExitOK
 		}
 		if len(rest) != 0 {
-			return r.usage("Use: rgw-ast help [command]")
+			return r.usage("Use: c3po ast help [command]")
 		}
 		WriteHelp(r.Out)
 		return ExitOK
@@ -305,7 +305,7 @@ func (r Runner) cmdVersion(args []string) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageError{"Use: rgw-ast version [--json]"}
+		return usageError{"Use: c3po ast version [--json]"}
 	}
 	if asJSON {
 		return writeJSON(r.Out, map[string]any{
@@ -323,7 +323,7 @@ func (r Runner) cmdVersion(args []string) error {
 
 func (r Runner) cmdConfig(args []string) error {
 	if len(args) != 0 {
-		return usageError{"Use: rgw-ast config"}
+		return usageError{"Use: c3po ast config"}
 	}
 	_, path, err := r.load()
 	if err != nil {
@@ -372,7 +372,7 @@ func (r Runner) cmdStatus(args []string) error {
 		r.Refresh = true
 	}
 	if len(rest) != 0 {
-		return usageError{"Use: rgw-ast status [--json] [--refresh]"}
+		return usageError{"Use: c3po ast status [--json] [--refresh]"}
 	}
 	cfg, cfgPath, wsRoot, err := r.workspace()
 	if err != nil {
@@ -449,7 +449,7 @@ func (r Runner) cmdMeasure(args []string) error {
 		r.Refresh = true
 	}
 	if len(rest) != 0 {
-		return usageError{"Use: rgw-ast measure [--json] [--refresh]"}
+		return usageError{"Use: c3po ast measure [--json] [--refresh]"}
 	}
 	cfg, _, wsRoot, err := r.workspace()
 	if err != nil {
@@ -512,7 +512,7 @@ func (r Runner) cmdMap(args []string) error {
 			}
 		default:
 			if strings.HasPrefix(a, "-") || path != "" {
-				return usageError{"Use: rgw-ast map [--json] [--limit N] [--offset N] [--depth N] [path]"}
+				return usageError{"Use: c3po ast map [--json] [--limit N] [--offset N] [--depth N] [path]"}
 			}
 			path = a
 		}
@@ -550,7 +550,7 @@ func (r Runner) printMap(res intel.MapResult) {
 
 func (r Runner) cmdShow(args []string) error {
 	if len(args) != 1 {
-		return usageError{"Use: rgw-ast show <symbol|path:symbol|path>"}
+		return usageError{"Use: c3po ast show <symbol|path:symbol|path>"}
 	}
 	cfg, _, wsRoot, err := r.workspaceFor(args[0])
 	if err != nil {
@@ -589,7 +589,7 @@ func (r Runner) cmdSearch(args []string) error {
 		return err
 	}
 	if len(queryParts) == 0 {
-		return usageError{"Use: rgw-ast search [--path dir] [--glob pat] [--offset N] [--regex] [-i] <query>"}
+		return usageError{"Use: c3po ast search [--path dir] [--glob pat] [--offset N] [--regex] [-i] <query>"}
 	}
 	query := strings.Join(queryParts, " ")
 	if strings.HasPrefix(query, "-") {
@@ -674,7 +674,7 @@ func setSearchFlag(opts *intel.SearchOpts, name, value string) error {
 
 func (r Runner) cmdExplain(args []string) error {
 	if len(args) != 1 {
-		return usageError{"Use: rgw-ast explain <path>"}
+		return usageError{"Use: c3po ast explain <path>"}
 	}
 	cfg, _, wsRoot, err := r.workspaceFor(args[0])
 	if err != nil {
@@ -690,7 +690,7 @@ func (r Runner) cmdExplain(args []string) error {
 
 func (r Runner) cmdHash(args []string) error {
 	if len(args) < 1 {
-		return usageError{"Use: rgw-ast hash <file> [<file>...]"}
+		return usageError{"Use: c3po ast hash <file> [<file>...]"}
 	}
 	for _, p := range args {
 		_, _, wsRoot, err := r.workspaceFor(p)
@@ -943,11 +943,11 @@ func (r Runner) cmdApply(args []string) error {
 			from = args[i+1]
 			i++
 		default:
-			return usageError{"Use: rgw-ast apply --from-file <manifest.json|diff> [--dry-run] [--no-format]"}
+			return usageError{"Use: c3po ast apply --from-file <manifest.json|diff> [--dry-run] [--no-format]"}
 		}
 	}
 	if from == "" {
-		return usageError{"Use: rgw-ast apply --from-file <manifest.json|diff> [--dry-run] [--no-format]"}
+		return usageError{"Use: c3po ast apply --from-file <manifest.json|diff> [--dry-run] [--no-format]"}
 	}
 	changes, err := files.ParseApplyFile(from)
 	if err != nil {
@@ -1065,7 +1065,7 @@ func (r Runner) cmdMove(args []string) error {
 		return err
 	}
 	if len(args) != 2 {
-		return usageError{"Use: rgw-ast move <src> <dst> --expect-hash <sha> [--parents]"}
+		return usageError{"Use: c3po ast move <src> <dst> --expect-hash <sha> [--parents]"}
 	}
 	if expectHash == "" {
 		return usageError{"--expect-hash is required"}
@@ -1099,7 +1099,7 @@ func (r Runner) cmdMove(args []string) error {
 
 func (r Runner) cmdHook(args []string) error {
 	if len(args) != 0 {
-		return usageError{"Use: rgw-ast hook"}
+		return usageError{"Use: c3po ast hook"}
 	}
 	cfg, _, err := r.load()
 	if err != nil {
@@ -1125,7 +1125,7 @@ func (r Runner) cmdHook(args []string) error {
 }
 
 func (r Runner) cmdExec(args []string) error {
-	// rgw-ast exec [--json] -- <command...>
+	// c3po ast exec [--json] -- <command...>
 	asJSON := false
 	var cmdArgs []string
 	seenSep := false
@@ -1140,10 +1140,10 @@ func (r Runner) cmdExec(args []string) error {
 			asJSON = true
 			continue
 		}
-		return usageError{"Use: rgw-ast exec [--json] -- <command...>"}
+		return usageError{"Use: c3po ast exec [--json] -- <command...>"}
 	}
 	if !seenSep || len(cmdArgs) == 0 {
-		return usageError{"Use: rgw-ast exec [--json] -- <command...>"}
+		return usageError{"Use: c3po ast exec [--json] -- <command...>"}
 	}
 	cfg, _, wsRoot, err := r.workspace()
 	if err != nil {
@@ -1188,7 +1188,7 @@ func (r Runner) cmdDoctor(args []string) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageError{"Use: rgw-ast doctor [--json] [--refresh]"}
+		return usageError{"Use: c3po ast doctor [--json] [--refresh]"}
 	}
 	cfg, cfgPath, err := r.load()
 	if err != nil {
@@ -1220,7 +1220,7 @@ func (r Runner) cmdDoctor(args []string) error {
 
 func (r Runner) cmdAgentsBlock(args []string) error {
 	if len(args) != 0 {
-		return usageError{"Use: rgw-ast agents-block"}
+		return usageError{"Use: c3po ast agents-block"}
 	}
 	_, _ = io.WriteString(r.Out, agents.Block)
 	if !strings.HasSuffix(agents.Block, "\n") {
@@ -1235,7 +1235,7 @@ func (r Runner) cmdPackages(args []string) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageError{"Use: rgw-ast packages [--json]"}
+		return usageError{"Use: c3po ast packages [--json]"}
 	}
 	_, _, wsRoot, err := r.workspace()
 	if err != nil {
@@ -1332,7 +1332,7 @@ func (r Runner) cmdGraph(args []string) error {
 		return err
 	}
 	if len(rest) != 0 {
-		return usageError{"Use: rgw-ast graph [--json]"}
+		return usageError{"Use: c3po ast graph [--json]"}
 	}
 	g, _, err := r.loadGraph()
 	if err != nil {
@@ -1387,7 +1387,7 @@ func (r Runner) cmdNeighbors(args []string) error {
 		return err
 	}
 	if len(rest) != 1 {
-		return usageError{"Use: rgw-ast neighbors [--json] <id>"}
+		return usageError{"Use: c3po ast neighbors [--json] <id>"}
 	}
 	g, _, err := r.loadGraph()
 	if err != nil {
@@ -1418,7 +1418,7 @@ func (r Runner) cmdCut(args []string) error {
 		return err
 	}
 	if len(rest) > 1 {
-		return usageError{"Use: rgw-ast cut [--json] [path]"}
+		return usageError{"Use: c3po ast cut [--json] [path]"}
 	}
 	g, _, err := r.loadGraph()
 	if err != nil {
@@ -1538,7 +1538,7 @@ func parseTraceArgs(args []string) (query string, limit, offset int, err error) 
 		}
 	}
 	if len(pos) != 1 {
-		return "", 0, 0, usageError{"Use: rgw-ast callers|callees|impact [--json] [--limit N] [--offset N] <symbol>"}
+		return "", 0, 0, usageError{"Use: c3po ast callers|callees|impact [--json] [--limit N] [--offset N] <symbol>"}
 	}
 	return pos[0], limit, offset, nil
 }
@@ -1576,7 +1576,7 @@ func writeJSON(w io.Writer, v any) error {
 
 func parseReadArgs(args []string) (path, lines string, number, strict bool, err error) {
 	if len(args) == 0 {
-		return "", "", false, false, usageError{"Use: rgw-ast read <file> --lines <start>-<end>"}
+		return "", "", false, false, usageError{"Use: c3po ast read <file> --lines <start>-<end>"}
 	}
 	path = args[0]
 	for i := 1; i < len(args); i++ {
@@ -1622,7 +1622,7 @@ func parseLineRange(s string) (start, end int, err error) {
 
 func parseCreateArgs(args []string) (path, fromFile string, stdin, parents, expectAbsent bool, err error) {
 	if len(args) < 1 {
-		return "", "", false, false, false, usageError{"Use: rgw-ast create <file> --expect-absent ..."}
+		return "", "", false, false, false, usageError{"Use: c3po ast create <file> --expect-absent ..."}
 	}
 	path = args[0]
 	for i := 1; i < len(args); i++ {
@@ -1651,7 +1651,7 @@ func parseCreateArgs(args []string) (path, fromFile string, stdin, parents, expe
 
 func parseAppendArgs(args []string) (path, hash, fromFile string, stdin bool, err error) {
 	if len(args) < 1 {
-		return "", "", "", false, usageError{"Use: rgw-ast append <file> --expect-hash <sha> ..."}
+		return "", "", "", false, usageError{"Use: c3po ast append <file> --expect-hash <sha> ..."}
 	}
 	path = args[0]
 	for i := 1; i < len(args); i++ {
@@ -1687,7 +1687,7 @@ func parseAppendArgs(args []string) (path, hash, fromFile string, stdin bool, er
 
 func parseDeleteArgs(args []string) (path, hash string, pruneEmpty bool, err error) {
 	if len(args) < 1 {
-		return "", "", false, usageError{"Use: rgw-ast delete <file> --expect-hash <sha> [--prune-empty]"}
+		return "", "", false, usageError{"Use: c3po ast delete <file> --expect-hash <sha> [--prune-empty]"}
 	}
 	path = args[0]
 	for i := 1; i < len(args); i++ {
@@ -1712,7 +1712,7 @@ func parseDeleteArgs(args []string) (path, hash string, pruneEmpty bool, err err
 
 func parsePatchArgs(args []string) (path, hash, old, new, oldFile, newFile, opsFile string, err error) {
 	if len(args) < 1 {
-		return "", "", "", "", "", "", "", usageError{"Use: rgw-ast patch <file> --expect-hash <sha> ..."}
+		return "", "", "", "", "", "", "", usageError{"Use: c3po ast patch <file> --expect-hash <sha> ..."}
 	}
 	path = args[0]
 	for i := 1; i < len(args); i++ {

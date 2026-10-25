@@ -142,7 +142,7 @@ func TestHookRoutesDirectDeletionToGuardedCommand(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &dec); err != nil {
 		t.Fatal(err)
 	}
-	if dec.PermissionDecision != "deny" || !strings.Contains(dec.PermissionDecisionReason, "rgw-ast delete a.go --expect-hash ") {
+	if dec.PermissionDecision != "deny" || !strings.Contains(dec.PermissionDecisionReason, "c3po ast delete a.go --expect-hash ") {
 		t.Fatalf("unexpected decision %s", out.String())
 	}
 }

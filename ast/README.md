@@ -107,19 +107,19 @@ rgw-ast [--root <path>] cut [--json] [path]
 - `doctor` `enforcement_status: degraded` means the hook or the agents block
   is not ready. A correct trace does not clear it.
 - `version` on a dirty build includes `-dirty` and a source hash.
-- Trusted generators (OpenSpec, etc.) must run as `rgw-ast exec -- ...`; global
+- Trusted generators (OpenSpec, etc.) must run as `c3po ast exec -- ...`; global
   `generators.allow` entries are exact token prefixes matched from argv[0].
 - The hook judges each write by its target, not the session directory. A
   target outside every git worktree, or ignored by its worktree, is free;
   otherwise that worktree's enforcement decides. Shell text is lexed with
   quotes, heredocs, substitutions, `cd`, and `sh -c` in view, so `2>&1`,
-  `/dev/null`, stdin heredocs, and read-only pipelines around rgw-ast pass,
+  `/dev/null`, stdin heredocs, and read-only pipelines around `c3po ast` or `rgw-ast` pass,
   while any write into an enforced tree is denied. In an enforced tree a host
   `Write` of a missing file is allowed (it is a create); a host `Read` needs a
   `limit` of at most `max_read_lines` unless the file is that short; inline
   interpreter code (`python -c`, `node -e`, `perl -e`, …) with file-writing
   calls is a write; a command matching `generators.allow` must run through
-  `rgw-ast exec` (`openspec` only for `new|archive|init|update`). Deny reasons
+  `c3po ast exec` (`openspec` only for `new|archive|init|update`). Deny reasons
   name the exact command, with the file's current hash.
 - Doctor reads hook evidence from workspace host settings and from the
   user-level `$CLAUDE_CONFIG_DIR`/`~/.claude/settings.json` and

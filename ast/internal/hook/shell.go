@@ -527,7 +527,7 @@ func shellWrites(cmd, cwd string) []string {
 }
 
 // analyzeShell finds the write targets of the command text and, when cfg is
-// given, the generator commands it runs outside rgw-ast exec.
+// given, the generator commands it runs outside c3po ast exec.
 func analyzeShell(cmd, cwd string, cfg *config.Config) *writeAnalysis {
 	home, _ := os.UserHomeDir()
 	a := &writeAnalysis{home: home, vars: map[string]string{"HOME": home}, cfg: cfg}
@@ -546,21 +546,21 @@ type writeAnalysis struct {
 	generators []genCall
 }
 
-// shTarget is one written path and the rgw-ast command that would do it.
+// shTarget is one written path and the c3po ast command that would do it.
 type shTarget struct {
 	path, hint string
 }
 
-// genCall is a generator command run outside rgw-ast exec.
+// genCall is a generator command run outside c3po ast exec.
 type genCall struct {
 	cmd, cwd string
 }
 
 const (
-	hintMove   = "use rgw-ast move <src> <dst> --expect-hash <sha> (rgw-ast hash <src> prints the hash)"
-	hintDelete = "use rgw-ast delete <file> --expect-hash <sha> (rgw-ast hash <file> prints the hash)"
-	hintPatch  = "use rgw-ast hash <file>, then rgw-ast patch <file> --expect-hash <sha> --old <text> --new <text> [--all]"
-	hintInline = "inline interpreter code writes files; use rgw-ast patch/create/move/delete instead"
+	hintMove   = "use c3po ast move <src> <dst> --expect-hash <sha> (c3po ast hash <src> prints the hash)"
+	hintDelete = "use c3po ast delete <file> --expect-hash <sha> (c3po ast hash <file> prints the hash)"
+	hintPatch  = "use c3po ast hash <file>, then c3po ast patch <file> --expect-hash <sha> --old <text> --new <text> [--all]"
+	hintInline = "inline interpreter code writes files; use c3po ast patch/create/move/delete instead"
 )
 
 func (a *writeAnalysis) add(path, cwd string) {
@@ -869,7 +869,7 @@ sub:
 }
 
 // generator records a command that matches generators.allow and so must run
-// through rgw-ast exec. openspec counts only for its mutating subcommands.
+// through c3po ast exec. openspec counts only for its mutating subcommands.
 func (a *writeAnalysis) generator(words []shWord, cwd string) {
 	if a.cfg == nil {
 		return

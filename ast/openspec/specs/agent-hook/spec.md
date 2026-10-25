@@ -1,11 +1,12 @@
 # agent-hook Specification
 
 ## Purpose
-Decide, from a host PreToolUse event, whether an agent tool call may run, judging each write and bounded read by the enforcement of the worktree it touches, and naming the rgw-ast command to use instead when it denies.
+Decide, from a host PreToolUse event, whether an agent tool call may run, judging each write and bounded read by the enforcement of the worktree it touches, and naming the c3po ast command to use instead when it denies.
 ## Requirements
 ### Requirement: Pre-tool-use hook
-`rgw-ast hook` SHALL read a single JSON object from stdin describing a
-proposed agent tool call and write a JSON decision to stdout.
+`c3po ast hook` SHALL read a single JSON object from stdin describing a
+proposed agent tool call and write a JSON decision to stdout. `rgw-ast hook`
+SHALL do the same.
 
 Recognized input fields SHALL include at least:
 - `tool_name` (string)
@@ -27,15 +28,15 @@ The hook SHALL deny, for an enforced target:
   `Write`, `Edit`, `NotebookEdit`, `apply_patch`, `str_replace`,
   `search_replace`), judged by `file_path`, `notebook_path`, or `path`, or by
   the session directory when no path is given
-- shell commands that write files outside `rgw-ast`, per the shell analysis
+- shell commands that write files outside `c3po ast` or `rgw-ast`, per the shell analysis
   requirement
 
 The hook SHALL allow:
 - tools whose name is `rgw-ast`
-- shell commands with no write target, including `rgw-ast` invocations
+- shell commands with no write target, including `c3po ast` and `rgw-ast` invocations
 - all tools when no target is enforced
 - a `Write` (or `write_file`, `create`) whose target path does not exist,
-  because it is equivalent to `rgw-ast create --expect-absent --parents`
+  because it is equivalent to `c3po ast create --expect-absent --parents`
 
 Decision JSON SHALL include `permissionDecision` of `allow` or `deny` and a
 `permissionDecisionReason` string when denied. Exit code SHALL be 0 even when
@@ -169,7 +170,7 @@ For a host `Read` tool call (`file_path`, optional `offset` and `limit`) whose
 target is in an enforced, non-ignored worktree and is non-binary text, the hook
 SHALL deny when the file has more than `max_read_lines` lines and `limit` is
 absent or greater than `max_read_lines`. Otherwise it SHALL allow. The deny
-reason SHALL name the line count and the exact `rgw-ast read <path> --lines`
+reason SHALL name the line count and the exact `c3po ast read <path> --lines`
 command, and SHALL say that a host `Read` with `limit` of at most
 `max_read_lines` is also accepted. Shell readers (`cat`, `grep`) are not
 policed.
@@ -179,7 +180,7 @@ policed.
 - **AND** `big.go` has 900 lines
 - **WHEN** stdin is a `Read` of `big.go` with no `limit`
 - **THEN** stdout JSON SHALL have `permissionDecision` equal to `deny`
-- **AND** the reason SHALL contain `rgw-ast read` and `--lines 1-200`
+- **AND** the reason SHALL contain `c3po ast read` and `--lines 1-200`
 
 #### Scenario: Bounded read is allowed
 - **GIVEN** enforcement is active and `max_read_lines` is 200
@@ -214,37 +215,42 @@ not analysed.
 ### Requirement: Generators run through exec
 When a shell command (after wrapper prefixes) matches a `generators.allow`
 pattern and the current directory is in an enforced worktree, the hook SHALL
-deny it and the reason SHALL give `rgw-ast exec -- <command>`. A matched
+deny it and the reason SHALL give `c3po ast exec -- <command>`. A matched
 `openspec` command SHALL be denied only for the mutating subcommands `new`,
 `archive`, `init`, and `update`; other `openspec` subcommands SHALL be
-allowed. A command already wrapped in `rgw-ast exec` SHALL be allowed.
+allowed. A command already wrapped in `c3po ast exec` or `rgw-ast exec` SHALL be allowed.
 
 #### Scenario: Bare openspec archive is denied
 - **GIVEN** enforcement is active and `openspec` is in `generators.allow`
 - **WHEN** stdin includes `openspec archive x`
 - **THEN** stdout JSON SHALL have `permissionDecision` equal to `deny`
-- **AND** the reason SHALL contain `rgw-ast exec -- openspec archive x`
+- **AND** the reason SHALL contain `c3po ast exec -- openspec archive x`
 
 #### Scenario: Read-only openspec is allowed
 - **GIVEN** enforcement is active
 - **WHEN** stdin includes `openspec validate x --strict`
 - **THEN** stdout JSON SHALL have `permissionDecision` equal to `allow`
 
+#### Scenario: c3po ast exec is allowed
+- **GIVEN** enforcement is active
+- **WHEN** stdin includes `c3po ast exec -- openspec archive x`
+- **THEN** stdout JSON SHALL have `permissionDecision` equal to `allow`
+
 ### Requirement: Actionable deny reasons
-A deny reason for a file tool SHALL name the exact `rgw-ast` command that
+A deny reason for a file tool SHALL name the exact `c3po ast` command that
 performs the same change with the target's path relative to its worktree:
-`rgw-ast patch <path> --expect-hash <sha> …` with the file's current SHA-256
-for an existing file, `rgw-ast create <path> --expect-absent --parents --stdin`
+`c3po ast patch <path> --expect-hash <sha> …` with the file's current SHA-256
+for an existing file, `c3po ast create <path> --expect-absent --parents --stdin`
 for a missing one. A shell deny for `git mv` or `mv` SHALL name
-`rgw-ast move`.
+`c3po ast move`.
 
 #### Scenario: Edit deny carries the hash
 - **GIVEN** enforcement is active and `a.go` has SHA-256 H
 - **WHEN** stdin is an `Edit` of `a.go`
-- **THEN** the deny reason SHALL contain `rgw-ast patch a.go --expect-hash H`
+- **THEN** the deny reason SHALL contain `c3po ast patch a.go --expect-hash H`
 
 #### Scenario: git mv deny names move
 - **GIVEN** enforcement is active
 - **WHEN** stdin includes `git mv a.go b.go`
-- **THEN** the deny reason SHALL contain `rgw-ast move`
+- **THEN** the deny reason SHALL contain `c3po ast move`
 

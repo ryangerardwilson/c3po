@@ -40,7 +40,7 @@ func TestPatchReportsLinesAndReplacesAll(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "lines 1, 4") || !strings.Contains(err.Error(), "--all") {
 		t.Fatalf("ambiguous error %v", err)
 	}
-	if _, err := PatchOps(path, "deadbeef", []Op{{Old: "y = 2", New: "y = 3"}}); err == nil || !strings.Contains(err.Error(), "rgw-ast hash") {
+	if _, err := PatchOps(path, "deadbeef", []Op{{Old: "y = 2", New: "y = 3"}}); err == nil || !strings.Contains(err.Error(), "c3po ast hash") {
 		t.Fatalf("stale error %v", err)
 	}
 	if _, err := PatchOps(path, sum, []Op{{Old: "x = 1", New: "x = 2", All: true}}); err != nil {

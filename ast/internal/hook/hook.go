@@ -14,7 +14,7 @@ import (
 	"github.com/ryangerardwilson/c3po/ast/internal/measure"
 )
 
-const shellDenyDefault = "use rgw-ast patch/create/move/delete, or rgw-ast exec -- <generator>"
+const shellDenyDefault = "use c3po ast patch/create/move/delete, or c3po ast exec -- <generator>"
 
 // Request is a host pre-tool-use event (Claude/Codex-like).
 type Request struct {
@@ -95,7 +95,7 @@ func Evaluate(req Request, cfg config.Config, cwd, rootOverride string) (Decisio
 				return Decision{}, err
 			}
 			if enforced {
-				return deny("enforced workspace " + repo + ": generators run through rgw-ast exec so their writes are recorded. Run: rgw-ast exec -- " + g.cmd), nil
+				return deny("enforced workspace " + repo + ": generators run through c3po ast exec so their writes are recorded. Run: c3po ast exec -- " + g.cmd), nil
 			}
 		}
 		for _, t := range an.targets {
@@ -129,7 +129,7 @@ func Run(in io.Reader, out io.Writer, cfg config.Config, cwd, rootOverride strin
 	}
 	dec, err := Evaluate(req, cfg, cwd, rootOverride)
 	if err != nil {
-		dec = deny(fmt.Sprintf("rgw-ast hook error: %v", err))
+		dec = deny(fmt.Sprintf("c3po ast hook error: %v", err))
 	}
 	enc := json.NewEncoder(out)
 	enc.SetEscapeHTML(false)

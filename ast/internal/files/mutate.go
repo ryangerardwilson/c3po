@@ -22,7 +22,7 @@ type Op struct {
 
 // StaleHash is the error for a file whose hash is not the one expected.
 func StaleHash(expect, cur string) error {
-	return fmt.Errorf("hash mismatch: expected %s, got %s; the file changed since that hash: run rgw-ast hash <file>, or use the hash your last rgw-ast write printed", expect, cur)
+	return fmt.Errorf("hash mismatch: expected %s, got %s; the file changed since that hash: run c3po ast hash <file>, or use the hash your last c3po ast write printed", expect, cur)
 }
 
 // matchLines returns the 1-based line of every occurrence of old in content.

@@ -4,10 +4,10 @@
 Run trusted scaffolding generators from the global allowlist and report every file they create or modify.
 ## Requirements
 ### Requirement: Trusted generator exec
-`rgw-ast exec -- <command...>` SHALL run an allowlisted generator under the
+`c3po ast exec -- <command...>` SHALL run an allowlisted generator under the
 workspace root, capture Git working-tree and ignored-path snapshots before and
 after, and report only content changes attributable to the generator, with hashes
-when available. Pre-existing unchanged paths SHALL NOT be reported as changes.
+when available. `rgw-ast exec` SHALL do the same work. Pre-existing unchanged paths SHALL NOT be reported as changes.
 Commands not structurally matching `generators.allow` from argv[0] SHALL be
 rejected without execution.
 

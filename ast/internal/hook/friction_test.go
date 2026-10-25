@@ -52,24 +52,25 @@ func TestHookReducesAgentFriction(t *testing.T) {
 		want   string
 		reason string
 	}{
-		{"long read without limit", read("@big.go", nil), "deny", "rgw-ast read big.go --lines 1-200"},
+		{"long read without limit", read("@big.go", nil), "deny", "c3po ast read big.go --lines 1-200"},
 		{"bounded read", read("@big.go", 150.0), "allow", ""},
 		{"limit over the cap", read("@big.go", 500.0), "deny", "limit <= 200"},
 		{"short file whole", read("@a.go", nil), "allow", ""},
 		{"read outside every repository", read(filepath.Join(t.TempDir(), "x"), nil), "allow", ""},
-		{"edit carries the hash", Request{ToolName: "Edit", ToolInput: map[string]any{"file_path": "@a.go"}}, "deny", "rgw-ast patch a.go --expect-hash "},
+		{"edit carries the hash", Request{ToolName: "Edit", ToolInput: map[string]any{"file_path": "@a.go"}}, "deny", "c3po ast patch a.go --expect-hash "},
 		{"write of a missing file", Request{ToolName: "Write", ToolInput: map[string]any{"file_path": "@notes/new.md"}}, "allow", ""},
 		{"python inline write", sh(`python3 -c "open('a.go','w').write('x')"`), "deny", "inline interpreter"},
 		{"python inline read", sh(`python3 -c "print(open('a.go').read())"`), "allow", ""},
 		{"node inline write", sh(`node -e "require('fs').writeFileSync('a.go','x')"`), "deny", "inline interpreter"},
 		{"perl inline unlink", sh(`perl -e 'unlink "a.go"'`), "deny", "inline interpreter"},
-		{"bare openspec archive", sh("openspec archive x --yes"), "deny", "rgw-ast exec -- openspec archive x --yes"},
+		{"bare openspec archive", sh("openspec archive x --yes"), "deny", "c3po ast exec -- openspec archive x --yes"},
 		{"read-only openspec", sh("openspec validate x --strict"), "allow", ""},
 		{"wrapped openspec archive", sh("rgw-ast exec -- openspec archive x"), "allow", ""},
-		{"go generate", sh("go generate ./..."), "deny", "rgw-ast exec -- go generate ./..."},
-		{"git mv names move", sh("git mv a.go b.go"), "deny", "rgw-ast move"},
-		{"mv names move", sh("mv a.go b.go"), "deny", "rgw-ast move"},
-		{"rm names delete", sh("rm a.go"), "deny", "rgw-ast delete"},
+		{"wrapped c3po ast exec", sh("c3po ast exec -- openspec archive x"), "allow", ""},
+		{"go generate", sh("go generate ./..."), "deny", "c3po ast exec -- go generate ./..."},
+		{"git mv names move", sh("git mv a.go b.go"), "deny", "c3po ast move"},
+		{"mv names move", sh("mv a.go b.go"), "deny", "c3po ast move"},
+		{"rm names delete", sh("rm a.go"), "deny", "c3po ast delete"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
