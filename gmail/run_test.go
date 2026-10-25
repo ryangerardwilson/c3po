@@ -58,6 +58,9 @@ func TestSpamCleanAllPresets(t *testing.T) {
 	if strings.Join(box.trashed, ",") != "m3,m3" {
 		t.Fatalf("trashed %v", box.trashed)
 	}
+	if strings.Contains(out, "processed group") || strings.Contains(out, "spam sender groups") {
+		t.Fatalf("group lines: %s", out)
+	}
 }
 
 func TestListQueryAndAccounts(t *testing.T) {

@@ -27,8 +27,18 @@ func TestTidyTrashesConfiguredSpam(t *testing.T) {
 	if len(box.ones) != 0 || len(box.reads) != 0 {
 		t.Fatalf("ones %v reads %v", box.ones, box.reads)
 	}
-	if !strings.Contains(out.String(), "gmail tidy complete: presets=2 trashed=2") {
-		t.Fatalf("summary %s", out.String())
+	text := out.String()
+	if !strings.Contains(text, "gmail tidy complete: presets=2 trashed=2") {
+		t.Fatalf("summary %s", text)
+	}
+	if strings.Contains(text, "processed group") || strings.Contains(text, "spam sender groups") || strings.Contains(text, "preset=1 email") {
+		t.Fatalf("progress %s", text)
+	}
+	if !strings.Contains(text, "a@example.com") || !strings.Contains(text, "█") || !strings.Contains(text, "1/1") || !strings.Contains(text, "trashed 1") {
+		t.Fatalf("bar %s", text)
+	}
+	if strings.Count(text, "\n") != 3 {
+		t.Fatalf("lines %s", text)
 	}
 	if strings.Contains(out.String(), "clickup") || strings.Contains(strings.Join(box.queries, "\n"), "clickup") {
 		t.Fatalf("hardcoded query %s queries %v", out.String(), box.queries)

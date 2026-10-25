@@ -2,6 +2,7 @@ package gmail
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/ryangerardwilson/c3po/gmail/internal/api"
@@ -21,7 +22,7 @@ func (e Env) spamCleanAll() (int, error) {
 	total := 0
 	for _, preset := range app.Presets {
 		acct := app.Accounts[preset]
-		n, err := e.cleanAccount(acct, true)
+		n, err := e.cleanAccount(acct, !writerTerminal(e.Stdout))
 		if err != nil {
 			return 0, err
 		}
@@ -75,27 +76,30 @@ func (e Env) cleanAccount(acct config.Account, banner bool) (int, error) {
 	return cleanup(svc, acct, e.Stdout)
 }
 
-func cleanup(svc Service, acct config.Account, out interface{ Write([]byte) (int, error) }) (int, error) {
+func cleanup(svc Service, acct config.Account, out io.Writer) (int, error) {
 	senders := spam.CleanupSenders(acct.SpamSenders, acct.SpamExcludes)
 	groups := spam.Groups(senders, 25)
 	if len(groups) == 0 {
 		return 0, nil
 	}
-	fmt.Fprintf(out, "spam sender groups to process: %d\n", len(groups))
+	bar := newCleanBar(out, acct.Preset+"  "+acct.Email, len(groups))
+	bar.start()
 	var all []string
 	for i, group := range groups {
 		ids, err := svc.ListIDs(spam.Query(group))
 		if err != nil {
+			bar.fail()
 			return 0, err
 		}
 		all = append(all, ids...)
-		fmt.Fprintf(out, "processed group %d/%d: ids_found=%d unique_ids_collected=%d\n", i+1, len(groups), len(ids), len(api.SortedIDs(all)))
+		bar.step(i + 1)
 	}
 	n, err := svc.TrashIDs(api.SortedIDs(all))
 	if err != nil {
+		bar.fail()
 		return 0, err
 	}
-	fmt.Fprintf(out, "trashed so far: %d\n", n)
+	bar.finish(n)
 	return n, nil
 }
 

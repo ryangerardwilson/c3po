@@ -21,7 +21,7 @@ func (e Env) tidy() (int, error) {
 	}
 	trashed := 0
 	for _, preset := range app.Presets {
-		n, err := e.cleanAccount(app.Accounts[preset], true)
+		n, err := e.cleanAccount(app.Accounts[preset], false)
 		if err != nil {
 			return 0, err
 		}
