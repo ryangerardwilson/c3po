@@ -97,6 +97,7 @@ func splitCommand(line string) ([]string, error) {
 
 // shellLine returns the shell command when line starts with !.
 // The caller trims the line first. Space after the bang is ignored.
+// A command that is > and one path is a file redirect, handled by the caller.
 func shellLine(line string) (string, bool) {
 	if !strings.HasPrefix(line, "!") {
 		return "", false
@@ -114,4 +115,35 @@ func shellCommand(dir, line string) *exec.Cmd {
 	command := exec.Command(shell, "-c", line)
 	command.Dir = dir
 	return command
+}
+
+// redirectPath returns the single path of a bare > redirect.
+// >> and any extra word stay with the shell.
+func redirectPath(command string) (string, bool) {
+	command = strings.TrimSpace(command)
+	if strings.HasPrefix(command, ">>") || !strings.HasPrefix(command, ">") {
+		return "", false
+	}
+	rest := strings.TrimSpace(command[len(">"):])
+	fields, err := splitCommand(rest)
+	if err != nil || len(fields) != 1 || fields[0] == "" {
+		return "", false
+	}
+	return fields[0], true
+}
+
+// applyRedirect creates path or empties it. A relative path is inside dir.
+func applyRedirect(dir, path string) (string, error) {
+	target := path
+	if !filepath.IsAbs(path) {
+		target = filepath.Join(dir, path)
+	}
+	file, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		return "", err
+	}
+	return target, nil
 }

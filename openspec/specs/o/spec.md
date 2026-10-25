@@ -160,7 +160,7 @@ When visual mode is off, the first `d` SHALL arm deletion and SHALL show `d`. A 
 - **AND** the filter text SHALL contain `v`
 
 ### Requirement: Bang runs a shell command
-`!` SHALL open the colon command line on the last row with `!` already typed and the cursor after it. The line SHALL show `:` immediately followed by `!`, with no space between them, and SHALL NOT show a separate `!` prompt or a hint. Text typed after that SHALL sit against the bang. Enter SHALL run the text after `!` in the shell with the listed directory as its working directory, and SHALL hand the terminal to that command. The command SHALL NOT be limited to `mv`, `rm`, `cp`, `touch`, or `mkdir`. An empty command SHALL NOT run. Esc SHALL cancel the command line without running a command. After the command exits, the listing SHALL reload and the status line SHALL be the last line again. `!` typed into the filter SHALL stay text. Editing keys SHALL be the same as on the colon line. The shortcut list and `c3po tui o help` SHALL name `!`.
+`!` SHALL open the colon command line on the last row with `!` already typed and the cursor after it. The line SHALL show `:` immediately followed by `!`, with no space between them, and SHALL NOT show a separate `!` prompt or a hint. Text typed after that SHALL sit against the bang. Enter SHALL run the text after `!` in the shell with the listed directory as its working directory, and SHALL hand the terminal to that command, unless that text is a `>` redirect of one path. A `>` redirect of one path SHALL create that file or empty it, SHALL NOT hand the terminal to a shell, and SHALL select the file. The command SHALL NOT be limited to `mv`, `rm`, `cp`, `touch`, or `mkdir`. An empty command SHALL NOT run. Esc SHALL cancel the command line without running a command. After the command exits, the listing SHALL reload and the status line SHALL be the last line again. `!` typed into the filter SHALL stay text. Editing keys SHALL be the same as on the colon line. The shortcut list and `c3po tui o help` SHALL name `!`. `c3po tui o help` SHALL say that `!>` and one path creates or empties that file.
 
 #### Scenario: A shell command runs in the listed directory
 - **WHEN** the operator presses `!`, types `touch made.txt`, and presses enter
@@ -184,8 +184,14 @@ When visual mode is off, the first `d` SHALL arm deletion and SHALL show `d`. A 
 - **THEN** the last line SHALL contain `:!touch made.txt`
 - **AND** the line under the title SHALL NOT contain `touch made.txt`
 
+#### Scenario: Bang redirect creates a file
+- **WHEN** the operator presses `!`, types `> hello.txt`, and presses enter
+- **THEN** `hello.txt` SHALL exist in the listed directory and SHALL be empty
+- **AND** the listing SHALL show hello.txt
+- **AND** the terminal SHALL NOT be handed to a shell
+
 ### Requirement: Colon runs mv, rm, cp, touch, mkdir, or :!
-`:` SHALL open a command line on the last row. The command line SHALL show `:` immediately followed by the text being typed, with no space after `:`, and SHALL NOT show a hint or that text on the prompt line under the title. Enter SHALL run that line in the listed directory when the command is `mv`, `rm`, `cp`, `touch`, or `mkdir`. `rm` MAY take `-rf`. `cp` and `mv` SHALL require two paths. Any other command or flag SHALL be refused and SHALL NOT run, unless the trimmed line starts with `!`. A trimmed line that starts with `!` SHALL run the rest in the shell with the listed directory as its working directory, and SHALL hand the terminal to that command. Space after the bang SHALL be ignored. An empty shell command SHALL NOT run. That shell command SHALL NOT be limited to `mv`, `rm`, `cp`, `touch`, or `mkdir`. Esc SHALL cancel the command line without running a command. After a command runs, the listing SHALL reload and the status line SHALL be the last line again. `:` typed into the filter SHALL stay text. The shortcut list and `c3po tui o help` SHALL name these commands and `:!`.
+`:` SHALL open a command line on the last row. The command line SHALL show `:` immediately followed by the text being typed, with no space after `:`, and SHALL NOT show a hint or that text on the prompt line under the title. Enter SHALL run that line in the listed directory when the command is `mv`, `rm`, `cp`, `touch`, or `mkdir`. `rm` MAY take `-rf`. `cp` and `mv` SHALL require two paths. Any other command or flag SHALL be refused and SHALL NOT run, unless the trimmed line starts with `!`. A trimmed line that starts with `!` SHALL run the rest in the shell with the listed directory as its working directory, and SHALL hand the terminal to that command, unless the rest is a `>` redirect of one path. That redirect SHALL create the file or empty it, SHALL NOT hand the terminal to a shell, and SHALL select the file. `touch` of an existing file SHALL leave its text in place. Space after the bang SHALL be ignored. An empty shell command SHALL NOT run. That shell command SHALL NOT be limited to `mv`, `rm`, `cp`, `touch`, or `mkdir`. Esc SHALL cancel the command line without running a command. After a command runs, the listing SHALL reload and the status line SHALL be the last line again. `:` typed into the filter SHALL stay text. The shortcut list and `c3po tui o help` SHALL name these commands and `:!`.
 
 While the command line is open, the cursor SHALL move inside the typed text. Home and Ctrl-a SHALL move to the start. End and Ctrl-e SHALL move to the end. Left and Ctrl-b SHALL move back one character. Right and Ctrl-f SHALL move forward one character. Backspace SHALL delete the character before the cursor. Delete and Ctrl-d SHALL delete the character at the cursor. Ctrl-d at the end of the line, including an empty line, SHALL do nothing and SHALL NOT quit. Ctrl-k SHALL delete from the cursor to the end. Ctrl-u SHALL delete from the start to the cursor. A word is a run of non-whitespace characters. Ctrl-w and Alt-Backspace SHALL delete the whitespace immediately before the cursor and then the word before that. Alt-b SHALL move to the start of the word before the cursor. Alt-f SHALL move to the end of the word after the cursor. Alt-d SHALL delete through that end. An Alt chord other than these SHALL NOT insert a character. Ctrl-w while the command line is closed SHALL NOT delete a file.
 
@@ -263,6 +269,28 @@ While the command line is open, the cursor SHALL move inside the typed text. Hom
 #### Scenario: An unbound Alt chord does not insert
 - **WHEN** the operator presses `:` and then Alt-x
 - **THEN** the command text SHALL be empty
+
+#### Scenario: A colon redirect creates a file
+- **WHEN** the operator presses `:`, types `!> hello.txt`, and presses enter
+- **THEN** `hello.txt` SHALL exist in the listed directory and SHALL be empty
+- **AND** the listing SHALL show hello.txt
+- **AND** the terminal SHALL NOT be handed to a shell
+
+#### Scenario: A colon redirect empties a file
+- **WHEN** `hello.txt` contains text and the operator submits `!> hello.txt` on the `:` command line
+- **THEN** `hello.txt` SHALL be empty
+
+#### Scenario: Touch leaves existing text
+- **WHEN** `hello.txt` contains text and the operator submits `touch hello.txt` on the `:` command line
+- **THEN** `hello.txt` SHALL still contain that text
+
+#### Scenario: Extra redirect words stay a shell command
+- **WHEN** the operator presses `:`, types `!> a.txt b.txt`, and presses enter
+- **THEN** no file SHALL be created before the shell runs
+
+#### Scenario: An append redirect stays a shell command
+- **WHEN** `hello.txt` contains text and the operator presses `:`, types `!>> hello.txt`, and presses enter
+- **THEN** `hello.txt` SHALL still contain that text before the shell runs
 
 ### Requirement: The navigator draws a block cursor
 The command line and the filter SHALL draw the cursor as one reverse-video cell. When the cursor is on a character, that cell SHALL be the character. When the cursor is at the end of the text, that cell SHALL be a space. The drawn cursor SHALL NOT be a vertical bar. While the navigator owns the terminal, the terminal cursor SHALL be a steady block. When the navigator gives the terminal back, including for a shell command, the terminal cursor SHALL return to the terminal default. The listing cursor marker SHALL stay `>`.

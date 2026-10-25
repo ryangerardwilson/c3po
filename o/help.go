@@ -80,7 +80,8 @@ their own.
 
 : opens a command line on the last row. The colon sits against the text.
 The line runs mv, rm, cp, touch, or mkdir. rm may take -rf. A line that
-starts with ! runs the rest in the shell. ! opens that same line with the
+starts with ! runs the rest in the shell. !> and one path creates that
+file or empties it. ! opens that same line with the
 bang already typed. Esc cancels. Ctrl-a and Ctrl-e move to the ends of the
 line. Ctrl-w deletes the previous word. Alt-b and Alt-f move by words.
 

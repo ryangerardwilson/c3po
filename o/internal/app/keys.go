@@ -195,6 +195,17 @@ func (m model) commandKey(msg tui.KeyMsg, key string) (model, tui.Cmd) {
 		m.input = ""
 		m.inputAt = 0
 		if command, ok := shellLine(line); ok {
+			if path, ok := redirectPath(command); ok {
+				selected, err := applyRedirect(m.currentDir, path)
+				if err != nil {
+					m.status = err.Error()
+					return m, nil
+				}
+				m.reload()
+				m.selectPath(selected)
+				m.status = line
+				return m, nil
+			}
 			return m.execShell(command)
 		}
 		status, path, err := applyFileCommand(m.currentDir, line)

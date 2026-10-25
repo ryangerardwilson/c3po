@@ -500,3 +500,99 @@ func TestFilterCursorIsABlock(t *testing.T) {
 		t.Fatalf("filter typed %q", line)
 	}
 }
+
+func TestBangRedirectCreatesAndEmpties(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(Config{StartDir: root, Mode: ModeBrowse})
+	m.animationActive = false
+
+	next, cmd := m.Update(previewKey("!"))
+	m = next.(model)
+	next, cmd = m.Update(previewKey("> hello.txt"))
+	m = next.(model)
+	next, cmd = m.Update(tui.KeyMsg{Type: tui.KeyEnter})
+	m = next.(model)
+	if m.commanding || m.status != "!> hello.txt" {
+		t.Fatalf("bang redirect commanding %v status %q", m.commanding, m.status)
+	}
+	got, err := os.ReadFile(filepath.Join(root, "hello.txt"))
+	if err != nil || len(got) != 0 {
+		t.Fatalf("created %q err %v", got, err)
+	}
+	if m.entries[m.selected].Name != "hello.txt" {
+		t.Fatalf("selected %q", m.entries[m.selected].Name)
+	}
+
+	if err := os.WriteFile(filepath.Join(root, "hello.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m = submitCommand(t, m, "!> hello.txt")
+	got, err = os.ReadFile(filepath.Join(root, "hello.txt"))
+	if err != nil || len(got) != 0 || m.status != "!> hello.txt" {
+		t.Fatalf("emptied %q status %q err %v", got, m.status, err)
+	}
+	if m.entries[m.selected].Name != "hello.txt" {
+		t.Fatalf("selected after empty %q", m.entries[m.selected].Name)
+	}
+
+	if err := os.WriteFile(filepath.Join(root, "hello.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m = submitCommand(t, m, "touch hello.txt")
+	got, err = os.ReadFile(filepath.Join(root, "hello.txt"))
+	if err != nil || string(got) != "keep" {
+		t.Fatalf("touch %q err %v", got, err)
+	}
+
+	m = submitCommand(t, m, "!>plain.txt")
+	got, err = os.ReadFile(filepath.Join(root, "plain.txt"))
+	if err != nil || len(got) != 0 {
+		t.Fatalf("plain %q err %v", got, err)
+	}
+
+	m = submitCommand(t, m, `!>"my file.txt"`)
+	got, err = os.ReadFile(filepath.Join(root, "my file.txt"))
+	if err != nil || len(got) != 0 || m.entries[m.selected].Name != "my file.txt" {
+		t.Fatalf("quoted %q selected %q err %v", got, m.entries[m.selected].Name, err)
+	}
+
+	next, cmd = m.Update(previewKey(":"))
+	m = next.(model)
+	next, cmd = m.Update(previewKey("!> other.txt extra"))
+	m = next.(model)
+	next, cmd = m.Update(tui.KeyMsg{Type: tui.KeyEnter})
+	m = next.(model)
+	if cmd == nil || m.commanding {
+		t.Fatalf("extra words cmd %v commanding %v", cmd, m.commanding)
+	}
+	if _, err := os.Stat(filepath.Join(root, "other.txt")); !os.IsNotExist(err) {
+		t.Fatalf("extra words created a file: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(root, "hello.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	next, cmd = m.Update(previewKey(":"))
+	m = next.(model)
+	next, cmd = m.Update(previewKey("!>> hello.txt"))
+	m = next.(model)
+	next, cmd = m.Update(tui.KeyMsg{Type: tui.KeyEnter})
+	m = next.(model)
+	if cmd == nil || m.commanding {
+		t.Fatalf("append cmd %v commanding %v", cmd, m.commanding)
+	}
+	got, err = os.ReadFile(filepath.Join(root, "hello.txt"))
+	if err != nil || string(got) != "keep" {
+		t.Fatalf("append before shell %q err %v", got, err)
+	}
+
+	m = submitCommand(t, m, "mkdir notes")
+	m = submitCommand(t, m, "!> notes")
+	info, err := os.Stat(filepath.Join(root, "notes"))
+	if err != nil || !info.IsDir() || !strings.Contains(m.status, "directory") {
+		t.Fatalf("directory redirect status %q err %v", m.status, err)
+	}
+}
