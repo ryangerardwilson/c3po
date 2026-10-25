@@ -3,20 +3,50 @@ package app
 import "os"
 
 func (m *model) deleteCurrent() {
-	if len(m.entries) == 0 || m.selected < 0 || m.selected >= len(m.entries) {
+	paths := m.selectionPaths()
+	if len(paths) == 0 {
+		m.visual = false
 		m.status = "nothing to delete"
 		return
 	}
-	entry := m.entries[m.selected]
-	if err := os.RemoveAll(entry.Path); err != nil {
-		m.status = err.Error()
+	removed := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if err := os.RemoveAll(path); err != nil {
+			m.forgetClip(removed)
+			m.reload()
+			m.status = err.Error()
+			return
+		}
+		removed = append(removed, path)
+	}
+	m.forgetClip(removed)
+	label := pathNames(paths)
+	m.reload()
+	m.status = "deleted " + label
+}
+
+func (m *model) forgetClip(deleted []string) {
+	if !m.clipSet || len(deleted) == 0 {
 		return
 	}
-	if m.clipSet && dirInside(entry.Path, m.clipPath) {
-		m.clipSet = false
-		m.clipCut = false
-		m.clipPath = ""
+	kept := make([]string, 0, len(m.clipPaths))
+	for _, clip := range m.clipPaths {
+		if !clipRemoved(clip, deleted) {
+			kept = append(kept, clip)
+		}
 	}
-	m.reload()
-	m.status = "deleted " + entry.Name
+	if len(kept) == 0 {
+		m.clearClip()
+		return
+	}
+	m.clipPaths = kept
+}
+
+func clipRemoved(clip string, deleted []string) bool {
+	for _, path := range deleted {
+		if dirInside(path, clip) {
+			return true
+		}
+	}
+	return false
 }

@@ -74,7 +74,9 @@ type model struct {
 	commanding   bool
 	clipSet      bool
 	clipCut      bool
-	clipPath     string
+	clipPaths    []string
+	visual       bool
+	visualAt     int
 	deleteArmed  bool
 	marks        map[string]bool
 	status       string

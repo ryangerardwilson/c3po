@@ -215,14 +215,24 @@ func TestHelpDocumentsDotEntryToggle(t *testing.T) {
 	if !strings.Contains(help, "!                  touch, mkdir, or rm") {
 		t.Fatalf("help missing command prompt:\n%s", help)
 	}
-	if !strings.Contains(help, "x                  cut the current file or directory") || !strings.Contains(help, "p                  paste into this directory") {
+	if !strings.Contains(help, "x / y              cut or copy the current item or the visual range") || !strings.Contains(help, "p                  paste into this directory") {
 		t.Fatalf("help missing cut and paste:\n%s", help)
+	}
+	if !strings.Contains(help, "v                  select consecutive items") || !strings.Contains(help, "delete             delete the visual range") {
+		t.Fatalf("help missing visual mode:\n%s", help)
 	}
 	if strings.Contains(help, "wl-copy") {
 		t.Fatalf("help still copies paths with wl-copy:\n%s", help)
 	}
-	if !strings.Contains(help, "dd                 delete the current file or directory") {
+	if !strings.Contains(help, "dd                 delete the current item or the visual range") {
 		t.Fatalf("help missing delete:\n%s", help)
+	}
+	view := model{showHelp: true, height: 24, width: 80}.View()
+	if n := len(strings.Split(view, "\n")); n != 24 {
+		t.Fatalf("help view lines = %d\n%s", n, view)
+	}
+	if !strings.Contains(view, "select consecutive") || !strings.HasSuffix(strings.TrimRight(view, "\n"), "quit") {
+		t.Fatalf("help view dropped a key:\n%s", view)
 	}
 }
 

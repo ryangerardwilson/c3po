@@ -49,13 +49,16 @@ func TestHelpAndVersionDoNotStartApp(t *testing.T) {
 	if strings.Contains(Help, "upgrade") {
 		t.Fatal("help still lists upgrade")
 	}
-	if !strings.Contains(Help, "x                cut the current file or directory") || !strings.Contains(Help, "p                paste into the listed directory") {
+	if !strings.Contains(Help, "x                cut the current item or the visual range") || !strings.Contains(Help, "p                paste into the listed directory") {
 		t.Fatal("help missing cut and paste")
+	}
+	if !strings.Contains(Help, "v                select consecutive items") || !strings.Contains(Help, "delete           delete the visual range") {
+		t.Fatal("help missing visual mode")
 	}
 	if strings.Contains(Help, "wl-copy") {
 		t.Fatal("help still copies paths with wl-copy")
 	}
-	if !strings.Contains(Help, "dd               delete the current file or directory") {
+	if !strings.Contains(Help, "dd               delete the current item or the visual range") {
 		t.Fatal("help missing delete")
 	}
 

@@ -35,7 +35,7 @@ TBD - created by archiving change o-direct-path. Update Purpose after archive.
 - **AND** the text SHALL say `Use: c3po tui o reveal <path>`
 
 ### Requirement: The screen fills the terminal
-The navigator view SHALL contain one line for every row of the terminal. The title SHALL be the first line and the status line SHALL be the last line. The listing SHALL use the rows between the prompt line and the status line. A listing with fewer entries SHALL pad those rows so the status line stays on the last line. The listing SHALL NOT show a shortcut legend.
+The navigator view SHALL contain one line for every row of the terminal. The title SHALL be the first line. While the command line is closed, the status line SHALL be the last line. While the command line is open, the last line SHALL be the command line. The listing SHALL use the rows between the prompt line and the last line. A listing with fewer entries SHALL pad those rows so the last line stays at the bottom. The listing SHALL NOT show a shortcut legend.
 
 #### Scenario: A short directory fills the screen
 - **WHEN** the terminal is 24 rows
@@ -45,7 +45,7 @@ The navigator view SHALL contain one line for every row of the terminal. The tit
 - **AND** the view SHALL NOT contain `j/k move`
 
 ### Requirement: Bang runs touch, mkdir, or rm
-`!` SHALL open a command prompt. Enter SHALL run that line in the listed directory when the command is `touch`, `mkdir`, or `rm`. `mkdir` MAY take `-p`. Any other command or flag SHALL be refused and SHALL NOT run. Esc SHALL cancel the prompt without running a command. After a command runs, the listing SHALL reload.
+`!` SHALL open a command line on the last row. The command line SHALL show `!` followed by the text being typed, and SHALL NOT show that text on the prompt line under the title. Enter SHALL run that line in the listed directory when the command is `touch`, `mkdir`, or `rm`. `mkdir` MAY take `-p`. Any other command or flag SHALL be refused and SHALL NOT run. Esc SHALL cancel the command line without running a command. After a command runs, the listing SHALL reload and the status line SHALL be the last line again.
 
 #### Scenario: mkdir creates a directory
 - **WHEN** the operator presses `!`, types `mkdir notes`, and presses enter
@@ -57,8 +57,13 @@ The navigator view SHALL contain one line for every row of the terminal. The tit
 - **THEN** no command SHALL run
 - **AND** the directory notes SHALL remain
 
+#### Scenario: The command line is the last row
+- **WHEN** the operator presses `!` and types `mkdir notes`
+- **THEN** the last line SHALL contain `mkdir notes`
+- **AND** the line under the title SHALL NOT contain `mkdir notes`
+
 ### Requirement: Cut, copy, and paste
-`x` SHALL stage the current file or directory to move. `y` SHALL stage the current file or directory to copy. `p` SHALL place the staged item in the listed directory under the same name. A copy SHALL leave the source in place and SHALL stay staged. A cut SHALL remove the source and SHALL clear the stage. `p` SHALL refuse when nothing is staged, when the destination name exists, or when the paste would put a directory inside itself. `y` SHALL NOT send the path to `wl-copy`.
+When visual mode is off, `x` SHALL stage the current file or directory to move and `y` SHALL stage the current file or directory to copy. `p` SHALL place every staged item in the listed directory under its own name, in staged order. A copy SHALL leave each source in place and SHALL stay staged. A cut SHALL remove each source and SHALL clear the stage. `p` SHALL refuse when nothing is staged, when any destination name exists, when any staged path is missing, or when any paste would put a directory inside itself. A refused paste SHALL leave every source and every existing destination unchanged. `y` SHALL NOT send the path to `wl-copy`.
 
 #### Scenario: A file is copied into another directory
 - **WHEN** the operator presses `y` on a file and `p` in another directory
@@ -81,7 +86,7 @@ The navigator view SHALL contain one line for every row of the terminal. The tit
 - **THEN** the directory SHALL NOT contain a copy of itself
 
 ### Requirement: dd deletes the current item
-The first `d` SHALL arm deletion and SHALL show `d`. A second `d` SHALL delete the current file or directory and SHALL reload the listing. A directory SHALL be removed with its contents. A symlink SHALL be removed without removing its target. Esc SHALL cancel the arm. Any other key SHALL clear the arm and SHALL run as a normal motion. An empty listing SHALL leave the directory unchanged and SHALL report that there is nothing to delete. `d` typed into the filter or the command prompt SHALL NOT delete.
+When visual mode is off, the first `d` SHALL arm deletion and SHALL show `d`. A second `d` SHALL delete the current file or directory and SHALL reload the listing. A directory SHALL be removed with its contents. A symlink SHALL be removed without removing its target. Esc SHALL cancel the arm. Any other key SHALL clear the arm and SHALL run as a normal motion. An empty listing SHALL leave the directory unchanged and SHALL report that there is nothing to delete. `d` typed into the filter or the command prompt SHALL NOT delete. When visual mode is on, the second `d` SHALL delete every file and directory in the visual range and SHALL leave visual mode.
 
 #### Scenario: dd deletes a file
 - **WHEN** the operator presses `dd` on a file
@@ -100,4 +105,61 @@ The first `d` SHALL arm deletion and SHALL show `d`. A second `d` SHALL delete t
 #### Scenario: Esc cancels the arm
 - **WHEN** the operator presses `d` and then Esc
 - **THEN** the current file SHALL remain
+
+#### Scenario: dd deletes the visual range
+- **WHEN** visual mode covers two files
+- **AND** the operator presses `dd`
+- **THEN** both files SHALL be gone
+- **AND** visual mode SHALL be off
+
+### Requirement: Visual range
+`v` SHALL toggle visual mode. The first `v` on a row SHALL anchor the range on that row and the status SHALL be `visual 1`. Motion keys SHALL move the cursor and SHALL extend the range through every listing row between the anchor and the cursor. The range SHALL stay inside the listing and SHALL NOT wrap. Each row in the range SHALL be highlighted, and the cursor row SHALL keep its cursor marker. A second `v` SHALL leave visual mode and SHALL leave every file in place. Esc SHALL leave visual mode and SHALL leave every file in place. `h` SHALL leave visual mode. The Delete key SHALL delete every file and directory in the range, SHALL leave visual mode, and SHALL NOT delete when visual mode is off. `x` SHALL stage the range to move, in listing order, and SHALL leave visual mode. `y` SHALL stage the range to copy, in listing order, and SHALL leave visual mode. `v` or the Delete key typed into the filter or the command prompt SHALL NOT enter visual mode and SHALL NOT delete. An empty listing SHALL leave visual mode off. The shortcut list and `c3po tui o help` SHALL name `v` and the Delete key.
+
+#### Scenario: A range is highlighted
+- **WHEN** the operator presses `v` on the first of three files and then `j` twice
+- **THEN** those three files SHALL be highlighted
+- **AND** the status SHALL be `visual 3`
+
+#### Scenario: v again clears the range
+- **WHEN** the operator presses `v` and then `v` again
+- **THEN** visual mode SHALL be off
+- **AND** the file SHALL remain
+
+#### Scenario: The range does not wrap
+- **WHEN** the operator presses `v` on the first file and then `k`
+- **THEN** the selection SHALL stay on the first file
+- **AND** the status SHALL be `visual 1`
+
+#### Scenario: Delete removes the range
+- **WHEN** the operator selects two files with `v` and `j` and presses Delete
+- **THEN** both files SHALL be gone
+- **AND** the other files SHALL remain
+- **AND** visual mode SHALL be off
+
+#### Scenario: Delete does nothing outside visual mode
+- **WHEN** visual mode is off and the operator presses Delete
+- **THEN** the current file SHALL remain
+
+#### Scenario: y copies the range
+- **WHEN** the operator selects two files and presses `y`, then `p` in another directory
+- **THEN** that directory SHALL contain both files
+- **AND** both sources SHALL remain
+- **AND** the stage SHALL remain
+
+#### Scenario: x cuts the range
+- **WHEN** the operator selects two files and presses `x`, then `p` in another directory
+- **THEN** that directory SHALL contain both files
+- **AND** both sources SHALL be gone
+- **AND** the stage SHALL be clear
+
+#### Scenario: One existing name refuses the paste
+- **WHEN** the operator has staged two names and the listed directory already contains one of them
+- **AND** the operator presses `p`
+- **THEN** no staged item SHALL be added
+- **AND** every source SHALL remain
+
+#### Scenario: v in the filter is text
+- **WHEN** the operator is typing a filter and presses `v`
+- **THEN** visual mode SHALL stay off
+- **AND** the filter text SHALL contain `v`
 

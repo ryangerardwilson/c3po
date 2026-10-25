@@ -10,75 +10,99 @@ import (
 )
 
 func (m *model) stageClip(cut bool) {
-	if len(m.entries) == 0 {
+	paths := m.selectionPaths()
+	if len(paths) == 0 {
 		m.status = "nothing to copy"
 		if cut {
 			m.status = "nothing to cut"
 		}
 		return
 	}
-	entry := m.entries[m.selected]
 	m.clipSet = true
 	m.clipCut = cut
-	m.clipPath = entry.Path
-	m.status = "copied " + entry.Name
+	m.clipPaths = append([]string(nil), paths...)
+	m.visual = false
+	verb := "copied "
 	if cut {
-		m.status = "cut " + entry.Name
+		verb = "cut "
 	}
+	m.status = verb + pathNames(paths)
 }
 
 func (m *model) pasteClip() {
-	if !m.clipSet || m.clipPath == "" {
+	if !m.clipSet || len(m.clipPaths) == 0 {
 		m.status = "nothing to paste"
 		return
 	}
-	info, err := os.Lstat(m.clipPath)
-	if err != nil {
-		m.status = "path not found"
-		return
+	dsts := make([]string, 0, len(m.clipPaths))
+	for _, src := range m.clipPaths {
+		info, err := os.Lstat(src)
+		if err != nil {
+			m.status = "path not found"
+			return
+		}
+		name := filepath.Base(src)
+		dst := filepath.Join(m.currentDir, name)
+		if samePath(src, dst) {
+			m.status = name + " is already here"
+			return
+		}
+		if _, err := os.Lstat(dst); err == nil {
+			m.status = name + " exists"
+			return
+		}
+		if info.IsDir() && dirInside(src, m.currentDir) {
+			m.status = "cannot paste a directory into itself"
+			return
+		}
+		dsts = append(dsts, dst)
 	}
-	name := filepath.Base(m.clipPath)
-	dst := filepath.Join(m.currentDir, name)
-	if samePath(m.clipPath, dst) {
-		m.status = name + " is already here"
-		return
+	label := pathNames(m.clipPaths)
+	for i, src := range m.clipPaths {
+		var err error
+		if m.clipCut {
+			err = movePath(src, dsts[i])
+		} else {
+			err = copyTree(src, dsts[i])
+		}
+		if err != nil {
+			m.status = err.Error()
+			m.reload()
+			return
+		}
 	}
-	if _, err := os.Lstat(dst); err == nil {
-		m.status = name + " exists"
-		return
-	}
-	if info.IsDir() && dirInside(m.clipPath, m.currentDir) {
-		m.status = "cannot paste a directory into itself"
-		return
-	}
+	last := dsts[len(dsts)-1]
 	if m.clipCut {
-		err = movePath(m.clipPath, dst)
-	} else {
-		err = copyTree(m.clipPath, dst)
-	}
-	if err != nil {
-		m.status = err.Error()
-		return
-	}
-	if m.clipCut {
-		m.clipSet = false
-		m.clipPath = ""
-		m.clipCut = false
+		m.clearClip()
 	}
 	m.reload()
-	m.selectPath(dst)
-	m.status = "pasted " + name
+	m.selectPath(last)
+	m.status = "pasted " + label
+}
+
+func (m *model) clearClip() {
+	m.clipSet = false
+	m.clipCut = false
+	m.clipPaths = nil
 }
 
 func (m model) clipLabel() string {
-	if !m.clipSet || m.clipPath == "" {
+	if !m.clipSet || len(m.clipPaths) == 0 {
 		return ""
 	}
 	verb := "copy"
 	if m.clipCut {
 		verb = "cut"
 	}
-	return verb + " " + filepath.Base(m.clipPath)
+	return verb + " " + pathNames(m.clipPaths)
+}
+
+func pathNames(paths []string) string {
+	names := make([]string, len(paths))
+	for i, path := range paths {
+		names[i] = filepath.Base(path)
+	}
+	return strings.Join(names, ", ")
 }
 
 func dirInside(parent, child string) bool {

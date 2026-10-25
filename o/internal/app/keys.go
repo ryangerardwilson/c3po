@@ -35,6 +35,7 @@ var browseKeys = map[string]keyHandler{
 	"_":      keyShallower,
 	".":      keyDots,
 	"m":      keyMark,
+	"v":      keyVisual,
 	"x":      keyCut,
 	"y":      keyCopy,
 	"p":      keyPaste,
@@ -59,6 +60,7 @@ func (m model) updateKey(msg tui.KeyMsg) (tui.Model, tui.Cmd) {
 			return m.withAnimation(m, nil, animationGeneration, watchGeneration)
 		}
 		if key == "esc" {
+			m.visual = false
 			m.status = ""
 			return m, nil
 		}
@@ -69,6 +71,18 @@ func (m model) updateKey(msg tui.KeyMsg) (tui.Model, tui.Cmd) {
 	}
 	if key == "?" || m.showHelp {
 		return m.helpKey(key), nil
+	}
+	if msg.Type == tui.KeyDelete {
+		if !m.visual {
+			return m, nil
+		}
+		m.deleteCurrent()
+		return m.withAnimation(m, nil, animationGeneration, watchGeneration)
+	}
+	if key == "esc" && m.visual {
+		m.visual = false
+		m.status = ""
+		return m, nil
 	}
 	handler, ok := browseKeys[key]
 	if !ok {
@@ -149,7 +163,7 @@ func keyCommand(m model) (model, tui.Cmd) {
 	m.filtering = false
 	m.commanding = true
 	m.input = ""
-	m.status = "touch, mkdir, or rm"
+	m.status = ""
 	return m, nil
 }
 
@@ -229,6 +243,22 @@ func keyDots(m model) (model, tui.Cmd) {
 
 func keyMark(m model) (model, tui.Cmd) {
 	m.toggleMark()
+	return m, nil
+}
+
+func keyVisual(m model) (model, tui.Cmd) {
+	if m.visual {
+		m.visual = false
+		m.status = ""
+		return m, nil
+	}
+	if len(m.entries) == 0 || m.selected < 0 || m.selected >= len(m.entries) {
+		m.status = "nothing to select"
+		return m, nil
+	}
+	m.visual = true
+	m.visualAt = m.selected
+	m.status = m.visualStatus()
 	return m, nil
 }
 

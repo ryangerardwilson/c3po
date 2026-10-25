@@ -14,6 +14,18 @@ func (m *model) move(delta int) {
 	if len(m.entries) == 0 {
 		return
 	}
+	if m.visual {
+		next := m.selected + delta
+		if next < 0 {
+			next = 0
+		}
+		if next >= len(m.entries) {
+			next = len(m.entries) - 1
+		}
+		m.selected = next
+		m.status = m.visualStatus()
+		return
+	}
 	m.selected = (m.selected + delta + len(m.entries)) % len(m.entries)
 }
 

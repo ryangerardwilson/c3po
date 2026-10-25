@@ -114,6 +114,39 @@ func TestBangEscCancels(t *testing.T) {
 	}
 }
 
+func TestBangCommandLineIsTheLastRow(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(Config{StartDir: root, Mode: ModeBrowse})
+	m.height = 24
+	m.width = 80
+	m.animationActive = false
+	m.status = "ready"
+	next, _ := m.Update(previewKey("!"))
+	m = next.(model)
+	lines := strings.Split(m.View(), "\n")
+	if len(lines) != 24 || !strings.Contains(lines[len(lines)-1], "touch, mkdir, or rm") {
+		t.Fatalf("open last = %q lines %d", lines[len(lines)-1], len(lines))
+	}
+	if strings.Contains(lines[1], "touch") {
+		t.Fatalf("prompt = %q", lines[1])
+	}
+	next, _ = m.Update(previewKey("mkdir notes"))
+	m = next.(model)
+	lines = strings.Split(m.View(), "\n")
+	if len(lines) != 24 || !strings.Contains(lines[len(lines)-1], "! mkdir notes|") {
+		t.Fatalf("last = %q", lines[len(lines)-1])
+	}
+	if strings.Contains(lines[1], "mkdir") || strings.Contains(lines[1], "!") {
+		t.Fatalf("prompt = %q", lines[1])
+	}
+	if !strings.Contains(strings.Join(lines, "\n"), "a.txt") {
+		t.Fatal("listing hidden")
+	}
+}
+
 func submitCommand(t *testing.T, m model, line string) model {
 	t.Helper()
 	next, _ := m.Update(previewKey("!"))

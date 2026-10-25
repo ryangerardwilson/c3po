@@ -60,10 +60,12 @@ keys:
   .                show or hide dot entries (hidden by default)
   = / -            increase or decrease the nesting preview depth
   m                mark or unmark the current item
-  x                cut the current file or directory
-  y                copy the current file or directory
+  v                select consecutive items
+  x                cut the current item or the visual range
+  y                copy the current item or the visual range
   p                paste into the listed directory
-  dd               delete the current file or directory
+  delete           delete the visual range
+  dd               delete the current item or the visual range
   n                cd the invoking shell into the current directory and exit
   ~                home directory
   ?                toggle the key help
@@ -74,17 +76,19 @@ line count relative to the largest text file shown. The listing is polled
 every 500ms, so outside creations, deletions, renames, and edits appear on
 their own.
 
-! asks for one command, touch, mkdir, or rm, and runs it in the listed
-directory. mkdir may take -p. Esc cancels the prompt.
+! opens a command line on the last row. It runs touch, mkdir, or rm in
+the listed directory. mkdir may take -p. Esc cancels the command line.
 
-x cuts the current file or directory. y copies it. p pastes that item
-into the listed directory under the same name. A copy stays staged. A
-cut is cleared after it lands. A name that already exists is left
-alone, and a directory is not pasted into itself.
+v selects consecutive items. j and k extend that range. v again, or
+Esc, clears it. delete removes the range. x cuts the current item, or
+the range while visual mode is on. y copies it the same way. p pastes
+every staged item into the listed directory under its own name. A copy
+stays staged. A cut is cleared after it lands. An existing name refuses
+the whole paste, and a directory is not pasted into itself.
 
-dd deletes the current file or directory. The first d arms the chord
-and shows d. Esc cancels it. Any other key clears the arm and runs as
-a normal motion.
+dd deletes the current file or directory. While visual mode is on, dd
+deletes the range. The first d arms the chord and shows d. Esc cancels
+it. Any other key clears the arm and runs as a normal motion.
 
 Shell cd handoff: when O_SHELL_CD_FILE names a file, enter and n write the
 chosen directory to it, so a shell wrapper can cd there after exit.

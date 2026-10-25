@@ -153,6 +153,7 @@ func (m *model) selectPath(path string) {
 }
 
 func (m *model) reload() {
+	m.clearVisual()
 	m.entries = fsnav.List(m.currentDir, m.filter, m.showHidden)
 	if m.selected >= len(m.entries) {
 		m.selected = max(0, len(m.entries)-1)

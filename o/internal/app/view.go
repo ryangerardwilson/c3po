@@ -64,7 +64,7 @@ func (m model) View() string {
 		rows = append(rows, "")
 	}
 	lines = append(lines, rows...)
-	lines = append(lines, statusStyle.Render(m.status))
+	lines = append(lines, m.bottomLine())
 	return strings.Join(lines, "\n")
 }
 
@@ -77,8 +77,6 @@ func (m model) frameLines() int {
 
 func (m model) promptLine() string {
 	switch {
-	case m.commanding:
-		return statusStyle.Render("! " + m.input)
 	case m.filtering:
 		return statusStyle.Render("/ " + m.input)
 	default:
@@ -87,6 +85,32 @@ func (m model) promptLine() string {
 		}
 		return ""
 	}
+}
+
+func (m model) bottomLine() string {
+	if m.commanding {
+		return statusStyle.Render(m.commandLine())
+	}
+	return statusStyle.Render(m.status)
+}
+
+func (m model) commandLine() string {
+	body := "! " + m.input + "|"
+	if m.input == "" {
+		body += "  touch, mkdir, or rm"
+	}
+	return fitTail(body, m.width)
+}
+
+func fitTail(value string, limit int) string {
+	runes := []rune(value)
+	if limit <= 0 || len(runes) <= limit {
+		return value
+	}
+	if limit == 1 {
+		return string(runes[len(runes)-1:])
+	}
+	return "…" + string(runes[len(runes)-(limit-1):])
 }
 
 func padLines(view string, n int) string {
@@ -163,7 +187,7 @@ func (m model) rootRow(row fsnav.PreviewRow, phase, maxTextLines, textCount int)
 	}
 	label := truncateMiddle(entry.Name+dirSuffix(entry), m.width-3)
 	labelStyle := textLabelStyle(entry, maxTextLines, textCount)
-	if !selected {
+	if !selected && !m.rowInVisual(row.RootIndex) {
 		return prefix + labelStyle.Render(label)
 	}
 	rowStyle := selectedStyle
@@ -184,8 +208,7 @@ func (m model) renderHelp() string {
 	lines := []string{
 		titleStyle.Render("o help"),
 		"",
-		"Listings reveal with the same staged cascade as l.",
-		"Text labels brighten by relative line count, as in l.",
+		"Listings use a staged cascade. Text brightens by relative line count.",
 		"Structure is polled every 500ms and can be reloaded manually.",
 		"",
 		"j/k or arrows      move",
@@ -198,10 +221,11 @@ func (m model) renderHelp() string {
 		"= / -              increase or decrease nesting preview depth",
 		"r                  reload the active listing immediately",
 		"m                  mark/unmark current item",
-		"x                  cut the current file or directory",
-		"y                  copy the current file or directory",
+		"v                  select consecutive items",
+		"x / y              cut or copy the current item or the visual range",
 		"p                  paste into this directory",
-		"dd                 delete the current file or directory",
+		"delete             delete the visual range",
+		"dd                 delete the current item or the visual range",
 		"n                  shell-cd handoff when O_SHELL_CD_FILE is set",
 		"~                  home directory",
 		"?                  toggle help",
