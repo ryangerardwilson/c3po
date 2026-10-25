@@ -1,22 +1,16 @@
 package gmail
 
 import (
-	"errors"
 	"fmt"
 	"strings"
-	"testing"
 
-	"github.com/ryangerardwilson/c3po/gmail/internal/config"
 	"github.com/ryangerardwilson/c3po/gmail/internal/errs"
+	"github.com/ryangerardwilson/c3po/gmail/internal/spam"
 )
 
-const (
-	clickupSenders = "@clickup.com,@mail.clickup.com,@tasks.clickup.com"
-	unreadQuery    = "is:unread -in:sent"
-	minAction      = 0.8
-	minDisposable  = 0.9
-)
+const unreadQuery = "is:unread -in:sent"
 
+// tidy trashes mail that matches each preset's spam list.
 func (e Env) tidy() (int, error) {
 	app, err := e.load()
 	if err != nil {
@@ -25,152 +19,51 @@ func (e Env) tidy() (int, error) {
 	if len(app.Presets) == 0 {
 		return 0, errs.Usage("No configured presets found.")
 	}
-	clickup := config.NormalizeSpamSenderList(csv(clickupSenders))
+	trashed := 0
 	for _, preset := range app.Presets {
-		acct := app.Accounts[preset]
-		merged := mergeUnique(acct.SpamSenders, clickup)
-		if err := config.UpdateSpamSenders(app.Path, preset, merged); err != nil {
+		n, err := e.cleanAccount(app.Accounts[preset], true)
+		if err != nil {
 			return 0, err
 		}
+		trashed += n
 	}
-	if _, err := e.spamCleanAll(); err != nil {
-		return 0, err
-	}
-	app, err = e.load()
+	fmt.Fprintf(e.Stdout, "gmail tidy complete: presets=%d trashed=%d\n", len(app.Presets), trashed)
+	return 0, nil
+}
+
+// tidyAudit lists unread senders that are not already spam, busiest first.
+func (e Env) tidyAudit() (int, error) {
+	app, err := e.load()
 	if err != nil {
 		return 0, err
 	}
-	services := map[string]Service{}
-	var briefs []mailBrief
+	if len(app.Presets) == 0 {
+		return 0, errs.Usage("No configured presets found.")
+	}
+	senders := 0
 	for _, preset := range app.Presets {
 		acct := app.Accounts[preset]
 		svc, err := e.service(acct)
 		if err != nil {
 			return 0, err
 		}
-		services[preset] = svc
 		msgs, err := svc.List(unreadQuery, 0)
 		if err != nil {
 			return 0, err
 		}
+		counts := map[string]int{}
 		for _, msg := range msgs {
-			row := summarize(msg, app.TimezoneOffset, true)
-			from := row.FromEmail
+			from := strings.ToLower(strings.TrimSpace(summarize(msg, app.TimezoneOffset, true).FromEmail))
 			if from == "" {
-				from = strings.ToLower(strings.TrimSpace(row.From))
+				continue
 			}
-			snippet := row.Snippet
-			if snippet == "" {
-				snippet = row.Subject
-			}
-			briefs = append(briefs, mailBrief{
-				Preset: preset, ID: msg.ID, From: from, Subject: row.Subject, Snippet: snippet,
-			})
+			counts[from]++
+		}
+		for _, item := range spam.Rank(counts, acct.SpamSenders, acct.SpamExcludes) {
+			fmt.Fprintf(e.Stdout, "%s\t%s\tunread=%d\n", preset, item.Sender, item.Unread)
+			senders++
 		}
 	}
-	presets := len(app.Presets)
-	if len(briefs) == 0 {
-		fmt.Fprintf(e.Stdout, "gmail tidy complete: presets=%d unread=0 trashed=0 marked_read=0 spam_added=0 left=0\n", presets)
-		return 0, nil
-	}
-	verdicts, err := e.decide(briefs)
-	if err != nil {
-		return 0, err
-	}
-	trashed, marked, left := 0, 0, 0
-	disposable := map[string][]string{}
-	seenFrom := map[string]bool{}
-	for _, brief := range briefs {
-		verdict := verdicts[mailKey(brief.Preset, brief.ID)]
-		if verdict.Action == "" {
-			verdict.Action = "keep"
-		}
-		switch {
-		case verdict.Action == "trash" && verdict.Confidence >= minAction:
-			if err := services[brief.Preset].TrashOne(brief.ID); err != nil {
-				return 0, err
-			}
-			trashed++
-			if verdict.Disposable >= minDisposable && brief.From != "" {
-				key := brief.Preset + "\x1f" + brief.From
-				if !seenFrom[key] {
-					seenFrom[key] = true
-					disposable[brief.Preset] = append(disposable[brief.Preset], brief.From)
-				}
-			}
-		case verdict.Action == "read" && verdict.Confidence >= minAction:
-			if _, _, err := services[brief.Preset].Modify(brief.ID, nil, []string{"UNREAD"}); err != nil {
-				return 0, err
-			}
-			marked++
-		default:
-			left++
-		}
-	}
-	app, err = e.load()
-	if err != nil {
-		return 0, err
-	}
-	added := 0
-	for _, preset := range app.Presets {
-		froms := disposable[preset]
-		if len(froms) == 0 {
-			continue
-		}
-		n, err := e.addSpam(app, preset, froms)
-		if err != nil {
-			return 0, err
-		}
-		added += n
-		app, err = e.load()
-		if err != nil {
-			return 0, err
-		}
-	}
-	if added > 0 {
-		if _, err := e.spamCleanAll(); err != nil {
-			return 0, err
-		}
-	}
-	fmt.Fprintf(e.Stdout, "gmail tidy complete: presets=%d unread=%d trashed=%d marked_read=%d spam_added=%d left=%d\n", presets, len(briefs), trashed, marked, added, left)
+	fmt.Fprintf(e.Stdout, "gmail tidy audit complete: presets=%d senders=%d\n", len(app.Presets), senders)
 	return 0, nil
-}
-
-func (e Env) addSpam(app *config.App, preset string, froms []string) (int, error) {
-	acct := app.Accounts[preset]
-	items := config.NormalizeSpamSenderList(froms)
-	if len(items) == 0 {
-		return 0, nil
-	}
-	have := map[string]bool{}
-	for _, sender := range acct.SpamSenders {
-		have[sender] = true
-	}
-	n := 0
-	for _, sender := range items {
-		if !have[sender] {
-			n++
-		}
-	}
-	if err := config.UpdateSpamSenders(app.Path, preset, mergeUnique(acct.SpamSenders, items)); err != nil {
-		return 0, err
-	}
-	return n, nil
-}
-
-func (e Env) decide(mail []mailBrief) (map[string]mailVerdict, error) {
-	if e.Decide != nil {
-		return e.Decide(mail)
-	}
-	if testing.Testing() {
-		return nil, fmt.Errorf("grok is required to classify unread mail")
-	}
-	out, err := classifyMail(nil, mail)
-	if err != nil {
-		if errors.Is(err, errGrokMissing) {
-			return nil, fmt.Errorf("grok is required to classify unread mail")
-		}
-		return nil, err
-	}
-	return out, nil
 }

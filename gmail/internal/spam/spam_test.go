@@ -13,7 +13,15 @@ func TestCandidatesAndGroups(t *testing.T) {
 	}
 	senders := CleanupSenders([]string{"spam@evil.test", "@clickup.com"}, []string{"spam@evil.test"})
 	groups := Groups(senders, 25)
-	if len(groups) != 2 || Query(groups[0]) != "from:clickup.com" || Query(groups[1]) != "from:mail.clickup.com" {
-		t.Fatalf("%v %q", groups, Query(groups[0]))
+	if len(groups) != 1 || Query(groups[0]) != "from:clickup.com" {
+		t.Fatalf("%v", groups)
+	}
+	plain := CleanupSenders([]string{"spam@evil.test"}, nil)
+	if len(plain) != 1 || plain[0] != "spam@evil.test" {
+		t.Fatalf("plain %v", plain)
+	}
+	ranked := Rank(map[string]int{"b@bulk.test": 1, "a@bulk.test": 3, "spam@evil.test": 9}, []string{"spam@evil.test"}, nil)
+	if len(ranked) != 2 || ranked[0].Sender != "a@bulk.test" || ranked[0].Unread != 3 || ranked[1].Sender != "b@bulk.test" {
+		t.Fatalf("rank %v", ranked)
 	}
 }

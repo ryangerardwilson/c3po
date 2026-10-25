@@ -27,8 +27,11 @@ func (e Env) dispatch(args []string) (int, error) {
 		}
 		return e.spamCleanAll()
 	case "tidy":
+		if len(args) == 2 && args[1] == "audit" {
+			return e.tidyAudit()
+		}
 		if len(args) != 1 {
-			return 0, errs.Usage("Use: c3po gmail tidy")
+			return 0, errs.Usage("Use: c3po gmail tidy | c3po gmail tidy audit")
 		}
 		return e.tidy()
 	case "delete":

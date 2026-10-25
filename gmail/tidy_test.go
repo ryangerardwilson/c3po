@@ -7,112 +7,89 @@ import (
 	"testing"
 
 	"github.com/ryangerardwilson/c3po/gmail/internal/api"
-	"github.com/ryangerardwilson/c3po/gmail/internal/config"
 )
 
-func TestTidyNoUnreadSkipsDecisions(t *testing.T) {
-	e, _ := tidyEnv(t, nil)
-	called := false
-	e.Decide = func([]mailBrief) (map[string]mailVerdict, error) {
-		called = true
-		return nil, nil
-	}
-	var out, err bytes.Buffer
-	e.Stdout, e.Stderr = &out, &err
-	if code := e.runCode([]string{"tidy"}); code != 0 {
-		t.Fatalf("tidy %d %s", code, err.String())
-	}
-	if called {
-		t.Fatal("decisions ran with no unread mail")
-	}
-	if !strings.Contains(out.String(), "gmail tidy complete: presets=2 unread=0 trashed=0 marked_read=0 spam_added=0 left=0") {
-		t.Fatalf("summary %s", out.String())
-	}
-	body := readConfig(t, e)
-	for _, domain := range []string{"@clickup.com", "@mail.clickup.com", "@tasks.clickup.com"} {
-		if !strings.Contains(body, domain) {
-			t.Fatalf("missing %s in %s", domain, body)
-		}
-	}
-}
-
-func TestTidyMissingGrokLeavesMail(t *testing.T) {
-	e, boxes := tidyEnv(t, []api.Message{{
-		ID: "m1", Headers: map[string]string{"from": "Promo <promo@bulk.test>", "subject": "Sale"}, Snippet: "50% off",
-	}})
-	var out, err bytes.Buffer
-	e.Stdout, e.Stderr = &out, &err
-	code := e.runCode([]string{"tidy"})
-	if code != 1 || !strings.Contains(err.String(), "grok is required to classify unread mail") {
-		t.Fatalf("missing grok %d %s", code, err.String())
-	}
-	if len(boxes["1"].ones) != 0 || len(boxes["1"].reads) != 0 {
-		t.Fatalf("mail changed ones=%v reads=%v", boxes["1"].ones, boxes["1"].reads)
-	}
-}
-
-func TestTidyAppliesVerdicts(t *testing.T) {
-	msgs := []api.Message{
-		{ID: "t1", Headers: map[string]string{"from": "Promo <promo@bulk.test>", "subject": "Sale"}, Snippet: "50% off"},
-		{ID: "r1", Headers: map[string]string{"from": "Billing <bill@shop.test>", "subject": "Receipt"}, Snippet: "thanks for your order"},
-		{ID: "k1", Headers: map[string]string{"from": "Ada <ada@example.com>", "subject": "Hello"}, Snippet: "are you free"},
-		{ID: "u1", Headers: map[string]string{"from": "Maybe <maybe@bulk.test>", "subject": "Offer"}, Snippet: "limited"},
-	}
-	e, boxes := tidyEnv(t, msgs)
-	e.Decide = func(mail []mailBrief) (map[string]mailVerdict, error) {
-		if len(mail) != 4 {
-			t.Fatalf("briefs %d", len(mail))
-		}
-		return map[string]mailVerdict{
-			mailKey("1", "t1"): {Action: "trash", Confidence: 0.95, Disposable: 0.97},
-			mailKey("1", "r1"): {Action: "read", Confidence: 0.91},
-			mailKey("1", "k1"): {Action: "keep", Confidence: 0.99, Disposable: 0.99},
-			mailKey("1", "u1"): {Action: "trash", Confidence: 0.4, Disposable: 0.99},
-		}, nil
-	}
-	var out, err bytes.Buffer
-	e.Stdout, e.Stderr = &out, &err
-	if code := e.runCode([]string{"tidy"}); code != 0 {
-		t.Fatalf("tidy %d %s %s", code, out.String(), err.String())
-	}
-	if strings.Join(boxes["1"].ones, ",") != "t1" {
-		t.Fatalf("trashed %v", boxes["1"].ones)
-	}
-	if strings.Join(boxes["1"].reads, ",") != "r1" {
-		t.Fatalf("reads %v", boxes["1"].reads)
-	}
-	if !strings.Contains(out.String(), "gmail tidy complete: presets=2 unread=4 trashed=1 marked_read=1 spam_added=1 left=2") {
-		t.Fatalf("summary %s", out.String())
-	}
-	body := readConfig(t, e)
-	if !strings.Contains(body, "promo@bulk.test") || strings.Contains(body, "ada@example.com") || strings.Contains(body, "maybe@bulk.test") {
-		t.Fatalf("senders %s", body)
-	}
-}
-
-func tidyEnv(t *testing.T, msgs []api.Message) (Env, map[string]*fakeBox) {
-	t.Helper()
-	e := testEnv(t, nil)
-	boxes := map[string]*fakeBox{}
-	e.Box = func(acct config.Account) (Service, error) {
-		box := boxes[acct.Preset]
-		if box == nil {
-			box = &fakeBox{}
-			if acct.Preset == "1" && msgs != nil {
-				box.lists = map[string][]api.Message{unreadQuery: msgs}
-			}
-			boxes[acct.Preset] = box
-		}
-		return box, nil
-	}
-	return e, boxes
-}
-
-func readConfig(t *testing.T, e Env) string {
-	t.Helper()
-	body, err := os.ReadFile(e.paths().ConfigPath())
+func TestTidyTrashesConfiguredSpam(t *testing.T) {
+	box := &fakeBox{ids: map[string][]string{"from:spam@evil.test": {"m3"}}}
+	e := testEnv(t, box)
+	before, err := os.ReadFile(e.paths().ConfigPath())
 	if err != nil {
 		t.Fatal(err)
 	}
-	return string(body)
+	var out, errb bytes.Buffer
+	e.Stdout, e.Stderr = &out, &errb
+	if code := e.runCode([]string{"tidy"}); code != 0 {
+		t.Fatalf("tidy %d %s %s", code, out.String(), errb.String())
+	}
+	if strings.Join(box.trashed, ",") != "m3,m3" {
+		t.Fatalf("trashed %v", box.trashed)
+	}
+	if len(box.ones) != 0 || len(box.reads) != 0 {
+		t.Fatalf("ones %v reads %v", box.ones, box.reads)
+	}
+	if !strings.Contains(out.String(), "gmail tidy complete: presets=2 trashed=2") {
+		t.Fatalf("summary %s", out.String())
+	}
+	if strings.Contains(out.String(), "clickup") || strings.Contains(strings.Join(box.queries, "\n"), "clickup") {
+		t.Fatalf("hardcoded query %s queries %v", out.String(), box.queries)
+	}
+	after, err := os.ReadFile(e.paths().ConfigPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("config changed\n%s", after)
+	}
+}
+
+func TestTidyLeavesUnlistedMail(t *testing.T) {
+	box := &fakeBox{ids: map[string][]string{"from:other@bulk.test": {"m9"}}}
+	out, err, code := run(t, box, []string{"tidy"})
+	if code != 0 {
+		t.Fatalf("tidy %d %s %s", code, out, err)
+	}
+	if len(box.trashed) != 0 || strings.Contains(strings.Join(box.queries, "\n"), "clickup") {
+		t.Fatalf("trashed %v queries %v", box.trashed, box.queries)
+	}
+	if !strings.Contains(out, "gmail tidy complete: presets=2 trashed=0") {
+		t.Fatalf("summary %s", out)
+	}
+}
+
+func TestTidyAuditRanksUnreadSenders(t *testing.T) {
+	msgs := []api.Message{
+		{ID: "a1", Headers: map[string]string{"from": "A <a@bulk.test>"}},
+		{ID: "a2", Headers: map[string]string{"from": "A <a@bulk.test>"}},
+		{ID: "a3", Headers: map[string]string{"from": "A <a@bulk.test>"}},
+		{ID: "b1", Headers: map[string]string{"from": "B <b@bulk.test>"}},
+		{ID: "s1", Headers: map[string]string{"from": "Spam <spam@evil.test>"}},
+		{ID: "s2", Headers: map[string]string{"from": "Spam <spam@evil.test>"}},
+		{ID: "blank", Headers: map[string]string{"from": "nobody"}},
+	}
+	box := &fakeBox{lists: map[string][]api.Message{unreadQuery: msgs}}
+	out, err, code := run(t, box, []string{"tidy", "audit"})
+	if code != 0 {
+		t.Fatalf("audit %d %s %s", code, out, err)
+	}
+	if len(box.trashed) != 0 || len(box.ones) != 0 {
+		t.Fatalf("audit changed mail trashed %v ones %v", box.trashed, box.ones)
+	}
+	a := strings.Index(out, "1\ta@bulk.test\tunread=3")
+	b := strings.Index(out, "1\tb@bulk.test\tunread=1")
+	if a < 0 || b < 0 || a > b {
+		t.Fatalf("order %s", out)
+	}
+	if strings.Contains(out, "spam@evil.test") {
+		t.Fatalf("listed sender leaked %s", out)
+	}
+	if !strings.Contains(out, "gmail tidy audit complete: presets=2 senders=4") {
+		t.Fatalf("summary %s", out)
+	}
+}
+
+func TestTidyAuditRejectsExtraArgs(t *testing.T) {
+	_, err, code := run(t, &fakeBox{}, []string{"tidy", "now"})
+	if code != 2 || !strings.Contains(err, "c3po gmail tidy") {
+		t.Fatalf("usage %d %s", code, err)
+	}
 }

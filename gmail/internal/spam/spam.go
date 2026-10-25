@@ -3,9 +3,6 @@ package spam
 
 import "strings"
 
-// AlwaysDomains are trashed on every clean even when the config omits them.
-var AlwaysDomains = []string{"@clickup.com", "@mail.clickup.com"}
-
 // Count is one sender and its unread count.
 type Count struct {
 	Sender string
@@ -37,23 +34,18 @@ func excludedSender(sender, presetDomain string) bool {
 	return presetDomain != "" && strings.HasSuffix(lower, "@"+presetDomain)
 }
 
-// WithAlways appends the always-spam domains that are not already listed.
-func WithAlways(senders []string) []string {
-	seen := map[string]bool{}
-	for _, item := range senders {
-		item = strings.ToLower(strings.TrimSpace(item))
-		if item != "" {
-			seen[item] = true
+// Rank returns senders that are not already spam or excluded, highest count first.
+func Rank(counts map[string]int, existing, excludes []string) []Count {
+	blocked := setOf(append(append([]string{}, existing...), excludes...))
+	var selected []Count
+	for sender, n := range counts {
+		if n <= 0 || inTargets(sender, blocked) {
+			continue
 		}
+		selected = append(selected, Count{Sender: sender, Unread: n})
 	}
-	out := append([]string(nil), senders...)
-	for _, domain := range AlwaysDomains {
-		if !seen[domain] {
-			out = append(out, domain)
-			seen[domain] = true
-		}
-	}
-	return out
+	sortCounts(selected)
+	return selected
 }
 
 // Groups splits exact senders into chunks and gives each domain its own group.
@@ -114,10 +106,12 @@ func fromTerm(sender string) string {
 func CleanupSenders(senders, excludes []string) []string {
 	blocked := setOf(excludes)
 	var out []string
-	for _, sender := range WithAlways(senders) {
-		if !inTargets(sender, blocked) {
-			out = append(out, sender)
+	for _, sender := range senders {
+		sender = strings.TrimSpace(sender)
+		if sender == "" || inTargets(sender, blocked) {
+			continue
 		}
+		out = append(out, sender)
 	}
 	return out
 }

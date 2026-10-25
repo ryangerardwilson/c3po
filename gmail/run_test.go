@@ -40,9 +40,7 @@ func TestHelpVersionAndUsage(t *testing.T) {
 
 func TestSpamCleanAllPresets(t *testing.T) {
 	box := &fakeBox{ids: map[string][]string{
-		"from:spam@evil.test":   {"m3"},
-		"from:clickup.com":      {"m1"},
-		"from:mail.clickup.com": {"m1", "m2"},
+		"from:spam@evil.test": {"m3"},
 	}}
 	out, err, code := run(t, box, []string{"spam", "clean"})
 	if code != 0 {
@@ -51,13 +49,13 @@ func TestSpamCleanAllPresets(t *testing.T) {
 	if !strings.Contains(out, "preset=1 email=a@example.com") || !strings.Contains(out, "preset=2 email=b@example.com") {
 		t.Fatalf("banners missing: %s", out)
 	}
-	if !strings.Contains(out, "spam clean complete: presets=2 trashed_spam=6") {
+	if !strings.Contains(out, "spam clean complete: presets=2 trashed_spam=2") {
 		t.Fatalf("summary: %s", out)
 	}
-	if !strings.Contains(out, "1\ttrashed_spam=3") || !strings.Contains(out, "2\ttrashed_spam=3") {
+	if !strings.Contains(out, "1\ttrashed_spam=1") || !strings.Contains(out, "2\ttrashed_spam=1") {
 		t.Fatalf("per preset: %s", out)
 	}
-	if strings.Join(box.trashed, ",") != "m1,m2,m3,m1,m2,m3" {
+	if strings.Join(box.trashed, ",") != "m3,m3" {
 		t.Fatalf("trashed %v", box.trashed)
 	}
 }

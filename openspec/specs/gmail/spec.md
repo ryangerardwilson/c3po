@@ -1,30 +1,32 @@
 # gmail Specification
 
 ## Purpose
-c3po gmail tidy classifies unread mail with one grok CLI decision and applies that cleanup on every preset.
-
+c3po gmail tidy deletes mail that matches each preset spam list. c3po gmail tidy audit lists frequent unread senders that are not already on that list.
 ## Requirements
+### Requirement: Tidy deletes configured spam
+`c3po gmail tidy` SHALL trash mail that matches each preset's spam senders, minus that preset's spam excludes. It SHALL NOT add a sender, SHALL NOT hardcode a sender, and SHALL NOT classify mail. It SHALL NOT mark mail read. The spam list SHALL stay unchanged. With no spam senders left after excludes, it SHALL trash nothing and SHALL exit 0. The command SHALL print `gmail tidy complete: presets=%d trashed=%d`. Spam cleanup SHALL query only the configured senders. It SHALL NOT query a domain the preset list omits.
 
-### Requirement: Tidy classifies unread mail with grok
-`c3po gmail tidy` SHALL add `@clickup.com`, `@mail.clickup.com`, and `@tasks.clickup.com` on every preset, then run spam clean. It SHALL list unread mail once per preset with `is:unread -in:sent`. With no unread mail, it SHALL succeed and SHALL leave grok uncalled. With unread mail, it SHALL classify each message with one `grok` process per chunk of at most 150 messages. That process SHALL be a single turn (`--max-turns 1`) with `--json-schema`, and its working directory SHALL be an empty directory created for the call. The process SHALL NOT receive `--always-approve`. A missing `grok` binary SHALL exit 1, the text SHALL say `grok is required to classify unread mail`, and unclassified mail SHALL stay untrashed. A grok failure SHALL exit 1 and SHALL leave unclassified mail untrashed. Trash and mark-read SHALL happen only when the choice confidence is at least 0.8. A lower confidence SHALL leave the message unread. The From address SHALL be spam-added only when the disposable probability is at least 0.9 and the choice is trash. Disposable senders for one preset SHALL be added in one spam add. Kept automated mail SHALL be marked read. Direct human mail, security mail, and legal mail SHALL stay unread. The command SHALL print `gmail tidy complete: presets=%d unread=%d trashed=%d marked_read=%d spam_added=%d left=%d`.
-
-#### Scenario: No unread mail skips classification
-- **WHEN** the operator runs `c3po gmail tidy` and no preset has unread mail
-- **THEN** the command SHALL exit 0
-- **AND** the ClickUp domains SHALL be on every preset
-- **AND** grok SHALL stay uncalled
+#### Scenario: Tidy trashes configured spam
+- **WHEN** a preset lists `spam@evil.test` and that sender has a message
+- **THEN** that message SHALL be trashed
+- **AND** the spam list SHALL stay unchanged
 - **AND** the text SHALL contain `gmail tidy complete: presets=`
 
-#### Scenario: A missing grok binary leaves unread mail in place
-- **WHEN** unread mail is present and `grok` is not available to the command
-- **THEN** the command SHALL exit 1
-- **AND** the text SHALL say `grok is required to classify unread mail`
-- **AND** that unread mail SHALL stay untrashed
+#### Scenario: An unlisted sender stays
+- **WHEN** unread mail is from a sender that is not on the spam list
+- **THEN** that mail SHALL stay untrashed
+- **AND** cleanup SHALL NOT query a ClickUp domain that the list omits
 
-#### Scenario: Confident trash and read are applied
-- **WHEN** classification returns trash at confidence 0.8 or more, read at confidence 0.8 or more, and a lower confidence
-- **THEN** the trash message SHALL be deleted by id
-- **AND** the read message SHALL be marked read
-- **AND** the low-confidence message SHALL stay unread
-- **AND** a disposable From on the trash message SHALL be spam-added
-- **AND** the text SHALL contain `gmail tidy complete:`
+### Requirement: Tidy audit lists frequent unread senders
+`c3po gmail tidy audit` SHALL list unread senders for every preset from `is:unread -in:sent`. The list SHALL be the highest unread count first. Equal counts SHALL be ordered by sender. A sender already covered by that preset's spam list or spam excludes SHALL be omitted. An empty From SHALL be omitted. The command SHALL NOT trash mail and SHALL NOT change the spam list. Each row SHALL name the preset, the sender, and the unread count. The command SHALL print `gmail tidy audit complete: presets=%d senders=%d`.
+
+#### Scenario: The busiest unread sender is first
+- **WHEN** one preset has three unread messages from `a@bulk.test` and one from `b@bulk.test`
+- **THEN** `a@bulk.test` SHALL appear before `b@bulk.test`
+- **AND** the row SHALL show unread 3 for `a@bulk.test`
+- **AND** no mail SHALL be trashed
+
+#### Scenario: A listed spam sender is omitted
+- **WHEN** the busiest unread sender is already on the spam list
+- **THEN** that sender SHALL NOT appear in the audit
+

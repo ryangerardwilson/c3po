@@ -62,9 +62,10 @@ features:
   c3po gmail 1 spam add unread
   c3po gmail 1 spam allow trusted@example.com
 
-  tidy unread mail across every preset
-  # tidy
+  delete configured spam, and list frequent unread senders
+  # tidy | tidy audit
   c3po gmail tidy
+  c3po gmail tidy audit
 
   manage saved contacts for a preset
   # <preset> contacts list|add|delete|edit
