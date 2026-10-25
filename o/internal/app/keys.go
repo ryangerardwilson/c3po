@@ -194,9 +194,6 @@ func (m model) commandKey(msg tui.KeyMsg, key string) (model, tui.Cmd) {
 		if shelling {
 			return m.execShell(line)
 		}
-		if command, ok := colonShell(line); ok {
-			return m.execShell(command)
-		}
 		status, path, err := applyFileCommand(m.currentDir, line)
 		if err != nil {
 			m.status = err.Error()

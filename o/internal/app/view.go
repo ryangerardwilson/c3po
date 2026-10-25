@@ -96,7 +96,7 @@ func (m model) bottomLine() string {
 
 func (m model) commandLine() string {
 	prefix := ": "
-	hint := "  touch, mkdir, or rm, or !cmd"
+	hint := ""
 	if m.shelling {
 		prefix = "! "
 		hint = "  shell command"
@@ -221,7 +221,7 @@ func (m model) renderHelp() string {
 		"enter              cd to the current listing directory in browse mode",
 		"h or left          parent directory",
 		"/                  enter or clear filter",
-		":                  touch, mkdir, or rm, or !cmd",
+		":                  mv, rm -rf, cp, touch, mkdir",
 		"!                  run a shell command in this directory",
 		".                  show or hide dot entries",
 		"= / -              increase or decrease nesting preview depth",

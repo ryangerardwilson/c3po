@@ -83,17 +83,50 @@ func TestBangCreatesRemovesAndRefuses(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m = submitCommand(t, m, "rm -rf notes")
-	if _, err := os.Stat(filepath.Join(root, "notes")); err != nil {
-		t.Fatalf("refused command removed notes: %v", err)
+	m = submitCommand(t, m, "cp notes/a.txt notes/b.txt")
+	if _, err := os.Stat(filepath.Join(root, "notes", "b.txt")); err != nil {
+		t.Fatal(err)
 	}
-	if m.status != "flag -rf is not allowed" {
-		t.Fatalf("status = %q", m.status)
+	m = submitCommand(t, m, "mv notes/b.txt notes/c.txt")
+	if _, err := os.Stat(filepath.Join(root, "notes", "c.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "notes", "b.txt")); !os.IsNotExist(err) {
+		t.Fatalf("mv left b.txt: %v", err)
 	}
 
-	m = submitCommand(t, m, "rm notes/a.txt")
-	if _, err := os.Stat(filepath.Join(root, "notes", "a.txt")); !os.IsNotExist(err) {
-		t.Fatalf("rm notes/a.txt: %v", err)
+	m = submitCommand(t, m, "rm -rf notes")
+	if _, err := os.Stat(filepath.Join(root, "notes")); !os.IsNotExist(err) {
+		t.Fatalf("rm -rf notes: %v", err)
+	}
+
+	m = submitCommand(t, m, "mkdir again")
+	m = submitCommand(t, m, "touch again/a.txt")
+	m = submitCommand(t, m, "ls")
+	if m.status != "use mv, rm, cp, touch, or mkdir" {
+		t.Fatalf("status = %q", m.status)
+	}
+	if _, err := os.Stat(filepath.Join(root, "again", "a.txt")); err != nil {
+		t.Fatal(err)
+	}
+	m = submitCommand(t, m, "rm -r again")
+	if m.status != "flag -r is not allowed" {
+		t.Fatalf("status = %q", m.status)
+	}
+	if _, err := os.Stat(filepath.Join(root, "again")); err != nil {
+		t.Fatal(err)
+	}
+	m = submitCommand(t, m, "mkdir -p nested/dir")
+	if m.status != "flag -p is not allowed" {
+		t.Fatalf("status = %q", m.status)
+	}
+	m = submitCommand(t, m, "cp again/a.txt")
+	if m.status != "cp needs two paths" {
+		t.Fatalf("status = %q", m.status)
+	}
+	m = submitCommand(t, m, "!touch nope.txt")
+	if _, err := os.Stat(filepath.Join(root, "nope.txt")); !os.IsNotExist(err) {
+		t.Fatalf("colon bang created a file: %v", err)
 	}
 }
 
@@ -127,10 +160,11 @@ func TestBangCommandLineIsTheLastRow(t *testing.T) {
 	next, _ := m.Update(previewKey(":"))
 	m = next.(model)
 	lines := strings.Split(m.View(), "\n")
-	if len(lines) != 24 || !strings.Contains(lines[len(lines)-1], "touch, mkdir, or rm") {
-		t.Fatalf("open last = %q lines %d", lines[len(lines)-1], len(lines))
+	last := lines[len(lines)-1]
+	if len(lines) != 24 || !strings.Contains(last, ": |") || strings.Contains(last, "touch") || strings.Contains(last, "mkdir") {
+		t.Fatalf("open last = %q lines %d", last, len(lines))
 	}
-	if strings.Contains(lines[1], "touch") {
+	if strings.Contains(lines[1], "touch") || strings.Contains(lines[1], ":") {
 		t.Fatalf("prompt = %q", lines[1])
 	}
 	next, _ = m.Update(previewKey("mkdir notes"))
@@ -296,73 +330,5 @@ func TestColonInTheFilterStaysText(t *testing.T) {
 	m = press(t, m, "!")
 	if m.commanding || m.shelling || m.input != ":!" {
 		t.Fatalf("commanding %v shelling %v input %q", m.commanding, m.shelling, m.input)
-	}
-}
-
-func TestColonBangRunsAnyCommand(t *testing.T) {
-	t.Setenv("SHELL", "/bin/sh")
-	root := t.TempDir()
-	notes := filepath.Join(root, "notes")
-	if err := os.Mkdir(notes, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	m := newModel(Config{StartDir: root, Mode: ModeBrowse})
-	m.height = 24
-	m.width = 80
-	m.animationActive = false
-
-	next, _ := m.Update(previewKey(":"))
-	m = next.(model)
-	next, _ = m.Update(previewKey("!touch made.txt"))
-	m = next.(model)
-	lines := strings.Split(m.View(), "\n")
-	if !strings.Contains(lines[len(lines)-1], ": !touch made.txt|") {
-		t.Fatalf("last = %q", lines[len(lines)-1])
-	}
-	if strings.Contains(lines[1], "touch") || strings.Contains(lines[1], "!") {
-		t.Fatalf("prompt = %q", lines[1])
-	}
-	next, cmd := m.Update(tui.KeyMsg{Type: tui.KeyEnter})
-	m = next.(model)
-	if cmd == nil || m.commanding || m.shelling {
-		t.Fatalf("commanding %v shelling %v cmd %v", m.commanding, m.shelling, cmd)
-	}
-	if _, err := os.Stat(filepath.Join(root, "made.txt")); !os.IsNotExist(err) {
-		t.Fatalf("shell ran before the terminal handoff: %v", err)
-	}
-	if err := shellCommand(root, "touch made.txt").Run(); err != nil {
-		t.Fatal(err)
-	}
-	next, _ = m.Update(shellDoneMsg{line: "touch made.txt"})
-	m = next.(model)
-	if m.status != "touch made.txt" {
-		t.Fatalf("status %q", m.status)
-	}
-	if _, err := os.Stat(filepath.Join(root, "made.txt")); err != nil {
-		t.Fatal(err)
-	}
-
-	command, ok := colonShell("! rm -rf notes")
-	if !ok || command != "rm -rf notes" {
-		t.Fatalf("colon shell %q %v", command, ok)
-	}
-	if err := shellCommand(root, command).Run(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(notes); !os.IsNotExist(err) {
-		t.Fatalf("colon bang left notes: %v", err)
-	}
-	if _, ok := colonShell("rm -rf notes"); ok {
-		t.Fatal("a file command was treated as a shell command")
-	}
-
-	next, _ = m.Update(previewKey(":"))
-	m = next.(model)
-	next, _ = m.Update(previewKey("!"))
-	m = next.(model)
-	next, cmd = m.Update(tui.KeyMsg{Type: tui.KeyEnter})
-	m = next.(model)
-	if cmd != nil || m.status != "nothing to run" || m.commanding {
-		t.Fatalf("empty colon bang status %q commanding %v cmd %v", m.status, m.commanding, cmd)
 	}
 }

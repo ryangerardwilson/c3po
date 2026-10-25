@@ -9,34 +9,41 @@ import (
 	"strings"
 )
 
-// applyFileCommand runs touch, mkdir, or rm in dir. Any other command or
-// flag is refused before a process starts. mkdir may take -p.
+// applyFileCommand runs mv, rm, cp, touch, or mkdir in dir. rm may take
+// -rf. Any other command or flag is refused before a process starts.
 func applyFileCommand(dir, line string) (status, selectPath string, err error) {
 	fields, err := splitCommand(line)
 	if err != nil {
 		return "", "", err
 	}
 	if len(fields) == 0 {
-		return "", "", errors.New("use touch, mkdir, or rm")
+		return "", "", errors.New("use mv, rm, cp, touch, or mkdir")
 	}
 	name := fields[0]
 	switch name {
-	case "touch", "mkdir", "rm":
+	case "mv", "rm", "cp", "touch", "mkdir":
 	default:
-		return "", "", errors.New("use touch, mkdir, or rm")
+		return "", "", errors.New("use mv, rm, cp, touch, or mkdir")
 	}
 	args := fields[1:]
 	paths := make([]string, 0, len(args))
 	for _, arg := range args {
 		if strings.HasPrefix(arg, "-") {
-			if name == "mkdir" && arg == "-p" {
+			if name == "rm" && arg == "-rf" {
 				continue
 			}
 			return "", "", fmt.Errorf("flag %s is not allowed", arg)
 		}
 		paths = append(paths, arg)
 	}
-	if len(paths) == 0 {
+	need := 1
+	if name == "cp" || name == "mv" {
+		need = 2
+	}
+	if len(paths) < need {
+		if need == 2 {
+			return "", "", fmt.Errorf("%s needs two paths", name)
+		}
 		return "", "", fmt.Errorf("%s needs a path", name)
 	}
 	cmd := exec.Command(name, args...)
@@ -86,15 +93,6 @@ func splitCommand(line string) ([]string, error) {
 		fields = append(fields, b.String())
 	}
 	return fields, nil
-}
-
-// colonShell is the shell command in a colon line that starts with !.
-// The bang and any space around the command are not part of it.
-func colonShell(line string) (string, bool) {
-	if !strings.HasPrefix(line, "!") {
-		return "", false
-	}
-	return strings.TrimSpace(strings.TrimPrefix(line, "!")), true
 }
 
 // shellCommand runs line in the user's shell with dir as its working

@@ -212,7 +212,7 @@ func TestHelpDocumentsDotEntryToggle(t *testing.T) {
 	if !strings.Contains(help, "= / -") {
 		t.Fatalf("help missing preview depth controls:\n%s", help)
 	}
-	if !strings.Contains(help, ":                  touch, mkdir, or rm, or !cmd") || !strings.Contains(help, "!                  run a shell command") {
+	if !strings.Contains(help, ":                  mv, rm -rf, cp, touch, mkdir") || !strings.Contains(help, "!                  run a shell command") {
 		t.Fatalf("help missing command prompt:\n%s", help)
 	}
 	if !strings.Contains(help, "x / y              cut or copy the current item or the visual range") || !strings.Contains(help, "p                  paste into this directory") {
