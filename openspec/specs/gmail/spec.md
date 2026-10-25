@@ -1,7 +1,7 @@
 # gmail Specification
 
 ## Purpose
-c3po gmail tidy deletes mail that matches each preset spam list and shows one progress bar for the run. c3po gmail tidy audit lists frequent unread senders that are not already on that list.
+c3po gmail tidy deletes mail that matches each preset spam list, shows one progress bar for the run, and prints a table of messages trashed per preset. c3po gmail tidy audit lists frequent unread senders that are not already on that list.
 ## Requirements
 ### Requirement: Tidy deletes configured spam
 `c3po gmail tidy` SHALL trash mail that matches each preset's spam senders, minus that preset's spam excludes. It SHALL NOT add a sender, SHALL NOT hardcode a sender, and SHALL NOT classify mail. It SHALL NOT mark mail read. The spam list SHALL stay unchanged. With no spam senders left after excludes, it SHALL trash nothing and SHALL exit 0. The command SHALL print `gmail tidy complete: presets=%d trashed=%d`. Spam cleanup SHALL query only the configured senders. It SHALL NOT query a domain the preset list omits.
@@ -31,16 +31,18 @@ c3po gmail tidy deletes mail that matches each preset spam list and shows one pr
 - **THEN** that sender SHALL NOT appear in the audit
 
 ### Requirement: Tidy shows one progress bar
-`c3po gmail tidy` SHALL draw one block progress bar for the whole run. The bar SHALL advance across every preset's sender groups. On a terminal, that bar SHALL update in place. While a preset is in progress, the end of the line SHALL name that preset and email. When the run finishes, the line SHALL remain and SHALL end with one status per preset. Each status SHALL name the preset, the email, and how many messages were trashed. The command SHALL NOT print one line per sender group and SHALL NOT print one bar per preset. The completion line SHALL remain `gmail tidy complete: presets=%d trashed=%d`. With no sender groups, tidy SHALL print no progress bar.
+`c3po gmail tidy` SHALL draw one block progress bar for the whole run. The bar SHALL advance across every preset's sender groups. On a terminal, that bar SHALL update in place. The bar SHALL NOT name a preset or an email. When the run finishes, the bar line SHALL remain and SHALL show the bar and how many sender groups are done. Tidy SHALL then print a table with one row per preset. Each row SHALL name the preset, the email, and how many messages were trashed. The command SHALL NOT print one line per sender group and SHALL NOT print one bar per preset. The completion line SHALL remain `gmail tidy complete: presets=%d trashed=%d`. With no sender groups, tidy SHALL print no progress bar and SHALL print no table.
 
 #### Scenario: A terminal redraws one line
 - **WHEN** tidy cleans more than one preset on a terminal
 - **THEN** the progress SHALL be redrawn on one line
-- **AND** the finished line SHALL contain one block bar and each preset's `trashed` count
+- **AND** that line SHALL NOT name an email
+- **AND** the output SHALL contain a table row for each preset
 
 #### Scenario: A pipe does not print every group
 - **WHEN** tidy cleans presets and stdout is not a terminal
 - **THEN** the run SHALL produce one progress line
 - **AND** the text SHALL NOT contain `processed group`
+- **AND** the text SHALL contain a table header for preset, email, and trashed
 - **AND** the text SHALL contain `gmail tidy complete: presets=`
 

@@ -34,14 +34,13 @@ func TestTidyTrashesConfiguredSpam(t *testing.T) {
 	if strings.Contains(text, "processed group") || strings.Contains(text, "spam sender groups") || strings.Contains(text, "preset=1 email") {
 		t.Fatalf("progress %s", text)
 	}
-	if strings.Count(text, "█") != barCells || strings.Contains(text, "1/1") || strings.Contains(text, "\r") {
+	barLine, _, _ := strings.Cut(text, "\n")
+	if barLine != strings.Repeat("█", barCells)+"  2/2" || strings.Contains(barLine, "@") || strings.Contains(text, "\r") {
 		t.Fatalf("bar %s", text)
 	}
-	if !strings.Contains(text, "2/2") || !strings.Contains(text, "1  a@example.com  trashed 1") || !strings.Contains(text, "2  b@example.com  trashed 1") {
-		t.Fatalf("status %s", text)
-	}
-	if strings.Count(text, "\n") != 2 {
-		t.Fatalf("lines %s", text)
+	table := tidyTable([]tidyRow{{"1", "a@example.com", 1}, {"2", "b@example.com", 1}})
+	if !strings.Contains(text, table) {
+		t.Fatalf("table %s", text)
 	}
 	if strings.Contains(out.String(), "clickup") || strings.Contains(strings.Join(box.queries, "\n"), "clickup") {
 		t.Fatalf("hardcoded query %s queries %v", out.String(), box.queries)
@@ -52,6 +51,26 @@ func TestTidyTrashesConfiguredSpam(t *testing.T) {
 	}
 	if string(after) != string(before) {
 		t.Fatalf("config changed\n%s", after)
+	}
+}
+
+func TestTidyTableAlignsColumns(t *testing.T) {
+	got := tidyTable([]tidyRow{{"1", "a@example.com", 1}, {"2", "b@example.com", 12}})
+	lines := strings.Split(strings.TrimSuffix(got, "\n"), "\n")
+	if len(lines) != 6 || !strings.HasPrefix(lines[0], "┌") || !strings.HasPrefix(lines[5], "└") {
+		t.Fatalf("shape %q", got)
+	}
+	emailCol := strings.Index(lines[1], "email")
+	trashedCol := strings.Index(lines[1], "trashed")
+	trashedEnd := trashedCol + len("trashed")
+	if emailCol < 0 || trashedCol < 0 {
+		t.Fatalf("header %q", lines[1])
+	}
+	if lines[3][emailCol:emailCol+len("a@example.com")] != "a@example.com" || lines[3][trashedEnd-1] != '1' {
+		t.Fatalf("row %q", lines[3])
+	}
+	if lines[4][emailCol:emailCol+len("b@example.com")] != "b@example.com" || lines[4][trashedEnd-2:trashedEnd] != "12" {
+		t.Fatalf("row %q", lines[4])
 	}
 }
 
