@@ -19,13 +19,39 @@ func (e Env) tidy() (int, error) {
 	if len(app.Presets) == 0 {
 		return 0, errs.Usage("No configured presets found.")
 	}
-	trashed := 0
+	totalGroups := 0
 	for _, preset := range app.Presets {
-		n, err := e.cleanAccount(app.Accounts[preset], false)
+		totalGroups += len(senderGroups(app.Accounts[preset]))
+	}
+	bar := newCleanBar(e.Stdout, "", totalGroups)
+	done := 0
+	trashed := 0
+	var statuses []string
+	for _, preset := range app.Presets {
+		acct := app.Accounts[preset]
+		groups := len(senderGroups(acct))
+		if totalGroups > 0 {
+			bar.status = acct.Preset + "  " + acct.Email
+			bar.step(done)
+		}
+		svc, err := e.service(acct)
+		if err != nil {
+			if totalGroups > 0 {
+				bar.fail()
+			}
+			return 0, err
+		}
+		n, err := cleanSenders(svc, acct, &bar, done, false)
 		if err != nil {
 			return 0, err
 		}
+		done += groups
 		trashed += n
+		statuses = append(statuses, fmt.Sprintf("%s  %s  trashed %d", acct.Preset, acct.Email, n))
+	}
+	if totalGroups > 0 {
+		bar.status = strings.Join(statuses, "  ")
+		bar.hold()
 	}
 	fmt.Fprintf(e.Stdout, "gmail tidy complete: presets=%d trashed=%d\n", len(app.Presets), trashed)
 	return 0, nil

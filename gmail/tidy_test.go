@@ -34,10 +34,13 @@ func TestTidyTrashesConfiguredSpam(t *testing.T) {
 	if strings.Contains(text, "processed group") || strings.Contains(text, "spam sender groups") || strings.Contains(text, "preset=1 email") {
 		t.Fatalf("progress %s", text)
 	}
-	if !strings.Contains(text, "a@example.com") || !strings.Contains(text, "█") || !strings.Contains(text, "1/1") || !strings.Contains(text, "trashed 1") {
+	if strings.Count(text, "█") != barCells || strings.Contains(text, "1/1") || strings.Contains(text, "\r") {
 		t.Fatalf("bar %s", text)
 	}
-	if strings.Count(text, "\n") != 3 {
+	if !strings.Contains(text, "2/2") || !strings.Contains(text, "1  a@example.com  trashed 1") || !strings.Contains(text, "2  b@example.com  trashed 1") {
+		t.Fatalf("status %s", text)
+	}
+	if strings.Count(text, "\n") != 2 {
 		t.Fatalf("lines %s", text)
 	}
 	if strings.Contains(out.String(), "clickup") || strings.Contains(strings.Join(box.queries, "\n"), "clickup") {

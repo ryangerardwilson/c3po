@@ -88,6 +88,23 @@ func TestBarColorFollowsTheTerminal(t *testing.T) {
 	}
 }
 
+func TestCleanBarEndsWithEachPreset(t *testing.T) {
+	var out bytes.Buffer
+	bar := cleanBar{out: &out, total: 2, live: true, color: false}
+	bar.status = "1  a@example.com"
+	bar.step(1)
+	bar.status = "1  a@example.com  trashed 1  2  b@example.com  trashed 1"
+	bar.hold()
+	got := out.String()
+	if strings.Count(got, "\n") != 1 || strings.Count(got, "\r") != 2 || !strings.Contains(got, "1/2  1  a@example.com") {
+		t.Fatalf("frames %q", got)
+	}
+	last := got[strings.LastIndex(got, "\r"):]
+	if strings.Count(last, "█") != barCells || !strings.Contains(last, "2/2  1  a@example.com  trashed 1  2  b@example.com  trashed 1") {
+		t.Fatalf("status %q", got)
+	}
+}
+
 func TestNewCleanBarOnABufferIsNotLive(t *testing.T) {
 	var out bytes.Buffer
 	bar := newCleanBar(&out, "1  a@example.com", 1)

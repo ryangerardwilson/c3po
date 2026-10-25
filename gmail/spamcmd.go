@@ -76,14 +76,24 @@ func (e Env) cleanAccount(acct config.Account, banner bool) (int, error) {
 	return cleanup(svc, acct, e.Stdout)
 }
 
+func senderGroups(acct config.Account) [][]string {
+	return spam.Groups(spam.CleanupSenders(acct.SpamSenders, acct.SpamExcludes), 25)
+}
+
 func cleanup(svc Service, acct config.Account, out io.Writer) (int, error) {
-	senders := spam.CleanupSenders(acct.SpamSenders, acct.SpamExcludes)
-	groups := spam.Groups(senders, 25)
+	groups := senderGroups(acct)
+	bar := newCleanBar(out, acct.Preset+"  "+acct.Email, len(groups))
+	return cleanSenders(svc, acct, &bar, 0, true)
+}
+
+func cleanSenders(svc Service, acct config.Account, bar *cleanBar, base int, own bool) (int, error) {
+	groups := senderGroups(acct)
 	if len(groups) == 0 {
 		return 0, nil
 	}
-	bar := newCleanBar(out, acct.Preset+"  "+acct.Email, len(groups))
-	bar.start()
+	if own {
+		bar.start()
+	}
 	var all []string
 	for i, group := range groups {
 		ids, err := svc.ListIDs(spam.Query(group))
@@ -92,14 +102,16 @@ func cleanup(svc Service, acct config.Account, out io.Writer) (int, error) {
 			return 0, err
 		}
 		all = append(all, ids...)
-		bar.step(i + 1)
+		bar.step(base + i + 1)
 	}
 	n, err := svc.TrashIDs(api.SortedIDs(all))
 	if err != nil {
 		bar.fail()
 		return 0, err
 	}
-	bar.finish(n)
+	if own {
+		bar.finish(n)
+	}
 	return n, nil
 }
 

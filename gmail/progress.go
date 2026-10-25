@@ -11,13 +11,15 @@ import (
 
 const barCells = 16
 
-// cleanBar is one preset's cleanup line. A terminal redraws it in place.
+// cleanBar is the cleanup progress line. A terminal redraws it in place.
+// status is the preset text at the end of the line.
 type cleanBar struct {
-	out   io.Writer
-	label string
-	total int
-	live  bool
-	color bool
+	out    io.Writer
+	label  string
+	status string
+	total  int
+	live   bool
+	color  bool
 }
 
 func newCleanBar(out io.Writer, label string, total int) cleanBar {
@@ -40,11 +42,16 @@ func barColor(live bool) bool {
 	return live && os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
 }
 
-func (b cleanBar) start() { b.draw(0, -1, false) }
+func (b cleanBar) start() { b.draw(0, false) }
 
-func (b cleanBar) step(done int) { b.draw(done, -1, false) }
+func (b cleanBar) step(done int) { b.draw(done, false) }
 
-func (b cleanBar) finish(trashed int) { b.draw(b.total, trashed, true) }
+func (b cleanBar) finish(trashed int) {
+	b.status = fmt.Sprintf("trashed %d", trashed)
+	b.draw(b.total, true)
+}
+
+func (b cleanBar) hold() { b.draw(b.total, true) }
 
 func (b cleanBar) fail() {
 	if b.live {
@@ -52,7 +59,7 @@ func (b cleanBar) fail() {
 	}
 }
 
-func (b cleanBar) draw(done, trashed int, hold bool) {
+func (b cleanBar) draw(done int, hold bool) {
 	if !b.live && !hold {
 		return
 	}
@@ -68,13 +75,16 @@ func (b cleanBar) draw(done, trashed int, hold bool) {
 	}
 	on := strings.Repeat("█", filled)
 	off := strings.Repeat("░", barCells-filled)
-	bar := on + off
+	blocks := on + off
 	if b.color {
-		bar = "\x1b[38;5;42m" + on + "\x1b[38;5;238m" + off + "\x1b[0m"
+		blocks = "\x1b[38;5;42m" + on + "\x1b[38;5;238m" + off + "\x1b[0m"
 	}
-	line := fmt.Sprintf("%s  %s  %d/%d", b.label, bar, done, b.total)
-	if trashed >= 0 {
-		line += fmt.Sprintf("  trashed %d", trashed)
+	line := fmt.Sprintf("%s  %d/%d", blocks, done, b.total)
+	if b.label != "" {
+		line = b.label + "  " + line
+	}
+	if b.status != "" {
+		line += "  " + b.status
 	}
 	if b.live {
 		fmt.Fprintf(b.out, "\r\x1b[K%s", line)
