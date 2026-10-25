@@ -55,8 +55,8 @@ keys:
                    and exit; pick/save: same as l
   h or left        parent directory
   /                enter or clear the filter
-  :                mv, rm -rf, cp, touch, mkdir
-  !                run a shell command in this directory
+  : / :!           mv, rm, cp, touch, mkdir, or a shell
+  !                open the :! shell line
   r                reload the listing now
   .                show or hide dot entries (hidden by default)
   = / -            increase or decrease the nesting preview depth
@@ -78,11 +78,11 @@ line count relative to the largest text file shown. The listing is polled
 every 500ms, so outside creations, deletions, renames, and edits appear on
 their own.
 
-: opens a command line on the last row. It runs mv, rm, cp, touch, or
-mkdir in the listed directory. rm may take -rf. Esc cancels the command line.
-
-! opens a command line on the last row and runs that line in the shell
-in the listed directory. An empty line does not run. Esc cancels it.
+: opens a command line on the last row. The colon sits against the text.
+The line runs mv, rm, cp, touch, or mkdir. rm may take -rf. A line that
+starts with ! runs the rest in the shell. ! opens that same line with the
+bang already typed. Esc cancels. Ctrl-a and Ctrl-e move to the ends of the
+line. Ctrl-w deletes the previous word. Alt-b and Alt-f move by words.
 
 v selects consecutive items. j and k extend that range. v again, or
 Esc, clears it. delete or backspace removes the range. x cuts the current item, or

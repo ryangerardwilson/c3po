@@ -75,9 +75,9 @@ type model struct {
 	filter       string
 	showHidden   bool
 	input        string
+	inputAt      int
 	filtering    bool
 	commanding   bool
-	shelling     bool
 	clipSet      bool
 	clipCut      bool
 	clipPaths    []string

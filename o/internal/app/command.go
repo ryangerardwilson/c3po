@@ -95,6 +95,15 @@ func splitCommand(line string) ([]string, error) {
 	return fields, nil
 }
 
+// shellLine returns the shell command when line starts with !.
+// The caller trims the line first. Space after the bang is ignored.
+func shellLine(line string) (string, bool) {
+	if !strings.HasPrefix(line, "!") {
+		return "", false
+	}
+	return strings.TrimSpace(strings.TrimPrefix(line, "!")), true
+}
+
 // shellCommand runs line in the user's shell with dir as its working
 // directory. The caller hands it the terminal.
 func shellCommand(dir, line string) *exec.Cmd {

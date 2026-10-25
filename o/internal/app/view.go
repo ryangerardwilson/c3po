@@ -95,28 +95,40 @@ func (m model) bottomLine() string {
 }
 
 func (m model) commandLine() string {
-	prefix := ": "
-	hint := ""
-	if m.shelling {
-		prefix = "! "
-		hint = "  shell command"
-	}
-	body := prefix + m.input + "|"
-	if m.input == "" {
-		body += hint
-	}
-	return fitTail(body, m.width)
+	rs := []rune(m.input)
+	at := clampAt(rs, m.inputAt)
+	return fitCursor(":"+string(rs[:at]), string(rs[at:]), m.width)
 }
 
-func fitTail(value string, limit int) string {
-	runes := []rune(value)
-	if limit <= 0 || len(runes) <= limit {
-		return value
+// fitCursor keeps the cursor on screen. A long line shows the tail when
+// the cursor is at the end and the head when the cursor is at the start.
+func fitCursor(before, after string, limit int) string {
+	left := []rune(before)
+	right := []rune(after)
+	full := make([]rune, 0, len(left)+1+len(right))
+	full = append(full, left...)
+	cursor := len(full)
+	full = append(full, '|')
+	full = append(full, right...)
+	if limit <= 0 || len(full) <= limit {
+		return string(full)
 	}
 	if limit == 1 {
-		return string(runes[len(runes)-1:])
+		return "|"
 	}
-	return "…" + string(runes[len(runes)-(limit-1):])
+	start := cursor - (limit - 1)
+	if start < 0 {
+		start = 0
+	}
+	end := start + limit
+	if end > len(full) {
+		end = len(full)
+		start = end - limit
+	}
+	if start > 0 {
+		return "…" + string(full[start+1:end])
+	}
+	return string(full[start:end])
 }
 
 func padLines(view string, n int) string {
@@ -221,8 +233,8 @@ func (m model) renderHelp() string {
 		"enter              cd to the current listing directory in browse mode",
 		"h or left          parent directory",
 		"/                  enter or clear filter",
-		":                  mv, rm -rf, cp, touch, mkdir",
-		"!                  run a shell command in this directory",
+		": / :!             mv, rm, cp, touch, mkdir, shell",
+		"!                  open the :! shell line",
 		".                  show or hide dot entries",
 		"= / -              increase or decrease nesting preview depth",
 		"r                  reload the active listing immediately",

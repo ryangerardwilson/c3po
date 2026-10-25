@@ -172,9 +172,13 @@ func keyShell(m model) (model, tui.Cmd) {
 func openCommand(m model, shell bool) (model, tui.Cmd) {
 	m.filtering = false
 	m.commanding = true
-	m.shelling = shell
 	m.input = ""
+	m.inputAt = 0
 	m.status = ""
+	if shell {
+		m.input = "!"
+		m.inputAt = 1
+	}
 	return m, nil
 }
 
@@ -182,17 +186,16 @@ func (m model) commandKey(msg tui.KeyMsg, key string) (model, tui.Cmd) {
 	switch key {
 	case "esc", "ctrl+c":
 		m.commanding = false
-		m.shelling = false
 		m.input = ""
+		m.inputAt = 0
 		m.status = "command cancelled"
 	case "enter":
 		line := strings.TrimSpace(m.input)
-		shelling := m.shelling
 		m.commanding = false
-		m.shelling = false
 		m.input = ""
-		if shelling {
-			return m.execShell(line)
+		m.inputAt = 0
+		if command, ok := shellLine(line); ok {
+			return m.execShell(command)
 		}
 		status, path, err := applyFileCommand(m.currentDir, line)
 		if err != nil {
@@ -203,10 +206,35 @@ func (m model) commandKey(msg tui.KeyMsg, key string) (model, tui.Cmd) {
 		m.selectPath(path)
 		m.status = status
 	case "backspace", "ctrl+h":
-		m.input = trimLastRune(m.input)
+		m = m.deleteBack()
+	case "alt+backspace":
+		m = m.killWordBack()
+	case "delete", "ctrl+d":
+		m = m.deleteForward()
+	case "left", "ctrl+b":
+		m = m.moveInput(-1)
+	case "right", "ctrl+f":
+		m = m.moveInput(1)
+	case "ctrl+a", "home":
+		m = m.setInput([]rune(m.input), 0)
+	case "ctrl+e", "end":
+		rs := []rune(m.input)
+		m = m.setInput(rs, len(rs))
+	case "ctrl+w":
+		m = m.killWordBack()
+	case "alt+b":
+		m = m.moveWord(false)
+	case "alt+f":
+		m = m.moveWord(true)
+	case "alt+d":
+		m = m.killWordForward()
+	case "ctrl+k":
+		m = m.killToEnd()
+	case "ctrl+u":
+		m = m.killToStart()
 	default:
-		if len(msg.Runes) > 0 {
-			m.input += string(msg.Runes)
+		if !msg.Alt && len(msg.Runes) > 0 {
+			m = m.insertInput(string(msg.Runes))
 		}
 	}
 	return m, nil

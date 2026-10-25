@@ -55,7 +55,7 @@ func TestHelpAndVersionDoNotStartApp(t *testing.T) {
 	if !strings.Contains(Help, "v                select consecutive items") || !strings.Contains(Help, "delete           delete the visual range") || !strings.Contains(Help, "backspace        delete the visual range") {
 		t.Fatal("help missing visual mode")
 	}
-	if !strings.Contains(Help, ":                mv, rm -rf, cp, touch, mkdir") || !strings.Contains(Help, "!                run a shell command in this directory") {
+	if !strings.Contains(Help, "  : / :!           mv, rm, cp, touch, mkdir, or a shell") || !strings.Contains(Help, "  !                open the :! shell line") {
 		t.Fatal("help missing command keys")
 	}
 	if strings.Contains(Help, "wl-copy") {
