@@ -36,8 +36,8 @@ func (p *Program) Run() (Model, error) {
 	defer t.restore()
 	defer close(p.done)
 	p.renderer = renderer{out: t.out}
-	_, _ = t.out.WriteString("\x1b[?25l")
-	defer t.out.WriteString("\x1b[?25h")
+	_, _ = t.out.WriteString(cursorShape(true) + "\x1b[?25l")
+	defer t.out.WriteString(cursorShape(false) + "\x1b[?25h")
 	go p.readInput()
 	stopSignals := p.watchSignals()
 	defer stopSignals()
@@ -131,12 +131,12 @@ func (p *Program) stopped() bool {
 func (p *Program) exec(msg execMsg) {
 	p.inputMu.Lock()
 	p.renderer.stop()
-	_, _ = p.term.out.WriteString("\x1b[?25h")
+	_, _ = p.term.out.WriteString(cursorShape(false) + "\x1b[?25h")
 	p.term.restore()
 	attach(msg, p.term)
 	err := msg.cmd.Run()
 	_ = p.term.raw()
-	_, _ = p.term.out.WriteString("\x1b[?25l")
+	_, _ = p.term.out.WriteString(cursorShape(true) + "\x1b[?25l")
 	p.renderer.repaint()
 	p.inputMu.Unlock()
 	if msg.fn != nil {
@@ -154,4 +154,12 @@ func attach(msg execMsg, t *terminal) {
 	if msg.cmd.Stderr == nil {
 		msg.cmd.Stderr = os.Stderr
 	}
+}
+
+// cursorShape asks for a steady block, or the terminal's default shape.
+func cursorShape(block bool) string {
+	if block {
+		return "\x1b[2 q"
+	}
+	return "\x1b[0 q"
 }

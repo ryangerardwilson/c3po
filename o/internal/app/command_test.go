@@ -128,7 +128,7 @@ func TestBangCreatesRemovesAndRefuses(t *testing.T) {
 	m = next.(model)
 	next, cmd = m.Update(previewKey("!touch nope.txt"))
 	m = next.(model)
-	if m.commandLine() != ":!touch nope.txt|" {
+	if m.commandLine() != ":!touch nope.txt"+blockCell("") {
 		t.Fatalf("line %q", m.commandLine())
 	}
 	next, cmd = m.Update(tui.KeyMsg{Type: tui.KeyEnter})
@@ -178,7 +178,7 @@ func TestBangCommandLineIsTheLastRow(t *testing.T) {
 	m = next.(model)
 	lines := strings.Split(m.View(), "\n")
 	last := lines[len(lines)-1]
-	if len(lines) != 24 || !strings.Contains(last, ":|") || strings.Contains(last, ": ") || strings.Contains(last, "touch") || strings.Contains(last, "mkdir") || strings.Contains(last, "shell") {
+	if len(lines) != 24 || !strings.Contains(last, ":"+blockCell("")) || strings.Contains(last, ": ") || strings.Contains(last, "touch") || strings.Contains(last, "mkdir") || strings.Contains(last, "shell") {
 		t.Fatalf("open last = %q lines %d", last, len(lines))
 	}
 	if strings.Contains(lines[1], "touch") || strings.Contains(lines[1], ":") {
@@ -187,7 +187,7 @@ func TestBangCommandLineIsTheLastRow(t *testing.T) {
 	next, _ = m.Update(previewKey("mkdir notes"))
 	m = next.(model)
 	lines = strings.Split(m.View(), "\n")
-	if len(lines) != 24 || !strings.Contains(lines[len(lines)-1], ":mkdir notes|") || strings.Contains(lines[len(lines)-1], ": mkdir") {
+	if len(lines) != 24 || !strings.Contains(lines[len(lines)-1], ":mkdir notes"+blockCell("")) || strings.Contains(lines[len(lines)-1], ": mkdir") {
 		t.Fatalf("last = %q", lines[len(lines)-1])
 	}
 	if strings.Contains(lines[1], "mkdir") || strings.Contains(lines[1], ":") {
@@ -234,7 +234,7 @@ func TestShellCommandLineIsTheLastRow(t *testing.T) {
 	m = next.(model)
 	lines := strings.Split(m.View(), "\n")
 	last := lines[len(lines)-1]
-	if len(lines) != 24 || !strings.Contains(last, ":!|") || strings.Contains(last, "shell command") || strings.Contains(last, ":! ") {
+	if len(lines) != 24 || !strings.Contains(last, ":!"+blockCell("")) || strings.Contains(last, "shell command") || strings.Contains(last, ":! ") {
 		t.Fatalf("open last = %q lines %d", last, len(lines))
 	}
 	if strings.Contains(lines[1], "!") {
@@ -243,7 +243,7 @@ func TestShellCommandLineIsTheLastRow(t *testing.T) {
 	next, _ = m.Update(previewKey("touch made.txt"))
 	m = next.(model)
 	lines = strings.Split(m.View(), "\n")
-	if !strings.Contains(lines[len(lines)-1], ":!touch made.txt|") || strings.Contains(lines[len(lines)-1], ":! ") {
+	if !strings.Contains(lines[len(lines)-1], ":!touch made.txt"+blockCell("")) || strings.Contains(lines[len(lines)-1], ":! ") {
 		t.Fatalf("last = %q", lines[len(lines)-1])
 	}
 	if strings.Contains(lines[1], "touch") {
@@ -380,60 +380,60 @@ func TestCommandLineEmacsEditing(t *testing.T) {
 	}
 
 	m = press(t, m, ":")
-	if m.commandLine() != ":|" {
+	if m.commandLine() != ":"+blockCell("") {
 		t.Fatalf("empty %q", m.commandLine())
 	}
 	next, cmd = m.Update(tui.KeyMsg{Type: tui.KeyCtrl, Ctrl: 'd'})
 	m = next.(model)
-	if cmd != nil || !m.commanding || m.commandLine() != ":|" {
+	if cmd != nil || !m.commanding || m.commandLine() != ":"+blockCell("") {
 		t.Fatalf("ctrl+d line %q commanding %v cmd %v", m.commandLine(), m.commanding, cmd)
 	}
 	next, _ = m.Update(tui.KeyMsg{Type: tui.KeyRunes, Runes: []rune{'x'}, Alt: true})
 	m = next.(model)
-	if m.input != "" || m.commandLine() != ":|" {
+	if m.input != "" || m.commandLine() != ":"+blockCell("") {
 		t.Fatalf("alt+x inserted %q", m.commandLine())
 	}
 
 	m = press(t, m, "mkdir notes")
-	if m.commandLine() != ":mkdir notes|" {
+	if m.commandLine() != ":mkdir notes"+blockCell("") {
 		t.Fatalf("typed %q", m.commandLine())
 	}
 	m = commandPress(t, m, tui.KeyMsg{Type: tui.KeyCtrl, Ctrl: 'a'})
-	if m.commandLine() != ":|mkdir notes" {
+	if m.commandLine() != ":"+blockCell("m")+"kdir notes" {
 		t.Fatalf("ctrl+a %q", m.commandLine())
 	}
 	m = commandPress(t, m, tui.KeyMsg{Type: tui.KeyCtrl, Ctrl: 'e'})
-	if m.commandLine() != ":mkdir notes|" {
+	if m.commandLine() != ":mkdir notes"+blockCell("") {
 		t.Fatalf("ctrl+e %q", m.commandLine())
 	}
 	m = commandPress(t, m, tui.KeyMsg{Type: tui.KeyRunes, Runes: []rune{'b'}, Alt: true})
-	if m.commandLine() != ":mkdir |notes" {
+	if m.commandLine() != ":mkdir "+blockCell("n")+"otes" {
 		t.Fatalf("alt+b %q", m.commandLine())
 	}
 	m = commandPress(t, m, tui.KeyMsg{Type: tui.KeyRunes, Runes: []rune{'f'}, Alt: true})
-	if m.commandLine() != ":mkdir notes|" {
+	if m.commandLine() != ":mkdir notes"+blockCell("") {
 		t.Fatalf("alt+f %q", m.commandLine())
 	}
 	m = commandPress(t, m, tui.KeyMsg{Type: tui.KeyCtrl, Ctrl: 'w'})
-	if m.commandLine() != ":mkdir |" {
+	if m.commandLine() != ":mkdir "+blockCell("") {
 		t.Fatalf("ctrl+w %q", m.commandLine())
 	}
 	if _, err := os.Stat(keep); err != nil {
 		t.Fatalf("command ctrl+w deleted a file: %v", err)
 	}
 	m = commandPress(t, m, tui.KeyMsg{Type: tui.KeyBackspace, Alt: true})
-	if m.commandLine() != ":|" {
+	if m.commandLine() != ":"+blockCell("") {
 		t.Fatalf("alt+backspace %q", m.commandLine())
 	}
 
 	m = press(t, m, "mkdir notes")
 	m = commandPress(t, m, tui.KeyMsg{Type: tui.KeyRunes, Runes: []rune{'b'}, Alt: true})
 	m = commandPress(t, m, tui.KeyMsg{Type: tui.KeyRunes, Runes: []rune{'d'}, Alt: true})
-	if m.commandLine() != ":mkdir |" {
+	if m.commandLine() != ":mkdir "+blockCell("") {
 		t.Fatalf("alt+d %q", m.commandLine())
 	}
 	m = commandPress(t, m, tui.KeyMsg{Type: tui.KeyCtrl, Ctrl: 'u'})
-	if m.commandLine() != ":|" {
+	if m.commandLine() != ":"+blockCell("") {
 		t.Fatalf("ctrl+u %q", m.commandLine())
 	}
 
@@ -441,29 +441,35 @@ func TestCommandLineEmacsEditing(t *testing.T) {
 	m = commandPress(t, m, tui.KeyMsg{Type: tui.KeyCtrl, Ctrl: 'a'})
 	m = commandPress(t, m, tui.KeyMsg{Type: tui.KeyRight})
 	m = commandPress(t, m, tui.KeyMsg{Type: tui.KeyBackspace})
-	if m.commandLine() != ":|b" {
+	if m.commandLine() != ":"+blockCell("b") {
 		t.Fatalf("backspace %q", m.commandLine())
 	}
 	m = commandPress(t, m, tui.KeyMsg{Type: tui.KeyDelete})
-	if m.commandLine() != ":|" {
+	if m.commandLine() != ":"+blockCell("") {
 		t.Fatalf("delete %q", m.commandLine())
 	}
 }
 
 func TestCommandLineKeepsCursorVisible(t *testing.T) {
 	m := model{input: "mkdir notes", inputAt: 0, width: 10}
-	if got := m.commandLine(); got != ":|mkdir no" {
+	if got := m.commandLine(); got != ":"+blockCell("m")+"kdir not" {
 		t.Fatalf("start %q", got)
 	}
 	m.inputAt = len([]rune(m.input))
-	if got := m.commandLine(); got != "…ir notes|" {
+	if got := m.commandLine(); got != "…ir notes"+blockCell("") {
 		t.Fatalf("end %q", got)
 	}
 	m.inputAt = 6
-	got := m.commandLine()
-	if !strings.Contains(got, "|") {
-		t.Fatalf("cursor hidden %q", got)
+	if got := m.commandLine(); got != ":mkdir "+blockCell("n")+"ot" || strings.Contains(got, "|") {
+		t.Fatalf("middle %q", got)
 	}
+}
+
+func blockCell(cell string) string {
+	if cell == "" {
+		cell = " "
+	}
+	return "\x1b[7m" + cell + "\x1b[27m"
 }
 
 func commandPress(t *testing.T, m model, msg tui.KeyMsg) model {
@@ -474,4 +480,23 @@ func commandPress(t *testing.T, m model, msg tui.KeyMsg) model {
 		t.Fatalf("%s returned %T", msg.String(), next)
 	}
 	return got
+}
+
+func TestFilterCursorIsABlock(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(Config{StartDir: root, Mode: ModeBrowse})
+	m.animationActive = false
+	m = press(t, m, "/")
+	line := m.promptLine()
+	if !strings.Contains(line, "/ "+blockCell("")) || strings.Contains(line, "|") {
+		t.Fatalf("filter %q", line)
+	}
+	m = press(t, m, "notes")
+	line = m.promptLine()
+	if !strings.Contains(line, "/ notes"+blockCell("")) || strings.Contains(line, "|") {
+		t.Fatalf("filter typed %q", line)
+	}
 }

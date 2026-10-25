@@ -78,7 +78,8 @@ func (m model) frameLines() int {
 func (m model) promptLine() string {
 	switch {
 	case m.filtering:
-		return statusStyle.Render("/ " + m.input)
+		text := "/ " + m.input
+		return statusStyle.Render(blockLine(text, len([]rune(text)), m.width))
 	default:
 		if label := m.clipLabel(); label != "" {
 			return mutedStyle.Render(label)
@@ -97,38 +98,84 @@ func (m model) bottomLine() string {
 func (m model) commandLine() string {
 	rs := []rune(m.input)
 	at := clampAt(rs, m.inputAt)
-	return fitCursor(":"+string(rs[:at]), string(rs[at:]), m.width)
+	return blockLine(":"+string(rs), at+1, m.width)
 }
 
-// fitCursor keeps the cursor on screen. A long line shows the tail when
+// blockLine draws text with a reverse-video block at rune index at.
+// An index at the end of text draws the block on a space.
+func blockLine(text string, at, limit int) string {
+	rs := []rune(text)
+	if at < 0 {
+		at = 0
+	}
+	if at > len(rs) {
+		at = len(rs)
+	}
+	cell := " "
+	before := text
+	after := ""
+	if at < len(rs) {
+		cell = string(rs[at])
+		before = string(rs[:at])
+		after = string(rs[at+1:])
+	}
+	return fitCursor(before, cell, after, limit)
+}
+
+// fitCursor keeps the block on screen. A long line shows the tail when
 // the cursor is at the end and the head when the cursor is at the start.
-func fitCursor(before, after string, limit int) string {
+func fitCursor(before, cell, after string, limit int) string {
 	left := []rune(before)
+	mid := []rune(cell)
+	if len(mid) == 0 {
+		mid = []rune{' '}
+	}
 	right := []rune(after)
-	full := make([]rune, 0, len(left)+1+len(right))
+	full := make([]rune, 0, len(left)+len(mid)+len(right))
 	full = append(full, left...)
 	cursor := len(full)
-	full = append(full, '|')
+	full = append(full, mid...)
 	full = append(full, right...)
-	if limit <= 0 || len(full) <= limit {
-		return string(full)
+	start := 0
+	end := len(full)
+	if limit > 0 && len(full) > limit {
+		if limit == 1 {
+			return reverseCell(string(full[cursor]))
+		}
+		start = cursor - (limit - 1)
+		if start < 0 {
+			start = 0
+		}
+		end = start + limit
+		if end > len(full) {
+			end = len(full)
+			start = end - limit
+		}
 	}
-	if limit == 1 {
-		return "|"
-	}
-	start := cursor - (limit - 1)
-	if start < 0 {
-		start = 0
-	}
-	end := start + limit
-	if end > len(full) {
-		end = len(full)
-		start = end - limit
-	}
+	window := full[start:end]
+	cursorInWindow := cursor - start
 	if start > 0 {
-		return "…" + string(full[start+1:end])
+		window = window[1:]
+		cursorInWindow--
+		return "…" + paintBlock(window, cursorInWindow)
 	}
-	return string(full[start:end])
+	return paintBlock(window, cursorInWindow)
+}
+
+func paintBlock(window []rune, cursor int) string {
+	var b strings.Builder
+	for i, r := range window {
+		if i == cursor {
+			b.WriteString(reverseCell(string(r)))
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+func reverseCell(cell string) string {
+	return "\x1b[7m" + cell + "\x1b[27m"
 }
 
 func padLines(view string, n int) string {

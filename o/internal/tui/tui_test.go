@@ -128,3 +128,12 @@ func TestFitLineTruncatesVisibleCellsOnly(t *testing.T) {
 		t.Fatalf("unknown width = %q", got)
 	}
 }
+
+func TestCursorShapeIsASteadyBlock(t *testing.T) {
+	if cursorShape(true) != "\x1b[2 q" {
+		t.Fatalf("block %q", cursorShape(true))
+	}
+	if cursorShape(false) != "\x1b[0 q" {
+		t.Fatalf("default %q", cursorShape(false))
+	}
+}
