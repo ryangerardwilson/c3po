@@ -88,6 +88,15 @@ func splitCommand(line string) ([]string, error) {
 	return fields, nil
 }
 
+// colonShell is the shell command in a colon line that starts with !.
+// The bang and any space around the command are not part of it.
+func colonShell(line string) (string, bool) {
+	if !strings.HasPrefix(line, "!") {
+		return "", false
+	}
+	return strings.TrimSpace(strings.TrimPrefix(line, "!")), true
+}
+
 // shellCommand runs line in the user's shell with dir as its working
 // directory. The caller hands it the terminal.
 func shellCommand(dir, line string) *exec.Cmd {

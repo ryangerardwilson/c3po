@@ -192,14 +192,10 @@ func (m model) commandKey(msg tui.KeyMsg, key string) (model, tui.Cmd) {
 		m.shelling = false
 		m.input = ""
 		if shelling {
-			if line == "" {
-				m.status = "nothing to run"
-				return m, nil
-			}
-			dir := m.currentDir
-			return m, tui.Exec(shellCommand(dir, line), func(err error) tui.Msg {
-				return shellDoneMsg{line: line, err: err}
-			})
+			return m.execShell(line)
+		}
+		if command, ok := colonShell(line); ok {
+			return m.execShell(command)
 		}
 		status, path, err := applyFileCommand(m.currentDir, line)
 		if err != nil {
@@ -323,6 +319,17 @@ func trimLastRune(value string) string {
 	}
 	_, size := utf8.DecodeLastRuneInString(value)
 	return value[:len(value)-size]
+}
+
+func (m model) execShell(line string) (model, tui.Cmd) {
+	if line == "" {
+		m.status = "nothing to run"
+		return m, nil
+	}
+	dir := m.currentDir
+	return m, tui.Exec(shellCommand(dir, line), func(err error) tui.Msg {
+		return shellDoneMsg{line: line, err: err}
+	})
 }
 
 func (m model) finishShell(msg shellDoneMsg) (tui.Model, tui.Cmd) {

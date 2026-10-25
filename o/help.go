@@ -55,7 +55,7 @@ keys:
                    and exit; pick/save: same as l
   h or left        parent directory
   /                enter or clear the filter
-  :                touch, mkdir, or rm in this directory
+  :                touch, mkdir, or rm, or !cmd
   !                run a shell command in this directory
   r                reload the listing now
   .                show or hide dot entries (hidden by default)
@@ -79,7 +79,8 @@ every 500ms, so outside creations, deletions, renames, and edits appear on
 their own.
 
 : opens a command line on the last row. It runs touch, mkdir, or rm in
-the listed directory. mkdir may take -p. Esc cancels the command line.
+the listed directory. mkdir may take -p. A line that starts with ! runs
+the rest in the shell there. Esc cancels the command line.
 
 ! opens a command line on the last row and runs that line in the shell
 in the listed directory. An empty line does not run. Esc cancels it.
