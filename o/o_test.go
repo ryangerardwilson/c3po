@@ -52,8 +52,11 @@ func TestHelpAndVersionDoNotStartApp(t *testing.T) {
 	if !strings.Contains(Help, "x                cut the current item or the visual range") || !strings.Contains(Help, "p                paste into the listed directory") {
 		t.Fatal("help missing cut and paste")
 	}
-	if !strings.Contains(Help, "v                select consecutive items") || !strings.Contains(Help, "delete           delete the visual range") {
+	if !strings.Contains(Help, "v                select consecutive items") || !strings.Contains(Help, "delete           delete the visual range") || !strings.Contains(Help, "backspace        delete the visual range") {
 		t.Fatal("help missing visual mode")
+	}
+	if !strings.Contains(Help, ":                touch, mkdir, or rm in this directory") || !strings.Contains(Help, "!                run a shell command in this directory") {
+		t.Fatal("help missing command keys")
 	}
 	if strings.Contains(Help, "wl-copy") {
 		t.Fatal("help still copies paths with wl-copy")

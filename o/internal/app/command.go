@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -85,4 +86,16 @@ func splitCommand(line string) ([]string, error) {
 		fields = append(fields, b.String())
 	}
 	return fields, nil
+}
+
+// shellCommand runs line in the user's shell with dir as its working
+// directory. The caller hands it the terminal.
+func shellCommand(dir, line string) *exec.Cmd {
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/sh"
+	}
+	command := exec.Command(shell, "-c", line)
+	command.Dir = dir
+	return command
 }

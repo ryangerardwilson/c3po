@@ -100,7 +100,7 @@ func TestBangCreatesRemovesAndRefuses(t *testing.T) {
 func TestBangEscCancels(t *testing.T) {
 	root := t.TempDir()
 	m := newModel(Config{StartDir: root, Mode: ModeBrowse})
-	next, _ := m.Update(previewKey("!"))
+	next, _ := m.Update(previewKey(":"))
 	m = next.(model)
 	next, _ = m.Update(previewKey("mkdir notes"))
 	m = next.(model)
@@ -124,7 +124,7 @@ func TestBangCommandLineIsTheLastRow(t *testing.T) {
 	m.width = 80
 	m.animationActive = false
 	m.status = "ready"
-	next, _ := m.Update(previewKey("!"))
+	next, _ := m.Update(previewKey(":"))
 	m = next.(model)
 	lines := strings.Split(m.View(), "\n")
 	if len(lines) != 24 || !strings.Contains(lines[len(lines)-1], "touch, mkdir, or rm") {
@@ -136,10 +136,10 @@ func TestBangCommandLineIsTheLastRow(t *testing.T) {
 	next, _ = m.Update(previewKey("mkdir notes"))
 	m = next.(model)
 	lines = strings.Split(m.View(), "\n")
-	if len(lines) != 24 || !strings.Contains(lines[len(lines)-1], "! mkdir notes|") {
+	if len(lines) != 24 || !strings.Contains(lines[len(lines)-1], ": mkdir notes|") {
 		t.Fatalf("last = %q", lines[len(lines)-1])
 	}
-	if strings.Contains(lines[1], "mkdir") || strings.Contains(lines[1], "!") {
+	if strings.Contains(lines[1], "mkdir") || strings.Contains(lines[1], ":") {
 		t.Fatalf("prompt = %q", lines[1])
 	}
 	if !strings.Contains(strings.Join(lines, "\n"), "a.txt") {
@@ -149,7 +149,7 @@ func TestBangCommandLineIsTheLastRow(t *testing.T) {
 
 func submitCommand(t *testing.T, m model, line string) model {
 	t.Helper()
-	next, _ := m.Update(previewKey("!"))
+	next, _ := m.Update(previewKey(":"))
 	m, ok := next.(model)
 	if !ok || !m.commanding {
 		t.Fatalf("! did not open the prompt: %#v", next)
@@ -168,4 +168,133 @@ func submitCommand(t *testing.T, m model, line string) model {
 		t.Fatal("prompt stayed open")
 	}
 	return m
+}
+
+func TestShellCommandLineIsTheLastRow(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(Config{StartDir: root, Mode: ModeBrowse})
+	m.height = 24
+	m.width = 80
+	m.animationActive = false
+	next, _ := m.Update(previewKey("!"))
+	m = next.(model)
+	lines := strings.Split(m.View(), "\n")
+	last := lines[len(lines)-1]
+	if len(lines) != 24 || !strings.Contains(last, "shell command") || strings.Contains(last, "touch, mkdir, or rm") {
+		t.Fatalf("open last = %q lines %d", last, len(lines))
+	}
+	if strings.Contains(lines[1], "!") {
+		t.Fatalf("prompt = %q", lines[1])
+	}
+	next, _ = m.Update(previewKey("touch made.txt"))
+	m = next.(model)
+	lines = strings.Split(m.View(), "\n")
+	if !strings.Contains(lines[len(lines)-1], "! touch made.txt|") {
+		t.Fatalf("last = %q", lines[len(lines)-1])
+	}
+	if strings.Contains(lines[1], "touch") {
+		t.Fatalf("prompt = %q", lines[1])
+	}
+}
+
+func TestShellRunsInTheListedDirectory(t *testing.T) {
+	t.Setenv("SHELL", "/bin/sh")
+	root := t.TempDir()
+	notes := filepath.Join(root, "notes")
+	if err := os.Mkdir(notes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(Config{StartDir: root, Mode: ModeBrowse})
+	m.animationActive = false
+	next, cmd := m.Update(previewKey("!"))
+	m = next.(model)
+	if cmd != nil || !m.shelling {
+		t.Fatalf("shelling %v cmd %v", m.shelling, cmd)
+	}
+	next, cmd = m.Update(tui.KeyMsg{Type: tui.KeyEnter})
+	m = next.(model)
+	if cmd != nil || m.status != "nothing to run" || m.commanding {
+		t.Fatalf("empty status %q commanding %v cmd %v", m.status, m.commanding, cmd)
+	}
+	if _, err := os.Stat(notes); err != nil {
+		t.Fatal(err)
+	}
+
+	next, _ = m.Update(previewKey("!"))
+	m = next.(model)
+	next, cmd = m.Update(previewKey("touch made.txt"))
+	m = next.(model)
+	next, cmd = m.Update(tui.KeyMsg{Type: tui.KeyEnter})
+	m = next.(model)
+	if cmd == nil || m.commanding || m.shelling {
+		t.Fatalf("commanding %v shelling %v cmd %v", m.commanding, m.shelling, cmd)
+	}
+	if _, err := os.Stat(filepath.Join(root, "made.txt")); !os.IsNotExist(err) {
+		t.Fatalf("shell ran before the terminal handoff: %v", err)
+	}
+	ran := shellCommand(root, "touch made.txt")
+	if err := ran.Run(); err != nil {
+		t.Fatal(err)
+	}
+	next, _ = m.Update(shellDoneMsg{line: "touch made.txt"})
+	m = next.(model)
+	if m.status != "touch made.txt" {
+		t.Fatalf("status %q", m.status)
+	}
+	if _, err := os.Stat(filepath.Join(root, "made.txt")); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, entry := range m.entries {
+		if entry.Name == "made.txt" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("listing missing made.txt")
+	}
+
+	removed := shellCommand(root, "rm -rf notes")
+	if err := removed.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(notes); !os.IsNotExist(err) {
+		t.Fatalf("shell left notes: %v", err)
+	}
+	next, _ = m.Update(shellDoneMsg{line: "rm -rf notes", err: nil})
+	m = next.(model)
+	for _, entry := range m.entries {
+		if entry.Name == "notes" {
+			t.Fatal("listing still shows notes")
+		}
+	}
+
+	failed := shellCommand(root, "false")
+	err := failed.Run()
+	if err == nil {
+		t.Fatal("false succeeded")
+	}
+	next, _ = m.Update(shellDoneMsg{line: "false", err: err})
+	m = next.(model)
+	if m.status != "false failed" {
+		t.Fatalf("status %q", m.status)
+	}
+}
+
+func TestColonInTheFilterStaysText(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(Config{StartDir: root, Mode: ModeBrowse})
+	m.animationActive = false
+	m = press(t, m, "/")
+	m = press(t, m, ":")
+	m = press(t, m, "!")
+	if m.commanding || m.shelling || m.input != ":!" {
+		t.Fatalf("commanding %v shelling %v input %q", m.commanding, m.shelling, m.input)
+	}
 }

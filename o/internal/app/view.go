@@ -95,9 +95,15 @@ func (m model) bottomLine() string {
 }
 
 func (m model) commandLine() string {
-	body := "! " + m.input + "|"
+	prefix := ": "
+	hint := "  touch, mkdir, or rm"
+	if m.shelling {
+		prefix = "! "
+		hint = "  shell command"
+	}
+	body := prefix + m.input + "|"
 	if m.input == "" {
-		body += "  touch, mkdir, or rm"
+		body += hint
 	}
 	return fitTail(body, m.width)
 }
@@ -210,13 +216,13 @@ func (m model) renderHelp() string {
 		"",
 		"Listings use a staged cascade. Text brightens by relative line count.",
 		"Structure is polled every 500ms and can be reloaded manually.",
-		"",
 		"j/k or arrows      move",
 		"l or right         navigate/open/confirm without directory handoff",
 		"enter              cd to the current listing directory in browse mode",
 		"h or left          parent directory",
 		"/                  enter or clear filter",
-		"!                  touch, mkdir, or rm in this directory",
+		":                  touch, mkdir, or rm in this directory",
+		"!                  run a shell command in this directory",
 		".                  show or hide dot entries",
 		"= / -              increase or decrease nesting preview depth",
 		"r                  reload the active listing immediately",
@@ -224,7 +230,7 @@ func (m model) renderHelp() string {
 		"v                  select consecutive items",
 		"x / y              cut or copy the current item or the visual range",
 		"p                  paste into this directory",
-		"delete             delete the visual range",
+		"backspace/delete   delete the visual range",
 		"dd                 delete the current item or the visual range",
 		"n                  shell-cd handoff when O_SHELL_CD_FILE is set",
 		"~                  home directory",

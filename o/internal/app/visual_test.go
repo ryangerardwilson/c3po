@@ -276,8 +276,43 @@ func TestVisualFilterAndEmpty(t *testing.T) {
 	if _, err := os.Stat(note); err != nil {
 		t.Fatal(err)
 	}
+	m = pressMsg(t, m, tui.KeyMsg{Type: tui.KeyBackspace})
+	if _, err := os.Stat(note); err != nil {
+		t.Fatal(err)
+	}
+	if m.input != "" {
+		t.Fatalf("filter input %q", m.input)
+	}
 	if m.visual {
 		t.Fatal("delete entered visual mode")
+	}
+}
+
+func TestBackspaceDeletesTheVisualRange(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := openDir(t, root, "")
+	m = pressMsg(t, m, tui.KeyMsg{Type: tui.KeyBackspace})
+	if _, err := os.Stat(filepath.Join(root, "a.txt")); err != nil {
+		t.Fatal(err)
+	}
+	m = press(t, m, "v")
+	m = press(t, m, "j")
+	m = pressMsg(t, m, tui.KeyMsg{Type: tui.KeyBackspace})
+	for _, name := range []string{"a.txt", "b.txt"} {
+		if _, err := os.Stat(filepath.Join(root, name)); !os.IsNotExist(err) {
+			t.Fatalf("%s remains: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "c.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if m.visual || m.status != "deleted a.txt, b.txt" {
+		t.Fatalf("visual %v status %q", m.visual, m.status)
 	}
 }
 

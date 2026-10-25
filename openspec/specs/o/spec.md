@@ -44,24 +44,6 @@ The navigator view SHALL contain one line for every row of the terminal. The tit
 - **AND** the last line SHALL be the status line
 - **AND** the view SHALL NOT contain `j/k move`
 
-### Requirement: Bang runs touch, mkdir, or rm
-`!` SHALL open a command line on the last row. The command line SHALL show `!` followed by the text being typed, and SHALL NOT show that text on the prompt line under the title. Enter SHALL run that line in the listed directory when the command is `touch`, `mkdir`, or `rm`. `mkdir` MAY take `-p`. Any other command or flag SHALL be refused and SHALL NOT run. Esc SHALL cancel the command line without running a command. After a command runs, the listing SHALL reload and the status line SHALL be the last line again.
-
-#### Scenario: mkdir creates a directory
-- **WHEN** the operator presses `!`, types `mkdir notes`, and presses enter
-- **THEN** the listed directory SHALL contain a directory named notes
-- **AND** the listing SHALL show notes
-
-#### Scenario: Another command is refused
-- **WHEN** the operator submits `rm -rf notes`
-- **THEN** no command SHALL run
-- **AND** the directory notes SHALL remain
-
-#### Scenario: The command line is the last row
-- **WHEN** the operator presses `!` and types `mkdir notes`
-- **THEN** the last line SHALL contain `mkdir notes`
-- **AND** the line under the title SHALL NOT contain `mkdir notes`
-
 ### Requirement: Cut, copy, and paste
 When visual mode is off, `x` SHALL stage the current file or directory to move and `y` SHALL stage the current file or directory to copy. `p` SHALL place every staged item in the listed directory under its own name, in staged order. A copy SHALL leave each source in place and SHALL stay staged. A cut SHALL remove each source and SHALL clear the stage. `p` SHALL refuse when nothing is staged, when any destination name exists, when any staged path is missing, or when any paste would put a directory inside itself. A refused paste SHALL leave every source and every existing destination unchanged. `y` SHALL NOT send the path to `wl-copy`.
 
@@ -113,7 +95,7 @@ When visual mode is off, the first `d` SHALL arm deletion and SHALL show `d`. A 
 - **AND** visual mode SHALL be off
 
 ### Requirement: Visual range
-`v` SHALL toggle visual mode. The first `v` on a row SHALL anchor the range on that row and the status SHALL be `visual 1`. Motion keys SHALL move the cursor and SHALL extend the range through every listing row between the anchor and the cursor. The range SHALL stay inside the listing and SHALL NOT wrap. Each row in the range SHALL be highlighted, and the cursor row SHALL keep its cursor marker. A second `v` SHALL leave visual mode and SHALL leave every file in place. Esc SHALL leave visual mode and SHALL leave every file in place. `h` SHALL leave visual mode. The Delete key SHALL delete every file and directory in the range, SHALL leave visual mode, and SHALL NOT delete when visual mode is off. `x` SHALL stage the range to move, in listing order, and SHALL leave visual mode. `y` SHALL stage the range to copy, in listing order, and SHALL leave visual mode. `v` or the Delete key typed into the filter or the command prompt SHALL NOT enter visual mode and SHALL NOT delete. An empty listing SHALL leave visual mode off. The shortcut list and `c3po tui o help` SHALL name `v` and the Delete key.
+`v` SHALL toggle visual mode. The first `v` on a row SHALL anchor the range on that row and the status SHALL be `visual 1`. Motion keys SHALL move the cursor and SHALL extend the range through every listing row between the anchor and the cursor. The range SHALL stay inside the listing and SHALL NOT wrap. Each row in the range SHALL be highlighted, and the cursor row SHALL keep its cursor marker. A second `v` SHALL leave visual mode and SHALL leave every file in place. Esc SHALL leave visual mode and SHALL leave every file in place. `h` SHALL leave visual mode. The Delete key and Backspace SHALL delete every file and directory in the range, SHALL leave visual mode, and SHALL NOT delete when visual mode is off. `x` SHALL stage the range to move, in listing order, and SHALL leave visual mode. `y` SHALL stage the range to copy, in listing order, and SHALL leave visual mode. `v`, the Delete key, or Backspace typed into the filter or a command prompt SHALL NOT enter visual mode and SHALL NOT delete a file. Backspace in the filter or a command prompt SHALL edit that text. An empty listing SHALL leave visual mode off. The shortcut list and `c3po tui o help` SHALL name `v`, Backspace, and the Delete key.
 
 #### Scenario: A range is highlighted
 - **WHEN** the operator presses `v` on the first of three files and then `j` twice
@@ -140,6 +122,20 @@ When visual mode is off, the first `d` SHALL arm deletion and SHALL show `d`. A 
 - **WHEN** visual mode is off and the operator presses Delete
 - **THEN** the current file SHALL remain
 
+#### Scenario: Backspace removes the range
+- **WHEN** the operator selects two files with `v` and `j` and presses Backspace
+- **THEN** both files SHALL be gone
+- **AND** visual mode SHALL be off
+
+#### Scenario: Backspace does nothing outside visual mode
+- **WHEN** visual mode is off and the operator presses Backspace
+- **THEN** the current file SHALL remain
+
+#### Scenario: Backspace in the filter edits text
+- **WHEN** the operator is typing a filter and presses Backspace
+- **THEN** the filter text SHALL drop its last character
+- **AND** the current file SHALL remain
+
 #### Scenario: y copies the range
 - **WHEN** the operator selects two files and presses `y`, then `p` in another directory
 - **THEN** that directory SHALL contain both files
@@ -162,4 +158,47 @@ When visual mode is off, the first `d` SHALL arm deletion and SHALL show `d`. A 
 - **WHEN** the operator is typing a filter and presses `v`
 - **THEN** visual mode SHALL stay off
 - **AND** the filter text SHALL contain `v`
+
+### Requirement: Colon runs touch, mkdir, or rm
+`:` SHALL open a command line on the last row. The command line SHALL show `:` followed by the text being typed, and SHALL NOT show that text on the prompt line under the title. Enter SHALL run that line in the listed directory when the command is `touch`, `mkdir`, or `rm`. `mkdir` MAY take `-p`. Any other command or flag SHALL be refused and SHALL NOT run. Esc SHALL cancel the command line without running a command. After a command runs, the listing SHALL reload and the status line SHALL be the last line again. `:` typed into the filter SHALL stay text. The shortcut list and `c3po tui o help` SHALL name `:`.
+
+#### Scenario: mkdir creates a directory
+- **WHEN** the operator presses `:`, types `mkdir notes`, and presses enter
+- **THEN** the listed directory SHALL contain a directory named notes
+- **AND** the listing SHALL show notes
+
+#### Scenario: Another command is refused
+- **WHEN** the operator submits `rm -rf notes` on the `:` command line
+- **THEN** no command SHALL run
+- **AND** the directory notes SHALL remain
+
+#### Scenario: The command line is the last row
+- **WHEN** the operator presses `:` and types `mkdir notes`
+- **THEN** the last line SHALL contain `mkdir notes`
+- **AND** the line under the title SHALL NOT contain `mkdir notes`
+
+#### Scenario: Colon in the filter is text
+- **WHEN** the operator is typing a filter and presses `:`
+- **THEN** the command line SHALL stay closed
+- **AND** the filter text SHALL contain `:`
+
+### Requirement: Bang runs a shell command
+`!` SHALL open a command line on the last row. The command line SHALL show `!` followed by the text being typed, and SHALL NOT show that text on the prompt line under the title. Enter SHALL run that line in the shell with the listed directory as its working directory, and SHALL hand the terminal to that command. The command SHALL NOT be limited to `touch`, `mkdir`, or `rm`. An empty line SHALL NOT run. Esc SHALL cancel the command line without running a command. After the command exits, the listing SHALL reload and the status line SHALL be the last line again. `!` typed into the filter SHALL stay text. The shortcut list and `c3po tui o help` SHALL name `!`.
+
+#### Scenario: A shell command runs in the listed directory
+- **WHEN** the operator presses `!`, types `touch made.txt`, and presses enter
+- **THEN** `made.txt` SHALL be created in the listed directory
+
+#### Scenario: A refused file command is allowed in the shell
+- **WHEN** the operator presses `!`, types `rm -rf notes`, and presses enter
+- **THEN** the directory notes SHALL be gone
+
+#### Scenario: An empty shell line does not run
+- **WHEN** the operator presses `!` and then enter
+- **THEN** no command SHALL run
+
+#### Scenario: The shell line is the last row
+- **WHEN** the operator presses `!` and types `touch made.txt`
+- **THEN** the last line SHALL contain `touch made.txt`
+- **AND** the line under the title SHALL NOT contain `touch made.txt`
 

@@ -55,7 +55,8 @@ keys:
                    and exit; pick/save: same as l
   h or left        parent directory
   /                enter or clear the filter
-  !                touch, mkdir, or rm in this directory
+  :                touch, mkdir, or rm in this directory
+  !                run a shell command in this directory
   r                reload the listing now
   .                show or hide dot entries (hidden by default)
   = / -            increase or decrease the nesting preview depth
@@ -64,6 +65,7 @@ keys:
   x                cut the current item or the visual range
   y                copy the current item or the visual range
   p                paste into the listed directory
+  backspace        delete the visual range
   delete           delete the visual range
   dd               delete the current item or the visual range
   n                cd the invoking shell into the current directory and exit
@@ -76,11 +78,14 @@ line count relative to the largest text file shown. The listing is polled
 every 500ms, so outside creations, deletions, renames, and edits appear on
 their own.
 
-! opens a command line on the last row. It runs touch, mkdir, or rm in
+: opens a command line on the last row. It runs touch, mkdir, or rm in
 the listed directory. mkdir may take -p. Esc cancels the command line.
 
+! opens a command line on the last row and runs that line in the shell
+in the listed directory. An empty line does not run. Esc cancels it.
+
 v selects consecutive items. j and k extend that range. v again, or
-Esc, clears it. delete removes the range. x cuts the current item, or
+Esc, clears it. delete or backspace removes the range. x cuts the current item, or
 the range while visual mode is on. y copies it the same way. p pastes
 every staged item into the listed directory under its own name. A copy
 stays staged. A cut is cleared after it lands. An existing name refuses

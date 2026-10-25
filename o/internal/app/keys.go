@@ -28,7 +28,8 @@ var browseKeys = map[string]keyHandler{
 	"l":      model.activate,
 	"enter":  model.accept,
 	"/":      keyFilter,
-	"!":      keyCommand,
+	":":      keyFileCommand,
+	"!":      keyShell,
 	"=":      keyDeeper,
 	"+":      keyDeeper,
 	"-":      keyShallower,
@@ -48,7 +49,8 @@ func (m model) updateKey(msg tui.KeyMsg) (tui.Model, tui.Cmd) {
 	animationGeneration := m.animationGeneration
 	watchGeneration := m.watchGeneration
 	if m.commanding {
-		return m.withAnimation(m.commandKey(msg, key), nil, animationGeneration, watchGeneration)
+		next, cmd := m.commandKey(msg, key)
+		return m.withAnimation(next, cmd, animationGeneration, watchGeneration)
 	}
 	if m.filtering {
 		return m.withAnimation(m.filterKey(msg, key), nil, animationGeneration, watchGeneration)
@@ -72,7 +74,7 @@ func (m model) updateKey(msg tui.KeyMsg) (tui.Model, tui.Cmd) {
 	if key == "?" || m.showHelp {
 		return m.helpKey(key), nil
 	}
-	if msg.Type == tui.KeyDelete {
+	if msg.Type == tui.KeyDelete || key == "backspace" || key == "ctrl+h" {
 		if !m.visual {
 			return m, nil
 		}
@@ -159,28 +161,50 @@ func keyParent(m model) (model, tui.Cmd) {
 	return m, nil
 }
 
-func keyCommand(m model) (model, tui.Cmd) {
+func keyFileCommand(m model) (model, tui.Cmd) {
+	return openCommand(m, false)
+}
+
+func keyShell(m model) (model, tui.Cmd) {
+	return openCommand(m, true)
+}
+
+func openCommand(m model, shell bool) (model, tui.Cmd) {
 	m.filtering = false
 	m.commanding = true
+	m.shelling = shell
 	m.input = ""
 	m.status = ""
 	return m, nil
 }
 
-func (m model) commandKey(msg tui.KeyMsg, key string) model {
+func (m model) commandKey(msg tui.KeyMsg, key string) (model, tui.Cmd) {
 	switch key {
 	case "esc", "ctrl+c":
 		m.commanding = false
+		m.shelling = false
 		m.input = ""
 		m.status = "command cancelled"
 	case "enter":
 		line := strings.TrimSpace(m.input)
+		shelling := m.shelling
 		m.commanding = false
+		m.shelling = false
 		m.input = ""
+		if shelling {
+			if line == "" {
+				m.status = "nothing to run"
+				return m, nil
+			}
+			dir := m.currentDir
+			return m, tui.Exec(shellCommand(dir, line), func(err error) tui.Msg {
+				return shellDoneMsg{line: line, err: err}
+			})
+		}
 		status, path, err := applyFileCommand(m.currentDir, line)
 		if err != nil {
 			m.status = err.Error()
-			return m
+			return m, nil
 		}
 		m.reload()
 		m.selectPath(path)
@@ -192,7 +216,7 @@ func (m model) commandKey(msg tui.KeyMsg, key string) model {
 			m.input += string(msg.Runes)
 		}
 	}
-	return m
+	return m, nil
 }
 
 func keyFilter(m model) (model, tui.Cmd) {
@@ -299,4 +323,16 @@ func trimLastRune(value string) string {
 	}
 	_, size := utf8.DecodeLastRuneInString(value)
 	return value[:len(value)-size]
+}
+
+func (m model) finishShell(msg shellDoneMsg) (tui.Model, tui.Cmd) {
+	animationGeneration := m.animationGeneration
+	watchGeneration := m.watchGeneration
+	m.reload()
+	if msg.err != nil {
+		m.status = msg.line + " failed"
+	} else {
+		m.status = msg.line
+	}
+	return m.withAnimation(m, nil, animationGeneration, watchGeneration)
 }

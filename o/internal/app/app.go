@@ -59,6 +59,11 @@ type openedMsg struct {
 	ok   bool
 }
 
+type shellDoneMsg struct {
+	line string
+	err  error
+}
+
 type model struct {
 	cfg Config
 
@@ -72,6 +77,7 @@ type model struct {
 	input        string
 	filtering    bool
 	commanding   bool
+	shelling     bool
 	clipSet      bool
 	clipCut      bool
 	clipPaths    []string
@@ -157,6 +163,8 @@ func (m model) Update(msg tui.Msg) (tui.Model, tui.Cmd) {
 		return m.updateStructurePoll(msg)
 	case openedMsg:
 		m.status = openedStatus(msg)
+	case shellDoneMsg:
+		return m.finishShell(msg)
 	case tui.KeyMsg:
 		return m.updateKey(msg)
 	}
