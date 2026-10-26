@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 	"github.com/ryangerardwilson/c3po/tunnel/internal/routes"
 	"github.com/ryangerardwilson/c3po/tunnel/internal/secrets"
 	"github.com/ryangerardwilson/c3po/tunnel/internal/store"
@@ -17,7 +18,7 @@ const (
 )
 
 // Run opens the route editor on the terminal.
-func Run(home string, load func() (secrets.Tunnel, error), ensure store.Ensure) error {
+func Run(home string, load func() (secrets.Tunnel, error), ensure store.Ensure, sess *tuisession.Session) error {
 	file, err := routes.EnsureFile(routes.Path(home))
 	if err != nil {
 		return err
@@ -29,7 +30,9 @@ func Run(home string, load func() (secrets.Tunnel, error), ensure store.Ensure) 
 	}
 	defer restore()
 	m := newModel(home, file, os.Getenv("NO_COLOR") == "")
+	m.session = sess
 	m.scan()
+	m.restoreSession()
 	fmt.Fprint(out, "\x1b[?1049h\x1b[?25l")
 	defer fmt.Fprint(out, "\x1b[0m\x1b[?25h\x1b[?1049l")
 	return loop(&m, screen{in: in, out: out, load: load, ensure: ensure})
@@ -53,8 +56,10 @@ func loop(m *model, s screen) error {
 			return err
 		}
 		if ok && s.apply(m, k, saves) == actQuit {
+			m.noteSession()
 			return nil
 		}
+		m.noteSession()
 		select {
 		case err := <-saves:
 			m.saved(err)

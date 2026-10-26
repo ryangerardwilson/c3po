@@ -12,6 +12,7 @@ import (
 	"github.com/ryangerardwilson/c3po/gcal"
 	"github.com/ryangerardwilson/c3po/gdrive"
 	"github.com/ryangerardwilson/c3po/gmail"
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 	"github.com/ryangerardwilson/c3po/internal/version"
 	"github.com/ryangerardwilson/c3po/internal/xdg"
 	"github.com/ryangerardwilson/c3po/l"
@@ -121,8 +122,14 @@ func dispatchTUI(args []string, stdout, stderr io.Writer) int {
 }
 
 func tunnelScreen(args []string, stdout, stderr io.Writer) int {
+	id, rest, err := tuisession.TakeResume(args)
+	if err != nil {
+		fmt.Fprint(stderr, tunnel.ScreenHelp)
+		return 2
+	}
+	args = rest
 	if len(args) == 0 {
-		return tunnel.Screen(stdout, stderr)
+		return tunnel.ScreenResume(id, stdout, stderr)
 	}
 	if len(args) == 1 && isHelp(args[0]) {
 		fmt.Fprint(stdout, tunnel.ScreenHelp)
@@ -136,8 +143,14 @@ func tunnelScreen(args []string, stdout, stderr io.Writer) int {
 }
 
 func gdriveScreen(args []string, stdout, stderr io.Writer) int {
+	id, rest, err := tuisession.TakeResume(args)
+	if err != nil {
+		fmt.Fprint(stderr, gdrive.ScreenHelp)
+		return 2
+	}
+	args = rest
 	if len(args) == 0 {
-		return gdrive.Screen(stdout, stderr)
+		return gdrive.ScreenResume(id, stdout, stderr)
 	}
 	if len(args) == 1 && isHelp(args[0]) {
 		fmt.Fprint(stdout, gdrive.ScreenHelp)
@@ -151,8 +164,14 @@ func gdriveScreen(args []string, stdout, stderr io.Writer) int {
 }
 
 func deportScreen(args []string, stdout, stderr io.Writer) int {
+	id, rest, err := tuisession.TakeResume(args)
+	if err != nil {
+		fmt.Fprint(stderr, deport.ScreenHelp)
+		return 2
+	}
+	args = rest
 	if len(args) == 0 {
-		return deport.Screen(stdout, stderr)
+		return deport.ScreenResume(id, stdout, stderr)
 	}
 	if len(args) == 1 && isHelp(args[0]) {
 		fmt.Fprint(stdout, deport.ScreenHelp)
@@ -166,8 +185,14 @@ func deportScreen(args []string, stdout, stderr io.Writer) int {
 }
 
 func passScreen(args []string, stdout, stderr io.Writer) int {
+	id, rest, err := tuisession.TakeResume(args)
+	if err != nil {
+		fmt.Fprint(stderr, pass.ScreenHelp)
+		return 2
+	}
+	args = rest
 	if len(args) == 0 {
-		return pass.Screen(stdout, stderr)
+		return pass.ScreenResume(id, stdout, stderr)
 	}
 	if len(args) == 1 && isHelp(args[0]) {
 		fmt.Fprint(stdout, pass.ScreenHelp)

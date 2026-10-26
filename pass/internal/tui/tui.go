@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 	"github.com/ryangerardwilson/c3po/pass/internal/op"
 	"github.com/ryangerardwilson/c3po/pass/internal/vault"
 )
@@ -58,17 +59,26 @@ type model struct {
 	height    int
 	help      bool
 	armed     bool
+	session   *tuisession.Session
 }
 
 // Run opens the vault list. q leaves it.
 func Run(src Source, clip Copier) error {
+	return RunSession(src, clip, nil)
+}
+
+// RunSession opens the vault list and restores a saved row when sess is set.
+func RunSession(src Source, clip Copier, sess *tuisession.Session) error {
 	term, err := openTerminal()
 	if err != nil {
 		return err
 	}
 	defer term.close()
-	m := &model{src: src, clip: clip}
+	m := &model{src: src, clip: clip, session: sess}
 	m.loadVaults()
+	if body, ok := sess.Restored(); ok && body.Path != "" {
+		m.loadItems(body.Path)
+	}
 	return m.loop(term)
 }
 
@@ -81,8 +91,10 @@ func (m *model) loop(term screen) error {
 			return err
 		}
 		if m.handleKey(key) {
+			m.noteSession()
 			return m.err
 		}
+		m.noteSession()
 	}
 }
 
@@ -174,6 +186,7 @@ func (m *model) loadVaults() {
 	if len(m.rows) == 0 {
 		m.status = "no vaults"
 	}
+	m.restoreSession()
 }
 
 func (m *model) loadItems(name string) {
@@ -190,6 +203,33 @@ func (m *model) loadItems(name string) {
 	m.status = ""
 	if len(m.rows) == 0 {
 		m.status = "no items"
+	}
+	m.restoreSession()
+}
+
+func (m *model) noteSession() {
+	if m.cursor < 0 || m.cursor >= len(m.rows) {
+		_ = m.session.Place(m.vaultName, "")
+		return
+	}
+	row := m.rows[m.cursor]
+	if row.vault {
+		_ = m.session.Place("", row.id)
+		return
+	}
+	_ = m.session.Place(m.vaultName, row.id)
+}
+
+func (m *model) restoreSession() {
+	if m.session == nil {
+		return
+	}
+	keys := make([]string, len(m.rows))
+	for i, row := range m.rows {
+		keys[i] = row.id
+	}
+	if i, ok := m.session.Index(keys); ok {
+		m.cursor = i
 	}
 }
 

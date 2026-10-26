@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 	"github.com/ryangerardwilson/c3po/internal/version"
 	"github.com/ryangerardwilson/c3po/internal/xdg"
 	"github.com/ryangerardwilson/c3po/tunnel/internal/daemon"
@@ -86,7 +87,24 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 // Screen runs the route editor. The command is c3po tui tunnel.
 func Screen(stdout, stderr io.Writer) int {
-	return newApp(stdout, stderr).open(nil)
+	return screenWith("", stdout, stderr)
+}
+
+// ScreenResume opens the route editor on a saved session.
+func ScreenResume(id string, stdout, stderr io.Writer) int {
+	return screenWith(id, stdout, stderr)
+}
+
+func screenWith(id string, stdout, stderr io.Writer) int {
+	sess, err := tuisession.Open("tunnel", id)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	defer sess.Close()
+	a := newApp(stdout, stderr)
+	a.session = sess
+	return a.open(nil)
 }
 
 // app holds the seams the commands use, so tests can replace credentials,
@@ -102,6 +120,7 @@ type app struct {
 	Journal   func() error
 	Open      func(home string) error
 	Serve     func(ctx context.Context) error
+	session   *tuisession.Session
 }
 
 func newApp(stdout, stderr io.Writer) *app {
@@ -116,7 +135,7 @@ func newApp(stdout, stderr io.Writer) *app {
 	}
 	a.Ensure = a.ensureDNS
 	a.Open = func(home string) error {
-		return tui.Run(home, a.Load, a.Ensure)
+		return tui.Run(home, a.Load, a.Ensure, a.session)
 	}
 	a.Serve = func(ctx context.Context) error {
 		return daemon.Run(ctx, daemon.Options{Home: a.Home, TokenFile: a.TokenFile, Stdout: a.Out, Stderr: a.Err})

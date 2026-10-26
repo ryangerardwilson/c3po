@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 	"github.com/ryangerardwilson/c3po/internal/version"
 	"github.com/ryangerardwilson/c3po/o/internal/app"
 	"github.com/ryangerardwilson/c3po/o/internal/config"
@@ -44,6 +45,12 @@ var commands = map[string]command{
 // Run executes c3po tui o with the arguments after "o". The navigator
 // itself draws on the terminal; help, results, and errors use the writers.
 func Run(args []string, stdout, stderr io.Writer) int {
+	id, rest, err := tuisession.TakeResume(args)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 2
+	}
+	args = rest
 	switch {
 	case len(args) == 1 && isHelp(args[0]):
 		fmt.Fprint(stdout, Help)
@@ -55,25 +62,25 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "Use help or version by itself.")
 		return 1
 	}
-	return dispatch(args, stdout, stderr)
+	return dispatch(id, args, stdout, stderr)
 }
 
 func isHelp(s string) bool {
 	return s == "help" || s == "-h" || s == "--help"
 }
 
-func dispatch(args []string, stdout, stderr io.Writer) int {
+func dispatch(id string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		start, _ := os.Getwd()
-		return runNavigator(app.Config{StartDir: start, Mode: app.ModeBrowse}, stdout, stderr)
+		return runNavigator(app.Config{StartDir: start, Mode: app.ModeBrowse, ResumeID: id}, stdout, stderr)
 	}
 	if run, ok := commands[args[0]]; ok {
 		return run(args, stdout, stderr)
 	}
-	return openPaths(args, stdout, stderr)
+	return openPaths(id, args, stdout, stderr)
 }
 
-func openPaths(paths []string, stdout, stderr io.Writer) int {
+func openPaths(id string, paths []string, stdout, stderr io.Writer) int {
 	targets := make([]string, 0, len(paths))
 	for _, arg := range paths {
 		target := fsnav.NormalizePath(arg)
@@ -83,7 +90,7 @@ func openPaths(paths []string, stdout, stderr io.Writer) int {
 			return 1
 		}
 		if len(paths) == 1 && info.IsDir() {
-			return runNavigator(app.Config{StartDir: target, Mode: app.ModeBrowse}, stdout, stderr)
+			return runNavigator(app.Config{StartDir: target, Mode: app.ModeBrowse, ResumeID: id, KeepStart: true}, stdout, stderr)
 		}
 		if info.IsDir() {
 			fmt.Fprintln(stderr, "Multiple open targets must all be files")
@@ -208,6 +215,24 @@ func Pick(startDir string, stderr io.Writer) (string, int) {
 }
 
 func runNavigator(cfg app.Config, stdout, stderr io.Writer) int {
+	if cfg.ResumeID != "" || tuisession.Interactive(stdout) {
+		sess, err := tuisession.Open("o", cfg.ResumeID)
+		if err != nil {
+			fmt.Fprintln(stderr, err.Error())
+			return 1
+		}
+		defer sess.Close()
+		if body, ok := sess.Restored(); ok && !cfg.KeepStart {
+			if body.Path != "" {
+				cfg.StartDir = body.Path
+			}
+			if body.Cursor != "" && cfg.RevealTarget == "" {
+				cfg.RevealTarget = body.Cursor
+			}
+		}
+		cfg.Session = sess
+		_ = sess.Place(cfg.StartDir, cfg.RevealTarget)
+	}
 	result, code := runApp(cfg, stderr)
 	if code != 0 {
 		return code

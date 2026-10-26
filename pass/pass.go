@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 	"github.com/ryangerardwilson/c3po/internal/version"
 	"github.com/ryangerardwilson/c3po/pass/internal/cli"
 	"github.com/ryangerardwilson/c3po/pass/internal/clip"
@@ -86,6 +87,21 @@ create, edit, show, and search stay on c3po pass.
 
 // Screen lists vaults, then copies one item. The secret is not printed.
 func Screen(stdout, stderr io.Writer) int {
+	return screenWith("", stdout, stderr)
+}
+
+// ScreenResume opens the vault list on a saved session. The secret is not stored.
+func ScreenResume(id string, stdout, stderr io.Writer) int {
+	return screenWith(id, stdout, stderr)
+}
+
+func screenWith(id string, stdout, stderr io.Writer) int {
+	sess, err := tuisession.Open("pass", id)
+	if err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
+	}
+	defer sess.Close()
 	env, err := op.Env()
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
@@ -97,7 +113,7 @@ func Screen(stdout, stderr io.Writer) int {
 		return 1
 	}
 	client := op.Client{Runner: runner, Env: env, Err: stderr}
-	if err := tui.Run(client, clip.WLCopy{}); err != nil {
+	if err := tui.RunSession(client, clip.WLCopy{}, sess); err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return 1
 	}

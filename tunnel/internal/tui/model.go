@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 	"github.com/ryangerardwilson/c3po/tunnel/internal/routes"
 	"github.com/ryangerardwilson/c3po/tunnel/internal/store"
 )
@@ -41,6 +42,7 @@ type model struct {
 	local   map[int]bool
 	color   bool
 	help    bool
+	session *tuisession.Session
 }
 
 func newModel(home string, file routes.File, color bool) model {
@@ -52,6 +54,27 @@ func newModel(home string, file routes.File, color bool) model {
 		port:  input{limit: 5},
 		local: map[int]bool{},
 		color: color,
+	}
+}
+
+func (m *model) noteSession() {
+	name := ""
+	if m.cursor >= 0 && m.cursor < len(m.file.Routes) {
+		name = m.file.Routes[m.cursor].Name
+	}
+	_ = m.session.Place("", name)
+}
+
+func (m *model) restoreSession() {
+	if m.session == nil {
+		return
+	}
+	keys := make([]string, len(m.file.Routes))
+	for i, route := range m.file.Routes {
+		keys[i] = route.Name
+	}
+	if i, ok := m.session.Index(keys); ok {
+		m.cursor = i
 	}
 }
 

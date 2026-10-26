@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 	"github.com/ryangerardwilson/c3po/o/internal/fsnav"
 	"github.com/ryangerardwilson/c3po/o/internal/tui"
 )
@@ -37,6 +38,10 @@ type Config struct {
 	Multi        bool
 	// Descend lets l enter a directory during pick. enter confirms the row.
 	Descend bool
+	// ResumeID restores a sqlx session. KeepStart leaves StartDir alone.
+	ResumeID  string
+	KeepStart bool
+	Session   *tuisession.Session
 }
 
 // Result is what the session hands back: picked paths or a shell cd target.
@@ -166,9 +171,25 @@ func (m model) Update(msg tui.Msg) (tui.Model, tui.Cmd) {
 	case shellDoneMsg:
 		return m.finishShell(msg)
 	case tui.KeyMsg:
-		return m.updateKey(msg)
+		next, cmd := m.updateKey(msg)
+		if updated, ok := next.(model); ok {
+			updated.noteSession()
+			return updated, cmd
+		}
+		return next, cmd
 	}
 	return m, nil
+}
+
+func (m model) noteSession() {
+	if m.cfg.Session == nil {
+		return
+	}
+	cursor := ""
+	if m.selected >= 0 && m.selected < len(m.entries) {
+		cursor = m.entries[m.selected].Path
+	}
+	_ = m.cfg.Session.Place(m.currentDir, cursor)
 }
 
 func openedStatus(msg openedMsg) string {

@@ -7,6 +7,7 @@ import (
 
 	"golang.org/x/term"
 
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 	"github.com/ryangerardwilson/c3po/xl/internal/sheet"
 	"github.com/ryangerardwilson/c3po/xl/internal/tui"
 	"github.com/ryangerardwilson/c3po/xl/internal/version"
@@ -16,6 +17,7 @@ type Runner struct {
 	Out      io.Writer
 	Err      io.Writer
 	Terminal func() bool
+	resume   string
 }
 
 func NewRunner(out, errOut io.Writer) Runner {
@@ -23,6 +25,12 @@ func NewRunner(out, errOut io.Writer) Runner {
 }
 
 func (r Runner) Run(args []string) int {
+	id, rest, err := tuisession.TakeResume(args)
+	if err != nil {
+		return r.fail(err.Error())
+	}
+	r.resume = id
+	args = rest
 	if len(args) == 0 {
 		if !r.terminal() {
 			WriteHelp(r.Out)
@@ -63,6 +71,19 @@ func (r Runner) Run(args []string) int {
 func (r Runner) open(path string) int {
 	if !r.terminal() {
 		return r.fail("open needs a terminal")
+	}
+	sess, err := tuisession.Open("xl", r.resume)
+	if err != nil {
+		return r.fail(err.Error())
+	}
+	defer sess.Close()
+	if path == "" {
+		if body, ok := sess.Restored(); ok && body.Path != "" {
+			path = body.Path
+		}
+	}
+	if err := sess.Note(tuisession.Body{Path: path}); err != nil {
+		return r.fail(err.Error())
 	}
 	s, err := sheet.Open(path)
 	if err != nil {

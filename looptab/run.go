@@ -7,6 +7,7 @@ import (
 	"io"
 	"os/exec"
 
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 	"github.com/ryangerardwilson/c3po/internal/version"
 )
 
@@ -28,6 +29,12 @@ The job runs through looptab now and that row's index.
 
 // Run serves c3po tui looptab. args are the arguments after the screen name.
 func Run(args []string, stdout, stderr io.Writer) int {
+	id, rest, err := tuisession.TakeResume(args)
+	if err != nil {
+		fmt.Fprint(stderr, ScreenHelp)
+		return 2
+	}
+	args = rest
 	if len(args) == 1 && isHelp(args[0]) {
 		fmt.Fprint(stdout, ScreenHelp)
 		return 0
@@ -40,10 +47,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stderr, ScreenHelp)
 		return 2
 	}
-	return openScreen(stdout, stderr)
+	return openScreen(id, stdout, stderr)
 }
 
-func openScreen(_ io.Writer, stderr io.Writer) int {
+func openScreen(id string, _ io.Writer, stderr io.Writer) int {
+	sess, err := tuisession.Open("looptab", id)
+	if err != nil {
+		fmt.Fprintf(stderr, "looptab: %s\n", err.Error())
+		return 1
+	}
+	defer sess.Close()
 	bin, lookErr := exec.LookPath("looptab")
 	term, err := openTerminal()
 	if err != nil {
@@ -58,6 +71,7 @@ func openScreen(_ io.Writer, stderr io.Writer) int {
 			}
 			return loadJobs(bin)
 		},
+		session: sess,
 		run: func(j job) error {
 			term.pause()
 			err := runNow(bin, j.Index)

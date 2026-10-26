@@ -430,6 +430,61 @@ func put(dbPath, app, kind, key string, body []byte) error {
 	return execSQL(dbPath, sql)
 }
 
+// Record is one sqlx row addressed by app, kind, and key.
+type Record struct {
+	Key  string
+	Body []byte
+}
+
+// Put writes a record. It always uses the sqlx database, including for
+// callers that do not have a legacy file path.
+func Put(app, kind, key string, body []byte) error {
+	db, err := open()
+	if err != nil {
+		return err
+	}
+	return put(db, app, kind, key, body)
+}
+
+// Get reads one record. ok is false when the key is absent.
+func Get(app, kind, key string) ([]byte, bool, error) {
+	db, err := open()
+	if err != nil {
+		return nil, false, err
+	}
+	return get(db, app, kind, key)
+}
+
+// Delete removes one record. A missing key is not an error.
+func Delete(app, kind, key string) error {
+	db, err := open()
+	if err != nil {
+		return err
+	}
+	return execSQL(db, "DELETE FROM record WHERE app = "+quote(app)+" AND kind = "+quote(kind)+" AND item_key = "+quote(key))
+}
+
+// List returns every record of one app and kind.
+func List(app, kind string) ([]Record, error) {
+	db, err := open()
+	if err != nil {
+		return nil, err
+	}
+	var rows []struct {
+		ItemKey string `json:"item_key"`
+		Body    string `json:"body"`
+	}
+	sql := "SELECT item_key, body FROM record WHERE app = " + quote(app) + " AND kind = " + quote(kind) + " ORDER BY item_key"
+	if err := queryJSON(db, sql, &rows); err != nil {
+		return nil, err
+	}
+	out := make([]Record, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, Record{Key: row.ItemKey, Body: []byte(row.Body)})
+	}
+	return out, nil
+}
+
 func meta(dbPath, key string) (string, bool, error) {
 	var rows []struct {
 		Value *string `json:"value"`

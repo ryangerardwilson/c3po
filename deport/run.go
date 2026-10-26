@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 	"github.com/ryangerardwilson/c3po/internal/version"
 )
 
@@ -93,8 +94,23 @@ func Run(args []string, stdout, stderr io.Writer) int {
 }
 
 // Screen lists occupied safe external ports and frees the selected one.
-func Screen(_ io.Writer, stderr io.Writer) int {
-	err := runScreen(env{procRoot: "/proc", killer: osKiller{}, sleep: time.Sleep})
+func Screen(stdout, stderr io.Writer) int {
+	return screenWith("", stdout, stderr)
+}
+
+// ScreenResume opens the port list on a saved session.
+func ScreenResume(id string, stdout, stderr io.Writer) int {
+	return screenWith(id, stdout, stderr)
+}
+
+func screenWith(id string, _ io.Writer, stderr io.Writer) int {
+	sess, err := tuisession.Open("deport", id)
+	if err != nil {
+		fmt.Fprintf(stderr, "deport: %s\n", err.Error())
+		return 1
+	}
+	defer sess.Close()
+	err = runScreen(env{procRoot: "/proc", killer: osKiller{}, sleep: time.Sleep}, sess)
 	if err != nil {
 		fmt.Fprintf(stderr, "deport: %s\n", err.Error())
 		return 1

@@ -10,6 +10,7 @@ import (
 	"github.com/ryangerardwilson/c3po/gdrive/internal/driveapi"
 	"github.com/ryangerardwilson/c3po/gdrive/internal/syncer"
 	"github.com/ryangerardwilson/c3po/gdrive/internal/tui"
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 )
 
 func presetClient(preset string) (driveapi.Client, error) {
@@ -44,7 +45,7 @@ func accountClient(account *config.Account) (driveapi.Client, string, error) {
 	return client, root, nil
 }
 
-func runBrowse(preset string, _ []string, _ io.Writer) error {
+func runBrowse(preset string, sess *tuisession.Session) error {
 	if _, err := ensureClientSecret(preset, true, os.Stdout); err != nil {
 		return err
 	}
@@ -52,7 +53,7 @@ func runBrowse(preset string, _ []string, _ io.Writer) error {
 	if err != nil {
 		return err
 	}
-	_, err = tui.Browse(client)
+	_, err = tui.BrowseSession(client, sess)
 	return err
 }
 

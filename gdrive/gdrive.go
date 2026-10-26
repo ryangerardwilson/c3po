@@ -61,6 +61,11 @@ func Screen(stdout, stderr io.Writer) int {
 	return cli.Screen(stdout, stderr)
 }
 
+// ScreenResume browses the saved preset and folder.
+func ScreenResume(id string, stdout, stderr io.Writer) int {
+	return cli.ScreenResume(id, stdout, stderr)
+}
+
 // Run runs c3po gdrive with the arguments after "gdrive".
 func Run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || isHelp(args) {

@@ -2,7 +2,10 @@ package deport
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 )
 
 const (
@@ -31,9 +34,10 @@ type model struct {
 	load    func() ([]occupant, error)
 	release func(port int) ([]proc, error)
 	help    bool
+	session *tuisession.Session
 }
 
-func runScreen(e env) error {
+func runScreen(e env, sess *tuisession.Session) error {
 	term, err := openTerminal()
 	if err != nil {
 		return err
@@ -44,6 +48,7 @@ func runScreen(e env) error {
 		release: func(port int) ([]proc, error) {
 			return free(e.procRoot, port, e.killer, e.sleep)
 		},
+		session: sess,
 	}
 	return m.loop(term)
 }
@@ -58,8 +63,10 @@ func (m *model) loop(term screen) error {
 			return err
 		}
 		if m.handleKey(key) {
+			m.noteSession()
 			return nil
 		}
+		m.noteSession()
 	}
 }
 
@@ -77,6 +84,28 @@ func (m *model) refresh() {
 	}
 	m.rows = rows
 	m.cursor = m.clamp()
+	m.restoreSession()
+}
+
+func (m *model) noteSession() {
+	cursor := ""
+	if m.cursor >= 0 && m.cursor < len(m.rows) {
+		cursor = strconv.Itoa(m.rows[m.cursor].port)
+	}
+	_ = m.session.Place("", cursor)
+}
+
+func (m *model) restoreSession() {
+	if m.session == nil {
+		return
+	}
+	keys := make([]string, len(m.rows))
+	for i, row := range m.rows {
+		keys[i] = strconv.Itoa(row.port)
+	}
+	if i, ok := m.session.Index(keys); ok {
+		m.cursor = i
+	}
 }
 
 // handleKey applies one key and reports whether the screen quits.

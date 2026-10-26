@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 	"github.com/ryangerardwilson/c3po/internal/version"
 	"github.com/ryangerardwilson/c3po/l/internal/tree"
 )
@@ -65,6 +66,26 @@ usage.
 
 // Run runs c3po tui l. args are the arguments after "l".
 func Run(args []string, stdout, stderr io.Writer) int {
+	id, rest, rerr := tuisession.TakeResume(args)
+	if rerr != nil {
+		fmt.Fprintf(stderr, "l: %s\n\n", rerr)
+		fmt.Fprint(stderr, Help)
+		return 2
+	}
+	args = rest
+	var sess *tuisession.Session
+	if id != "" && len(args) == 0 {
+		var err error
+		sess, err = tuisession.Open("l", id)
+		if err != nil {
+			fmt.Fprintf(stderr, "l: %s\n", err.Error())
+			return 1
+		}
+		defer sess.Close()
+		if body, ok := sess.Restored(); ok && body.Args != nil {
+			args = body.Args
+		}
+	}
 	opts, err := parseArgs(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "l: %s\n\n", err)
@@ -78,6 +99,17 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	if opts.version {
 		fmt.Fprintln(stdout, "c3po "+version.String())
 		return 0
+	}
+	if sess == nil && (id != "" || tuisession.Interactive(stdout)) {
+		sess, err = tuisession.Open("l", id)
+		if err != nil {
+			fmt.Fprintf(stderr, "l: %s\n", err.Error())
+			return 1
+		}
+		defer sess.Close()
+	}
+	if sess != nil {
+		_ = sess.Note(tuisession.Body{Path: opts.config.Root, Args: append([]string(nil), args...)})
 	}
 	return list(opts, stdout, stderr)
 }

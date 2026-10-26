@@ -3,6 +3,8 @@ package looptab
 import (
 	"fmt"
 	"strings"
+
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 )
 
 const (
@@ -28,8 +30,9 @@ type model struct {
 	help   bool
 	width  int
 	height int
-	load   func() ([]job, error)
-	run    func(job) error
+	load    func() ([]job, error)
+	run     func(job) error
+	session *tuisession.Session
 }
 
 func (m *model) loop(term screen) error {
@@ -42,8 +45,10 @@ func (m *model) loop(term screen) error {
 			return err
 		}
 		if m.handleKey(key) {
+			m.noteSession()
 			return nil
 		}
+		m.noteSession()
 	}
 }
 
@@ -62,6 +67,28 @@ func (m *model) reload() {
 	m.rows = rows
 	m.err = nil
 	m.cursor = m.clamp()
+	m.restoreSession()
+}
+
+func (m *model) noteSession() {
+	cursor := ""
+	if m.cursor >= 0 && m.cursor < len(m.rows) {
+		cursor = m.rows[m.cursor].ID
+	}
+	_ = m.session.Place("", cursor)
+}
+
+func (m *model) restoreSession() {
+	if m.session == nil {
+		return
+	}
+	keys := make([]string, len(m.rows))
+	for i, row := range m.rows {
+		keys[i] = row.ID
+	}
+	if i, ok := m.session.Index(keys); ok {
+		m.cursor = i
+	}
 }
 
 func (m *model) handleKey(key string) bool {

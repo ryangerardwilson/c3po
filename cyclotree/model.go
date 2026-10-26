@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ryangerardwilson/c3po/ast"
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 )
 
 type node struct {
@@ -37,6 +38,20 @@ type screen struct {
 	nav       map[string]navMemo
 	steps     int
 	shortcuts bool
+	session   *tuisession.Session
+}
+
+func (s *screen) noteSession(dir, symbol string) {
+	if s == nil || s.session == nil {
+		return
+	}
+	args := []string{}
+	if symbol != "" {
+		args = []string{symbol}
+	}
+	mark := cursorMarkOf(s)
+	_ = s.session.Place(dir, mark.key)
+	_ = s.session.Note(tuisession.Body{Args: args})
 }
 
 // Key applies one motion. j and k move among visible rows. h moves to

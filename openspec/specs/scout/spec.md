@@ -5,7 +5,7 @@
 c3po runs one app from the first argument.
 ## Requirements
 ### Requirement: The first argument selects an app
-`c3po ast` SHALL run the ast tool with the remaining arguments. `c3po deport`, `c3po gcal`, `c3po gdrive`, `c3po gmail`, `c3po looptab`, `c3po pass`, `c3po slack`, and `c3po tunnel` SHALL run those tools with the remaining arguments. `c3po tui <screen>` SHALL be the only command that opens a terminal screen. The screens SHALL be `cyclotree`, `l`, `o`, `tunnel`, `gdrive`, `pass`, `deport`, `xl`, and `looptab`. `c3po tui` with no screen SHALL list those screens and SHALL exit 0. An unknown screen SHALL exit 2 and SHALL list the screens. `c3po` with no tool SHALL list `ast`, `deport`, `gcal`, `gdrive`, `gmail`, `looptab`, `pass`, `slack`, `tunnel`, and `tui`, and SHALL exit 0. An unknown command SHALL exit 2 and SHALL list the apps. The names `complexity`, `hide`, `visualize`, `vibetree`, `scout`, `cyclotree`, `l`, `o`, and `xl` SHALL be unknown commands. `c3po tunnel open` SHALL exit 2.
+`c3po ast` SHALL run the ast tool with the remaining arguments. `c3po deport`, `c3po gcal`, `c3po gdrive`, `c3po gmail`, `c3po looptab`, `c3po pass`, `c3po slack`, and `c3po tunnel` SHALL run those tools with the remaining arguments. `c3po tui <screen>` SHALL be the only command that opens a terminal screen. The screens SHALL be `cyclotree`, `l`, `o`, `tunnel`, `gdrive`, `pass`, `deport`, `xl`, and `looptab`. `c3po tui` with no screen SHALL list those screens and SHALL exit 0. An unknown screen SHALL exit 2 and SHALL list the screens. `c3po` with no tool SHALL list `ast`, `deport`, `gcal`, `gdrive`, `gmail`, `looptab`, `pass`, `slack`, `tunnel`, and `tui`, and SHALL exit 0. An unknown command SHALL exit 2 and SHALL list the apps. The names `complexity`, `hide`, `visualize`, `vibetree`, `scout`, `cyclotree`, `l`, `o`, and `xl` SHALL be unknown commands. `c3po tunnel open` SHALL exit 2. `c3po tui <screen> --resume <id>` SHALL open that screen at the stored session. `--resume` SHALL NOT be an unknown argument. `help` and `version` SHALL NOT open a session.
 
 #### Scenario: c3po lists the apps
 - **WHEN** the operator runs `c3po`
@@ -90,6 +90,18 @@ c3po runs one app from the first argument.
 - **WHEN** the operator runs `c3po nope`
 - **THEN** the command SHALL exit 2
 - **AND** the text SHALL list the known apps, `tui` among them
+
+#### Scenario: Resume opens the stored screen
+
+- **WHEN** the operator runs `c3po tui o --resume <id>` for a stored `o` session
+- **THEN** the command SHALL NOT exit 2 because of `--resume`
+- **AND** the screen SHALL open with that session
+
+#### Scenario: Help does not open a session
+
+- **WHEN** the operator runs `c3po tui o help`
+- **THEN** the command SHALL print help
+- **AND** it SHALL NOT write a TUI session
 
 ### Requirement: The previous name selects ast
 Invoking the binary as `rgw-ast` SHALL run ast. The arguments after the program name SHALL be the ast arguments.

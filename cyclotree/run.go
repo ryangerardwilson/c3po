@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 )
 
 const helpText = `c3po tui cyclotree shows calls from one function, or from the application entrypoint.
@@ -67,6 +69,13 @@ func Run(args []string, stdout, stderr io.Writer) int {
 }
 
 func runAt(args []string, cwd string, stdout, stderr io.Writer) int {
+	id, rest, rerr := tuisession.TakeResume(args)
+	if rerr != nil {
+		fmt.Fprintln(stderr, rerr.Error())
+		fmt.Fprint(stderr, helpText)
+		return 2
+	}
+	args = rest
 	opt, err := parseArgs(args, cwd)
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
@@ -81,6 +90,26 @@ func runAt(args []string, cwd string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stdout, helpText)
 		return 0
 	}
+	file, isTUI := interactive(stdout)
+	var sess *tuisession.Session
+	if id != "" || isTUI {
+		sess, err = tuisession.Open("cyclotree", id)
+		if err != nil {
+			fmt.Fprintf(stderr, "cyclotree: %s\n", err.Error())
+			return 1
+		}
+		defer sess.Close()
+		if id != "" && len(args) == 0 {
+			if body, ok := sess.Restored(); ok {
+				if body.Path != "" {
+					opt.dir = body.Path
+				}
+				if opt.symbol == "" && len(body.Args) > 0 {
+					opt.symbol = body.Args[0]
+				}
+			}
+		}
+	}
 	root, err := resolveDir(cwd, opt.dir)
 	if err != nil {
 		fmt.Fprintf(stderr, "cyclotree: %s\n", err.Error())
@@ -91,8 +120,20 @@ func runAt(args []string, cwd string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err.Error())
 		return 1
 	}
-	if f, ok := interactive(stdout); ok {
-		if err := runTUI(screen, root, opt.symbol, os.Stdin, f); err != nil {
+	if sess != nil {
+		argsNote := []string{}
+		if opt.symbol != "" {
+			argsNote = []string{opt.symbol}
+		}
+		_ = sess.Note(tuisession.Body{Path: root, Args: argsNote})
+		screen.session = sess
+		if body, ok := sess.Restored(); ok && body.Cursor != "" {
+			screen.layout()
+			screen.cursor = rowMatching(screen, cursorMark{key: body.Cursor})
+		}
+	}
+	if isTUI {
+		if err := runTUI(screen, root, opt.symbol, os.Stdin, file); err != nil {
 			fmt.Fprintf(stderr, "cyclotree: %s\n", err.Error())
 			return 1
 		}
@@ -235,12 +276,14 @@ func tuiLoop(s *screen, dir, query string, in, out *os.File, restore *func()) er
 		if ok {
 			switch applyKeys(s, burst(in, k)) {
 			case actQuit:
+				s.noteSession(dir, query)
 				return nil
 			case actEdit:
 				if err := editRow(dir, s, in, out, restore); err != nil {
 					return err
 				}
 			}
+			s.noteSession(dir, query)
 			continue
 		}
 		s, stamp, pending = settle(s, dir, query, stamp, pending)

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ryangerardwilson/c3po/gdrive/internal/driveapi"
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 )
 
 const (
@@ -38,6 +39,7 @@ type model struct {
 	pick        func() (string, error)
 	armed       bool
 	help        bool
+	session     *tuisession.Session
 }
 
 type stackItem struct {
@@ -46,21 +48,35 @@ type stackItem struct {
 }
 
 func Browse(client driveapi.Client) (int, error) {
-	if err := run(client); err != nil {
+	return browse(client, nil)
+}
+
+// BrowseSession opens Drive and restores the saved folder when sess is set.
+func BrowseSession(client driveapi.Client, sess *tuisession.Session) (int, error) {
+	return browse(client, sess)
+}
+
+func browse(client driveapi.Client, sess *tuisession.Session) (int, error) {
+	if err := run(client, sess); err != nil {
 		return 1, err
 	}
 	return 0, nil
 }
 
-func run(client driveapi.Client) error {
+func run(client driveapi.Client, sess *tuisession.Session) error {
 	term, err := openTerminal()
 	if err != nil {
 		return err
 	}
 	defer term.close()
 	m := newModel(client)
+	m.session = sess
 	m.pick = func() (string, error) { return pickLocal(term) }
-	m.load("root")
+	parent := "root"
+	if body, ok := sess.Restored(); ok && body.Path != "" {
+		parent = body.Path
+	}
+	m.load(parent)
 	return m.loop(term)
 }
 
@@ -77,8 +93,10 @@ func (m *model) loop(term screen) error {
 			return err
 		}
 		if m.handleKey(key) {
+			m.noteSession()
 			return m.err
 		}
+		m.noteSession()
 	}
 }
 
@@ -190,6 +208,28 @@ func (m *model) load(parentID string) {
 	m.parentID = parentID
 	m.entries = entries
 	m.cursor = 0
+	m.restoreSession()
+}
+
+func (m *model) noteSession() {
+	cursor := ""
+	if m.cursor >= 0 && m.cursor < len(m.entries) {
+		cursor = m.entries[m.cursor].ID
+	}
+	_ = m.session.Place(m.parentID, cursor)
+}
+
+func (m *model) restoreSession() {
+	if m.session == nil {
+		return
+	}
+	keys := make([]string, len(m.entries))
+	for i, entry := range m.entries {
+		keys[i] = entry.ID
+	}
+	if i, ok := m.session.Index(keys); ok {
+		m.cursor = i
+	}
 }
 
 func (m *model) clampedCursor() int {
