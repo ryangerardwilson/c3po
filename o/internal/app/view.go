@@ -291,7 +291,7 @@ func (m model) renderHelp() string {
 		"p                  paste into this directory",
 		"backspace/delete   delete the visual range",
 		"dd                 delete the current item or the visual range",
-		"n                  shell-cd handoff when O_SHELL_CD_FILE is set",
+		"n                  cd the invoking shell into this directory",
 		"~                  home directory",
 		"?                  toggle help",
 		"q                  quit",

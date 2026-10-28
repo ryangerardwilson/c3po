@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ryangerardwilson/c3po/internal/version"
 	"github.com/ryangerardwilson/c3po/o/internal/app"
@@ -258,6 +260,7 @@ func TestRunNavigatorWritesShellHandoff(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("O_SHELL_CD_FILE", handoff)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(tmp, "cache"))
 	stubApp(t, func(app.Config) (app.Result, int) {
 		return app.Result{ShellCD: target}, 0
 	})
@@ -273,6 +276,101 @@ func TestRunNavigatorWritesShellHandoff(t *testing.T) {
 	if string(body) != target+"\n" {
 		t.Fatalf("handoff = %q, want %q", string(body), target+"\n")
 	}
+	if _, err := os.Stat(parentShellCDPath()); !os.IsNotExist(err) {
+		t.Fatalf("non-interactive navigator wrote %s: %v", parentShellCDPath(), err)
+	}
+}
+
+func TestWriteParentShellCDRecordsDirectory(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", tmp)
+	target := filepath.Join(tmp, "landed")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeParentShellCD(target); err != nil {
+		t.Fatal(err)
+	}
+	path := parentShellCDPath()
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != target+"\n" {
+		t.Fatalf("parent handoff = %q, want %q", string(body), target+"\n")
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("handoff mode = %o, want 600", info.Mode().Perm())
+	}
+}
+
+func TestShellCDLineQuotes(t *testing.T) {
+	if got := shellCDLine("/tmp/a b"); got != "cd -- '/tmp/a b'\n" {
+		t.Fatalf("quoted = %q", got)
+	}
+	if got := shellCDLine("/tmp/a'b"); got != "cd -- '/tmp/a'\\''b'\n" {
+		t.Fatalf("quoted = %q", got)
+	}
+}
+
+func TestTmuxShellCDTypesCdIntoThePane(t *testing.T) {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		t.Skip(err)
+	}
+	landed := t.TempDir()
+	socket := filepath.Join(t.TempDir(), "s")
+	tmuxCmd := func(args ...string) string {
+		t.Helper()
+		out, err := exec.Command("tmux", append([]string{"-S", socket}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("tmux %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+	tmuxCmd("new-session", "-d", "-s", "probe", "-c", t.TempDir(), "--", "bash", "--noprofile", "--norc")
+	t.Cleanup(func() {
+		_ = exec.Command("tmux", "-S", socket, "kill-server").Run()
+	})
+	pane := strings.TrimSpace(tmuxCmd("display-message", "-p", "-t", "probe", "#{pane_id}"))
+	sleeper := exec.Command("sleep", "30")
+	if err := sleeper.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if sleeper.ProcessState == nil && sleeper.Process != nil {
+			_ = sleeper.Process.Kill()
+			_, _ = sleeper.Process.Wait()
+		}
+	})
+	if err := queueTmuxShellCD(landed, pane, socket, sleeper.Process.Pid); err != nil {
+		t.Fatal(err)
+	}
+	if err := sleeper.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = sleeper.Process.Wait()
+	want, err := filepath.EvalSymlinks(landed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	var got string
+	for time.Now().Before(deadline) {
+		out, err := exec.Command("tmux", "-S", socket, "display-message", "-p", "-t", "probe", "#{pane_current_path}").CombinedOutput()
+		if err == nil {
+			got = strings.TrimSpace(string(out))
+			if got == want || got == landed {
+				return
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	capture, _ := exec.Command("tmux", "-S", socket, "capture-pane", "-p", "-t", "probe").CombinedOutput()
+	t.Fatalf("pane path = %q, want %q\n%s", got, want, capture)
 }
 
 func TestConfigCreatesRealConfig(t *testing.T) {

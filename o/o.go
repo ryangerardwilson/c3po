@@ -11,7 +11,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/ryangerardwilson/c3po/internal/tuisession"
 	"github.com/ryangerardwilson/c3po/internal/version"
@@ -238,7 +240,7 @@ func runNavigator(cfg app.Config, stdout, stderr io.Writer) int {
 		return code
 	}
 	if result.ShellCD != "" {
-		writeShellCD(result.ShellCD)
+		writeShellCD(result.ShellCD, stdout)
 	}
 	if len(result.Selections) > 0 {
 		_ = fsnav.WriteSelectionCache(result.Selections)
@@ -249,10 +251,81 @@ func runNavigator(cfg app.Config, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func writeShellCD(dir string) {
+func writeShellCD(dir string, stdout io.Writer) {
 	if path := strings.TrimSpace(os.Getenv(shellCDEnv)); path != "" {
 		_ = os.WriteFile(path, []byte(dir+"\n"), 0o644)
 	}
+	if !tuisession.Interactive(stdout) {
+		return
+	}
+	if queueTmuxCD(dir) == nil {
+		return
+	}
+	_ = writeParentShellCD(dir)
+}
+
+func queueTmuxCD(dir string) error {
+	pane := os.Getenv("TMUX_PANE")
+	if os.Getenv("TMUX") == "" || pane == "" {
+		return errors.New("not in tmux")
+	}
+	return queueTmuxShellCD(dir, pane, "", os.Getpid())
+}
+
+// queueTmuxShellCD types a cd into the tmux pane after pid exits. The
+// navigator is the foreground process, so the keys have to arrive after it
+// leaves the terminal.
+func queueTmuxShellCD(dir, pane, socket string, pid int) error {
+	if _, err := exec.LookPath("tmux"); err != nil {
+		return err
+	}
+	cmd := exec.Command("/bin/sh", "-c", tmuxCDScript, "c3po-shell-cd", strconv.Itoa(pid), pane, shellCDLine(dir), socket)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	return cmd.Start()
+}
+
+const tmuxCDScript = `trap '' HUP
+while kill -0 "$1" 2>/dev/null; do
+  sleep 0.05
+done
+sleep 0.15
+if [ -n "$4" ]; then
+  exec tmux -S "$4" send-keys -t "$2" -l -- "$3"
+fi
+exec tmux send-keys -t "$2" -l -- "$3"
+`
+
+func shellCDLine(dir string) string {
+	return "cd -- " + shellSingleQuote(dir) + "\n"
+}
+
+func shellSingleQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// parentShellCDPath is named with the parent pid so each shell reads only
+// the directory its own navigator recorded.
+func parentShellCDPath() string {
+	base := os.Getenv("XDG_CACHE_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			return ""
+		}
+		base = filepath.Join(home, ".cache")
+	}
+	return filepath.Join(base, "c3po", "o", "shell-cd", strconv.Itoa(os.Getppid()))
+}
+
+func writeParentShellCD(dir string) error {
+	path := parentShellCDPath()
+	if path == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(dir+"\n"), 0o600)
 }
 
 func openConfig(stderr io.Writer) int {

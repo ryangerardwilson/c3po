@@ -96,8 +96,11 @@ dd deletes the current file or directory. While visual mode is on, dd
 deletes the range. The first d arms the chord and shows d. Esc cancels
 it. Any other key clears the arm and runs as a normal motion.
 
-Shell cd handoff: when O_SHELL_CD_FILE names a file, enter and n write the
-chosen directory to it, so a shell wrapper can cd there after exit.
+Shell cd handoff: enter and n leave the navigator and cd the invoking shell
+into the listed directory. Inside tmux the navigator types that cd into the
+pane after it exits. Otherwise interactive Bash applies it before the next
+prompt. When O_SHELL_CD_FILE names a file, that file receives the same
+directory.
 
 Exit 0 on success, 1 on bad usage, a missing path, or a terminal error.
 A path and config exit with the editor's status.
