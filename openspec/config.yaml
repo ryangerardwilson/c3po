@@ -7,7 +7,7 @@ context: |
   registers jobs files and edits them in vim. A terminal screen is only
   c3po tui cyclotree, c3po tui l, c3po tui o,
   c3po tui tunnel, c3po tui gdrive, c3po tui pass, c3po tui deport, c3po tui xl,
-  or c3po tui looptab.
+  c3po tui looptab, or c3po tui nlp.
   ast is the AST-aware agent boundary.
   Product truth lives in this repository.
 

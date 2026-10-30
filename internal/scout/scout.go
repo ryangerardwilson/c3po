@@ -17,6 +17,7 @@ import (
 	"github.com/ryangerardwilson/c3po/internal/xdg"
 	"github.com/ryangerardwilson/c3po/l"
 	"github.com/ryangerardwilson/c3po/looptab"
+	"github.com/ryangerardwilson/c3po/nlp"
 	"github.com/ryangerardwilson/c3po/o"
 	"github.com/ryangerardwilson/c3po/pass"
 	"github.com/ryangerardwilson/c3po/slack"
@@ -50,6 +51,7 @@ var screens = map[string]runFunc{
 	"deport":    deportScreen,
 	"xl":        xl.Run,
 	"looptab":   looptab.Run,
+	"nlp":       nlp.Run,
 }
 
 // Main runs c3po from process arguments.

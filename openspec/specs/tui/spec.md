@@ -4,9 +4,9 @@
 Keeps shortcut text off every interactive c3po screen until the operator presses question mark.
 ## Requirements
 ### Requirement: Shortcuts appear only while question mark is open
-An interactive screen SHALL NOT paint shortcut text on its listing. Shortcut text SHALL appear only after the operator presses `?`, and `?` SHALL toggle that list. While the list is open, a key that would move, open, copy, delete, add, or remove SHALL NOT do so, and Esc SHALL close the list. On the navigator, deport, Drive browse, the Drive preset list, pass, the tunnel route list, and the looptab job list, `q` SHALL still leave the screen. On the spreadsheet, `q` while the list is open SHALL close the list, and the sheet SHALL leave only through `:q!`. On cyclotree, `q` SHALL leave the screen.
+An interactive screen SHALL NOT paint shortcut text on its listing. Shortcut text SHALL appear only after the operator presses `?`, and `?` SHALL toggle that list. While the list is open, a key that would move, open, copy, delete, add, or remove SHALL NOT do so, and Esc SHALL close the list. On the navigator, deport, Drive browse, the Drive preset list, pass, the tunnel route list, and the looptab job list, `q` SHALL still leave the screen. On the spreadsheet, `q` while the list is open SHALL close the list, and the sheet SHALL leave only through `:q!`. On cyclotree, `q` SHALL leave the screen. On nlp, only `?` opens or closes the shortcut list, and `q` on that list SHALL NOT leave the screen.
 
-The navigator, deport, Drive browse, the Drive preset list, pass, the tunnel route list, the looptab job list, the spreadsheet, and cyclotree SHALL follow this. `c3po tui l` SHALL NOT paint a shortcut line. The cyclotree call chain and the focused path SHALL stay at the bottom of that screen. The spreadsheet statistics line SHALL stay. A command prompt, a filter prompt, a route name field, a route port field, a route form's save line, and a removal confirmation SHALL stay.
+The navigator, deport, Drive browse, the Drive preset list, pass, the tunnel route list, the looptab job list, the spreadsheet, cyclotree, and nlp SHALL follow this. `c3po tui l` SHALL NOT paint a shortcut line. The cyclotree call chain and the focused path SHALL stay at the bottom of that screen. The spreadsheet statistics line SHALL stay. A command prompt, a filter prompt, a route name field, a route port field, a route form's save line, and a removal confirmation SHALL stay.
 
 #### Scenario: The navigator hides the legend
 - **WHEN** the navigator is listing a directory and the operator has not pressed `?`
@@ -72,6 +72,12 @@ The navigator, deport, Drive browse, the Drive preset list, pass, the tunnel rou
 - **THEN** the tree SHALL NOT show the shortcut list
 - **AND** the bottom SHALL show the call chain and the focused path
 
+#### Scenario: NLP keeps shortcuts behind question mark
+- **WHEN** the nlp course list is showing and the operator has not pressed `?`
+- **THEN** the list SHALL NOT show a shortcut string
+- **AND** `?` SHALL open the shortcut list
+- **AND** Esc SHALL leave that list open
+
 ### Requirement: dd deletes the selected pass item
 On `c3po tui pass`, the first `d` SHALL arm deletion and SHALL show `d`. A second `d` SHALL delete the selected item from its open vault and SHALL reload that vault. The cursor SHALL stay at the same index, clamped to the remaining rows. The status SHALL be `deleted` followed by the item title. The secret SHALL stay unread and unprinted. Esc SHALL cancel the arm and SHALL leave the screen open. Any other key SHALL clear the arm and SHALL run as that key. `?` SHALL clear the arm and SHALL open the shortcut list. While the shortcut list is open, `d` SHALL leave the item in place. A vault row SHALL stay, and the status SHALL be `dd deletes an item`. An empty item list SHALL report `no items`. An empty vault list SHALL report `no vaults`. A failed delete SHALL leave the item in place and SHALL show the failure on the status line.
 
@@ -118,7 +124,7 @@ On `c3po tui pass`, the first `d` SHALL arm deletion and SHALL show `d`. A secon
 - **AND** the shortcut list SHALL stay open
 
 ### Requirement: A screen can resume
-Each screen `cyclotree`, `l`, `o`, `tunnel`, `gdrive`, `pass`, `deport`, `xl`, and `looptab` SHALL store its place in the sqlx database `c3po` when it is opened on a terminal or with `--resume <id>`. The stored place SHALL include the screen, the workspace directory, and the cursor or path the operator had open. It MUST NOT include a pass secret. `--resume <id>` SHALL restore that place. A pipe with no `--resume` id SHALL NOT write a session. Closing the screen SHALL drop the active record and SHALL keep the stored place. A missing id, a bad id, or `--resume` given twice SHALL fail without opening the screen.
+Each screen `cyclotree`, `l`, `o`, `tunnel`, `gdrive`, `pass`, `deport`, `xl`, `looptab`, and `nlp` SHALL store its place in the sqlx database `c3po` when it is opened on a terminal or with `--resume <id>`. The stored place SHALL include the screen, the workspace directory, and the cursor or path the operator had open. It MUST NOT include a pass secret. `--resume <id>` SHALL restore that place. A pipe with no `--resume` id SHALL NOT write a session. Closing the screen SHALL drop the active record and SHALL keep the stored place. A missing id, a bad id, or `--resume` given twice SHALL fail without opening the screen.
 
 #### Scenario: Resume returns to the stored place
 
@@ -131,6 +137,14 @@ Each screen `cyclotree`, `l`, `o`, `tunnel`, `gdrive`, `pass`, `deport`, `xl`, a
 - **GIVEN** stdout is not a terminal
 - **WHEN** `c3po tui l` runs with no `--resume` id
 - **THEN** it MUST NOT write a TUI session
+
+#### Scenario: NLP stores the course place
+
+- **GIVEN** the nlp screen has a course selected
+- **WHEN** it stores its place
+- **THEN** the record MUST name the screen `nlp`
+- **AND** the record MUST identify the course
+- **AND** the record MUST NOT contain the course markdown
 
 #### Scenario: Pass keeps the secret out of the session
 

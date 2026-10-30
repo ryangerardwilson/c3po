@@ -18,7 +18,7 @@ Usage:
   install.sh help            Show this help
 
 Installs to \$C3PO_INSTALL_DIR or ~/.local/bin.
-Links rgw-ast to the same binary and removes xl, cx, and complexity links that point at it.
+Links rgw-ast to the same binary, removes xl, cx, and complexity links that point at it, and removes a managed nlp launcher.
 EOF
 }
 
@@ -89,6 +89,14 @@ remove_compat_link() {
   fi
 }
 
+remove_retired_nlp() {
+  local path="$INSTALL_DIR/nlp"
+  [[ -f "$path" ]] || return 0
+  if grep -Fq "Managed by nlp installer" "$path"; then
+    rm -f "$path"
+  fi
+}
+
 install_from_source() {
   local source_path=$1
   [[ -d "$source_path" ]] || die "source path does not exist: $source_path"
@@ -104,6 +112,7 @@ install_from_source() {
   remove_compat_link xl
   remove_compat_link cx
   remove_compat_link complexity
+  remove_retired_nlp
   "$INSTALL_DIR/$APP" version
 }
 

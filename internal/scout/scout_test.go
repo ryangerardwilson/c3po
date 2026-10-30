@@ -25,7 +25,7 @@ func TestScoutListsTools(t *testing.T) {
 			t.Fatalf("old name still listed %q\n%s", gone, out)
 		}
 	}
-	for _, gone := range []string{"\n  cyclotree", "\n  l ", "\n  o ", "\n  xl "} {
+	for _, gone := range []string{"\n  cyclotree", "\n  l ", "\n  o ", "\n  xl ", "\n  nlp "} {
 		if bytes.Contains(out, []byte(gone)) {
 			t.Fatalf("screen still listed as an app %q\n%s", gone, out)
 		}
@@ -162,7 +162,7 @@ func TestVersion(t *testing.T) {
 }
 
 func TestScreensAreOnlyUnderTUI(t *testing.T) {
-	for _, name := range []string{"cyclotree", "l", "o", "xl"} {
+	for _, name := range []string{"cyclotree", "l", "o", "xl", "nlp"} {
 		out, code := call("c3po", name, "help")
 		if code != 2 || !bytes.Contains(out, []byte("unknown command")) {
 			t.Fatalf("%s code %d\n%s", name, code, out)
@@ -177,7 +177,7 @@ func TestScreensAreOnlyUnderTUI(t *testing.T) {
 		t.Fatalf("tunnel open %d\n%s", code, out)
 	}
 	out, code = call("c3po", "tui")
-	for _, name := range []string{"\n  cyclotree", "\n  l ", "\n  o ", "\n  tunnel ", "\n  gdrive ", "\n  pass ", "\n  deport ", "\n  xl ", "\n  looptab "} {
+	for _, name := range []string{"\n  cyclotree", "\n  l ", "\n  o ", "\n  tunnel ", "\n  gdrive ", "\n  pass ", "\n  deport ", "\n  xl ", "\n  looptab ", "\n  nlp "} {
 		if code != 0 || !bytes.Contains(out, []byte(name)) {
 			t.Fatalf("tui %d missing %q\n%s", code, name, out)
 		}
@@ -297,6 +297,29 @@ func TestLooptabScreen(t *testing.T) {
 	out, code = call("c3po", "looptab", "help")
 	if code != 0 || !bytes.Contains(out, []byte("in vim")) {
 		t.Fatalf("command %d\n%s", code, out)
+	}
+}
+
+func TestNLPScreen(t *testing.T) {
+	out, code := call("c3po", "tui", "nlp", "help")
+	if code != 0 || !bytes.Contains(out, []byte("neuro-linguistic programming")) || !bytes.Contains(out, []byte("c3po tui nlp")) {
+		t.Fatalf("help %d\n%s", code, out)
+	}
+	same, sameCode := call("c3po", "help", "-f", "tui", "nlp")
+	if sameCode != 0 || !bytes.Equal(out, same) {
+		t.Fatalf("flag %d\n%s", sameCode, same)
+	}
+	out, code = call("c3po", "tui", "nlp", "version")
+	if code != 0 || !bytes.Contains(out, []byte("c3po 0.5.0")) {
+		t.Fatalf("version %d\n%s", code, out)
+	}
+	out, code = call("c3po", "tui", "nlp", "extra")
+	if code != 2 || !bytes.Contains(out, []byte("c3po tui nlp")) {
+		t.Fatalf("extra %d\n%s", code, out)
+	}
+	out, code = call("c3po", "nlp")
+	if code != 2 || !bytes.Contains(out, []byte("unknown command")) {
+		t.Fatalf("bare %d\n%s", code, out)
 	}
 }
 
