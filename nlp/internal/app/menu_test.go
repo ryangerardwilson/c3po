@@ -1,6 +1,7 @@
 package app
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -47,10 +48,22 @@ func TestMenuCreateRenameAndDelete(t *testing.T) {
 		removed = append(removed, slug)
 		return nil
 	}
+	vimOpens := 0
+	prevFind, prevStart := findVim, startVim
+	findVim = func() (string, error) { return "vim", nil }
+	startVim = func(path string, done func(error) tea.Msg) tea.Cmd {
+		vimOpens++
+		if err := os.WriteFile(path, []byte("the lord is my shepherd\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return func() tea.Msg { return done(nil) }
+	}
 	t.Cleanup(func() {
 		persistCourse = state.SaveCourse
 		persistNewCourse = state.CreateCourse
 		removeCourse = state.DeleteStoredCourse
+		findVim = prevFind
+		startVim = prevStart
 	})
 
 	parsed, ok := course.ParseMarkdown("alpha", menuBody)
@@ -113,9 +126,20 @@ func TestMenuCreateRenameAndDelete(t *testing.T) {
 		t.Fatalf("leader n created an item: %#v", leader.status)
 	}
 
-	made := press(m, runeKey('n'), runeKey('P'), runeKey('r'), runeKey('a'), runeKey('y'), runeKey('e'), runeKey('r'), tea.KeyMsg{Type: tea.KeyEnter})
+	made, cmd := lastCmd(m, runeKey('n'), runeKey('P'), runeKey('r'), runeKey('a'), runeKey('y'), runeKey('e'), runeKey('r'), tea.KeyMsg{Type: tea.KeyEnter})
+	made = applyCmd(t, made, cmd)
 	if made.status != "created" {
 		t.Fatalf("create status = %q", made.status)
+	}
+	if vimOpens != 1 {
+		t.Fatalf("vim opens = %d", vimOpens)
+	}
+	idx := courseIndexBySlug(made.cfg.Courses, "widgets")
+	if idx < 0 {
+		t.Fatal("missing created course")
+	}
+	if !strings.Contains(made.cfg.Courses[idx].Body, "the lord is my shepherd") || strings.Contains(made.cfg.Courses[idx].Body, "...") {
+		t.Fatalf("created body = %q", made.cfg.Courses[idx].Body)
 	}
 	if len(created) != 1 || created[0] != "Prayer" {
 		t.Fatalf("created = %#v", created)
@@ -149,7 +173,7 @@ func TestMenuCreateRenameAndDelete(t *testing.T) {
 		t.Fatal("? did not open help")
 	}
 	helpText := stripANSI(shown.View())
-	for _, want := range []string{",rn", "dd", "Press ? to return."} {
+	for _, want := range []string{",rn", "dd", "vim", "e opens the selected session in vim", "Press ? to return."} {
 		if !strings.Contains(helpText, want) {
 			t.Fatalf("help missing %q:\n%s", want, helpText)
 		}
@@ -233,3 +257,149 @@ func press(m model, keys ...tea.KeyMsg) model {
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+func lastCmd(m model, keys ...tea.KeyMsg) (model, tea.Cmd) {
+	var cmd tea.Cmd
+	for _, key := range keys {
+		next, c := m.Update(key)
+		m = next.(model)
+		cmd = c
+	}
+	return m, cmd
+}
+
+func applyCmd(t *testing.T, m model, cmd tea.Cmd) model {
+	t.Helper()
+	if cmd == nil {
+		t.Fatal("missing vim command")
+	}
+	next, nextCmd := m.Update(cmd())
+	if nextCmd != nil {
+		t.Fatal("vim result returned another command")
+	}
+	return next.(model)
+}
+
+func TestEditSessionInVim(t *testing.T) {
+	var saved []string
+	prevFind, prevStart := findVim, startVim
+	findVim = func() (string, error) { return "vim", nil }
+	persistCourse = func(slug, name, body string) error {
+		saved = append(saved, slug+"|"+name+"|"+body)
+		return nil
+	}
+	t.Cleanup(func() {
+		persistCourse = state.SaveCourse
+		findVim = prevFind
+		startVim = prevStart
+	})
+
+	parsed, ok := course.ParseMarkdown("alpha", menuBody)
+	if !ok {
+		t.Fatal("fixture did not parse")
+	}
+	m := newModel(Config{Courses: []course.Course{parsed}})
+	if len(m.pages) == 0 || m.pages[0].name != "Next" {
+		t.Fatalf("selected %#v", pageNames(m))
+	}
+	startVim = func(path string, done func(error) tea.Msg) tea.Cmd {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(raw) != "two\n" {
+			t.Fatalf("vim buffer = %q", raw)
+		}
+		if err := os.WriteFile(path, []byte("two\nmore\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return func() tea.Msg { return done(nil) }
+	}
+	edited, cmd := lastCmd(m, runeKey('e'))
+	edited = applyCmd(t, edited, cmd)
+	if edited.status != "saved" || edited.cfg.Courses[0].Name != "Alpha" {
+		t.Fatalf("status %q name %q", edited.status, edited.cfg.Courses[0].Name)
+	}
+	if len(saved) != 1 {
+		t.Fatalf("saved = %#v", saved)
+	}
+	body := edited.cfg.Courses[0].Body
+	got, err := course.LessonText(body, m.pages[0].partIndex, m.pages[0].sectionIndex, m.pages[0].lessonIndex)
+	if err != nil || got != "two\nmore" {
+		t.Fatalf("edited text = %q err=%v", got, err)
+	}
+	other, err := course.LessonText(body, m.pages[1].partIndex, m.pages[1].sectionIndex, m.pages[1].lessonIndex)
+	if err != nil || other != "one" {
+		t.Fatalf("other text = %q err=%v", other, err)
+	}
+
+	startVim = func(path string, done func(error) tea.Msg) tea.Cmd {
+		return func() tea.Msg { return done(nil) }
+	}
+	same, cmd := lastCmd(edited, runeKey('e'))
+	same = applyCmd(t, same, cmd)
+	if same.status != "unchanged" || len(saved) != 1 {
+		t.Fatalf("unchanged status %q saved %d", same.status, len(saved))
+	}
+
+	startVim = func(path string, done func(error) tea.Msg) tea.Cmd {
+		if err := os.WriteFile(path, []byte("\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return func() tea.Msg { return done(nil) }
+	}
+	wiped, cmd := lastCmd(edited, runeKey('e'))
+	wiped = applyCmd(t, wiped, cmd)
+	if wiped.status != "missing text" || len(saved) != 1 {
+		t.Fatalf("blank status %q saved %d", wiped.status, len(saved))
+	}
+
+	typed := press(m, runeKey('l'), runeKey('e'))
+	if typed.screen != screenType || len(typed.typeInputs) == 0 || typed.typeInputs[0] != "e" {
+		t.Fatalf("type screen %v input %#v", typed.screen, typed.typeInputs)
+	}
+	leader := press(m, runeKey(','), runeKey('e'))
+	if leader.status != "unknown leader action" {
+		t.Fatalf("leader e = %q", leader.status)
+	}
+}
+
+func TestNewSessionVimCancelAndMissing(t *testing.T) {
+	var created []string
+	prevFind, prevStart := findVim, startVim
+	persistNewCourse = func(name, body string) (string, error) {
+		created = append(created, name+"|"+body)
+		return "prayer", nil
+	}
+	findVim = func() (string, error) { return "vim", nil }
+	startVim = func(path string, done func(error) tea.Msg) tea.Cmd {
+		return func() tea.Msg { return done(nil) }
+	}
+	t.Cleanup(func() {
+		persistNewCourse = state.CreateCourse
+		findVim = prevFind
+		startVim = prevStart
+	})
+	parsed, ok := course.ParseMarkdown("alpha", menuBody)
+	if !ok {
+		t.Fatal("fixture did not parse")
+	}
+	m := newModel(Config{Courses: []course.Course{parsed}})
+	cancelled, cmd := lastCmd(m, runeKey('n'), runeKey('P'), tea.KeyMsg{Type: tea.KeyEnter})
+	cancelled = applyCmd(t, cancelled, cmd)
+	if cancelled.status != "cancelled" || len(created) != 0 || len(cancelled.pages) != len(m.pages) {
+		t.Fatalf("status %q created %#v", cancelled.status, created)
+	}
+
+	findVim = func() (string, error) { return "", errString("vim is not on PATH") }
+	missing, cmd := lastCmd(m, runeKey('n'), runeKey('P'), tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil || missing.status != "vim is not on PATH" || len(created) != 0 {
+		t.Fatalf("status %q cmd %v created %#v", missing.status, cmd != nil, created)
+	}
+
+	findVim = func() (string, error) { return "vim", nil }
+	dup, cmd := lastCmd(m, runeKey('n'), runeKey('A'), runeKey('l'), runeKey('p'), runeKey('h'), runeKey('a'), tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil || dup.status != "course already exists" || len(created) != 0 {
+		t.Fatalf("dup status %q cmd %v created %#v", dup.status, cmd != nil, created)
+	}
+}

@@ -158,6 +158,9 @@ func (m model) updateMsg(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyMsg:
 		return m.updateKey(msg)
+	case scriptSavedMsg:
+		m.finishScript(msg)
+		return m, nil
 	default:
 		return m, nil
 	}
@@ -238,6 +241,11 @@ func (m model) updateListKey(key string) (tea.Model, tea.Cmd) {
 		m.leader = false
 		m.leaderSeq = ""
 		m.beginNew()
+	case "e":
+		if m.screen != screenCourses {
+			return m, nil
+		}
+		return m, m.editSelected()
 	}
 	return m, nil
 }
@@ -442,7 +450,8 @@ func (m model) renderHelp() string {
 		"",
 		"Sessions:",
 		"  j/k move, enter opens the page, q quits",
-		"  n creates a session",
+		"  n creates a session, then vim edits its text",
+		"  e opens the selected session in vim",
 		"  ,rn renames the selected session, dd deletes it",
 		"",
 		"Type mode:",

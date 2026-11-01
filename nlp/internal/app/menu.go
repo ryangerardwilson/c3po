@@ -28,8 +28,7 @@ func (m model) updateInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.status = "cancelled"
 		return m, nil
 	case "enter":
-		m.commitInput()
-		return m, nil
+		return m, m.commitInput()
 	case "backspace", "ctrl+h":
 		m.input = trimLastRune(m.input)
 		m.paintInput()
@@ -103,20 +102,20 @@ func (m *model) paintInput() {
 	m.status = strings.TrimSpace(label + " " + m.input)
 }
 
-func (m *model) commitInput() {
+func (m *model) commitInput() tea.Cmd {
 	value := strings.TrimSpace(m.input)
 	kind := m.inputKind
 	m.inputKind = ""
 	m.input = ""
 	if value == "" {
 		m.status = "missing name"
-		return
+		return nil
 	}
 	if kind == "rename" {
 		m.commitRename(value)
-		return
+		return nil
 	}
-	m.commitNew(value)
+	return m.commitNew(value)
 }
 
 func (m *model) commitRename(name string) {
@@ -125,10 +124,11 @@ func (m *model) commitRename(name string) {
 	}
 }
 
-func (m *model) commitNew(name string) {
+func (m *model) commitNew(name string) tea.Cmd {
 	if m.screen == screenCourses {
-		m.createCourse(name)
+		return m.createCourse(name)
 	}
+	return nil
 }
 
 func (m *model) renameCourse(index int, name string) {
@@ -165,27 +165,6 @@ func (m *model) renameCourse(index int, name string) {
 	m.rebuildPages()
 	m.selectStoredPage(item.SourceFile, p.partIndex, p.sectionIndex, p.lessonIndex)
 	m.status = "renamed"
-}
-
-func (m *model) createCourse(name string) {
-	body := course.NewCourseBody(name)
-	slug, err := persistNewCourse(name, body)
-	if err != nil {
-		m.status = err.Error()
-		return
-	}
-	parsed, ok := course.ParseMarkdown(slug, body)
-	if !ok {
-		m.status = "course would be empty"
-		return
-	}
-	parsed.SourceFile = slug
-	parsed.Body = body
-	m.cfg.Courses = append(m.cfg.Courses, parsed)
-	m.sortCourses()
-	m.rebuildPages()
-	m.selectStoredPage(slug, 0, 0, 0)
-	m.status = "created"
 }
 
 func (m *model) deleteSelected() {

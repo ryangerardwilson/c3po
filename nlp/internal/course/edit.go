@@ -635,3 +635,115 @@ func findLesson(lines []string, partIndex, sectionIndex, lessonIndex int) (int, 
 	}
 	return 0, 0, false
 }
+
+// PageBody is one practice page. text is the plain vim buffer.
+func PageBody(name, text string) string {
+	name = cleanName(name)
+	if name == "" {
+		name = "Session"
+	}
+	var b strings.Builder
+	b.WriteString("# ")
+	b.WriteString(name)
+	b.WriteString("\n\n## ")
+	b.WriteString(name)
+	b.WriteString("\n\n")
+	for _, line := range practiceLines(text) {
+		b.WriteString("    ")
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// LessonText is the plain practice text of one session.
+func LessonText(body string, partIndex, sectionIndex, lessonIndex int) (string, error) {
+	lines, err := headingLines(body)
+	if err != nil {
+		return "", err
+	}
+	at, end, ok := lessonRegion(lines, partIndex, sectionIndex, lessonIndex)
+	if !ok {
+		return "", fmt.Errorf("session not found")
+	}
+	return practiceText(lines[at+1 : end]), nil
+}
+
+// SetLessonText replaces one session's practice text.
+func SetLessonText(body string, partIndex, sectionIndex, lessonIndex int, text string) (string, error) {
+	if strings.TrimSpace(text) == "" {
+		return "", fmt.Errorf("missing text")
+	}
+	lines, err := headingLines(body)
+	if err != nil {
+		return "", err
+	}
+	at, end, ok := lessonRegion(lines, partIndex, sectionIndex, lessonIndex)
+	if !ok {
+		return "", fmt.Errorf("session not found")
+	}
+	replacement := []string{""}
+	for _, line := range practiceLines(text) {
+		replacement = append(replacement, "    "+line)
+	}
+	out := append([]string{}, lines[:at+1]...)
+	out = append(out, replacement...)
+	out = append(out, lines[end:]...)
+	return joinLines(out), nil
+}
+
+func lessonRegion(lines []string, partIndex, sectionIndex, lessonIndex int) (int, int, bool) {
+	at, level, ok := findLesson(lines, partIndex, sectionIndex, lessonIndex)
+	if !ok {
+		return 0, 0, false
+	}
+	end := len(lines)
+	for i := at + 1; i < len(lines); i++ {
+		next, _, isHeading := headingTitle(lines[i])
+		if isHeading && next <= level {
+			end = i
+			break
+		}
+	}
+	return at, end, true
+}
+
+func practiceText(lines []string) string {
+	var content []string
+	started := false
+	for _, line := range lines {
+		switch {
+		case strings.HasPrefix(line, "    "):
+			started = true
+			content = append(content, strings.TrimRight(line[4:], " \t"))
+		case strings.HasPrefix(line, "\t"):
+			started = true
+			content = append(content, strings.TrimRight(line[1:], " \t"))
+		case started && strings.TrimSpace(line) == "":
+			content = append(content, "")
+		case started:
+			started = false
+		}
+	}
+	return strings.Join(trimBlankTail(content), "\n")
+}
+
+func trimBlankTail(lines []string) []string {
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
+}
+
+func practiceLines(text string) []string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	if text == "" {
+		return nil
+	}
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimRight(line, " \t")
+	}
+	return lines
+}

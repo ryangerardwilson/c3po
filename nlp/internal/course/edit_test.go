@@ -232,3 +232,36 @@ func TestRenameAndDeleteLessonPage(t *testing.T) {
 		t.Fatal("deleted the only session")
 	}
 }
+func TestPageBodyAndLessonText(t *testing.T) {
+	body := PageBody("Prayer", "alpha\n\nbeta")
+	parsed, ok := ParseMarkdown("prayer", body)
+	if !ok || parsed.Name != "Prayer" || len(parsed.Parts) != 1 {
+		t.Fatalf("parsed %#v ok=%v", parsed, ok)
+	}
+	got, err := LessonText(body, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "alpha\n\nbeta" {
+		t.Fatalf("text = %q", got)
+	}
+	body, err = SetLessonText(sample, 0, 0, 0, "aye\nstill")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err = LessonText(body, 0, 0, 0)
+	if err != nil || got != "aye\nstill" {
+		t.Fatalf("edited = %q err=%v", got, err)
+	}
+	other, err := LessonText(body, 0, 1, 0)
+	if err != nil || other != "b" {
+		t.Fatalf("other lesson = %q err=%v\n%s", other, err, body)
+	}
+	if _, err := SetLessonText(body, 0, 0, 0, " \n\t"); err == nil {
+		t.Fatal("stored blank practice text")
+	}
+	flat, err := LessonText(NewCourseBody("Solo"), 0, 0, 0)
+	if err != nil || flat != "..." {
+		t.Fatalf("flat = %q err=%v", flat, err)
+	}
+}
