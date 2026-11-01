@@ -174,7 +174,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if key == "ctrl+c" || key == "Q" {
 		return m, tea.Quit
 	}
-	if key == "?" {
+	if key == "?" && m.screen != screenType {
 		m.leader = false
 		m.leaderSeq = ""
 		m.deleteArmed = false
@@ -455,7 +455,7 @@ func (m model) renderHelp() string {
 		"  ,rn renames the selected session, dd deletes it",
 		"",
 		"Type mode:",
-		"  type over the visible line exactly, enter accepts it, ctrl+r resets, esc returns",
+		"  type over the visible line exactly, including ?, enter accepts it, ctrl+r resets, esc returns",
 		"",
 		"Press ? to return.",
 	}

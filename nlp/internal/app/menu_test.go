@@ -403,3 +403,22 @@ func TestNewSessionVimCancelAndMissing(t *testing.T) {
 		t.Fatalf("dup status %q cmd %v created %#v", dup.status, cmd != nil, created)
 	}
 }
+
+func TestQuestionMarkTypesDuringTouchTyping(t *testing.T) {
+	parsed, ok := course.ParseMarkdown("alpha", menuBody)
+	if !ok {
+		t.Fatal("fixture did not parse")
+	}
+	m := newModel(Config{Courses: []course.Course{parsed}})
+	opened := press(m, runeKey('l'))
+	if opened.screen != screenType {
+		t.Fatalf("screen %v", opened.screen)
+	}
+	typed := press(opened, runeKey('?'))
+	if typed.screen != screenType {
+		t.Fatalf("help opened, screen %v", typed.screen)
+	}
+	if len(typed.typeInputs) == 0 || typed.typeInputs[0] != "?" {
+		t.Fatalf("typed %#v", typed.typeInputs)
+	}
+}
