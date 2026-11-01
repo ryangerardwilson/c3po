@@ -19,14 +19,14 @@ const ScreenHelp = `c3po tui nlp
 neuro-linguistic programming trainer
 
   c3po tui nlp
-    open the course list
+    open the practice list
   c3po tui nlp help
     show this help
 
-Courses stay in the sqlx database nlp.
-On a course, part, or section menu, n creates the next item after the cursor.
-,rn renames the selected item. dd deletes it.
-? lists the shortcuts. q leaves a menu. Q quits.
+Sessions stay in the sqlx database nlp.
+Each session is one page and opens into touch typing.
+n creates a session. ,rn renames it. dd deletes it.
+? lists the shortcuts. q quits. Q quits.
 `
 
 var (

@@ -24,14 +24,14 @@ func (m model) updateTypeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		m.screen = screenDoc
-		m.status = "all lessons complete"
+		m.screen = screenCourses
+		m.status = "ready"
 		return m, nil
 	}
 	switch key {
 	case "esc":
-		m.screen = screenDoc
-		m.status = "doc mode"
+		m.screen = screenCourses
+		m.status = "ready"
 	case "ctrl+r":
 		m.resetTyping()
 	case "backspace", "ctrl+h":

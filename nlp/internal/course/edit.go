@@ -15,10 +15,13 @@ func init() {
 	}
 }
 
-// NewCourseBody is a course with one numbered part and one numbered section.
+// NewCourseBody is one practice page.
 func NewCourseBody(name string) string {
-	name = strings.TrimSpace(name)
-	return "# " + name + "\n\n## Part I: Start\n\n### Section 1: Start\n\n#### Lesson 1: Start\n\n    ...\n"
+	name = cleanName(name)
+	if name == "" {
+		name = "Session"
+	}
+	return "# " + name + "\n\n## " + name + "\n\n    ...\n"
 }
 
 // RenameCourse replaces the course heading.
@@ -510,4 +513,125 @@ func roman(n int) string {
 		}
 	}
 	return b.String()
+}
+
+// RenameLesson replaces one lesson heading with the typed name.
+func RenameLesson(body string, partIndex, sectionIndex, lessonIndex int, name string) (string, error) {
+	name = cleanName(name)
+	if name == "" {
+		return "", fmt.Errorf("missing name")
+	}
+	lines, err := headingLines(body)
+	if err != nil {
+		return "", err
+	}
+	at, level, ok := findLesson(lines, partIndex, sectionIndex, lessonIndex)
+	if !ok {
+		return "", fmt.Errorf("session not found")
+	}
+	lines[at] = headingLine(level, name)
+	return joinLines(lines), nil
+}
+
+// DeleteLesson removes one lesson page. The last page of a course stays.
+func DeleteLesson(body string, partIndex, sectionIndex, lessonIndex int) (string, error) {
+	lines, err := headingLines(body)
+	if err != nil {
+		return "", err
+	}
+	if countLessonHeadings(lines) < 2 {
+		return "", fmt.Errorf("keep at least one session")
+	}
+	at, level, ok := findLesson(lines, partIndex, sectionIndex, lessonIndex)
+	if !ok {
+		return "", fmt.Errorf("session not found")
+	}
+	end := len(lines)
+	for i := at + 1; i < len(lines); i++ {
+		next, _, isHeading := headingTitle(lines[i])
+		if isHeading && next <= level {
+			end = i
+			break
+		}
+	}
+	lines = append(lines[:at], lines[end:]...)
+	return joinLines(lines), nil
+}
+
+func countLessonHeadings(lines []string) int {
+	level := lessonHeadingLevel(lines)
+	n := 0
+	for _, line := range lines {
+		got, _, ok := headingTitle(line)
+		if ok && got == level {
+			n++
+		}
+	}
+	return n
+}
+
+func lessonHeadingLevel(lines []string) int {
+	has4 := false
+	has3 := false
+	for _, line := range lines {
+		level, _, ok := headingTitle(line)
+		if !ok {
+			continue
+		}
+		if level >= 4 {
+			has4 = true
+		}
+		if level == 3 {
+			has3 = true
+		}
+	}
+	if has4 {
+		return 4
+	}
+	if has3 {
+		return 3
+	}
+	return 2
+}
+
+func findLesson(lines []string, partIndex, sectionIndex, lessonIndex int) (int, int, bool) {
+	level := lessonHeadingLevel(lines)
+	part := -1
+	section := -1
+	lesson := -1
+	for i, line := range lines {
+		n, _, ok := headingTitle(line)
+		if !ok {
+			continue
+		}
+		switch {
+		case level == 4 && n == 2:
+			part++
+			section = -1
+			lesson = -1
+		case level == 4 && n == 3:
+			section++
+			lesson = -1
+		case level == 4 && n == 4:
+			lesson++
+			if part == partIndex && section == sectionIndex && lesson == lessonIndex {
+				return i, 4, true
+			}
+		case level == 3 && n == 2:
+			part++
+			section = 0
+			lesson = -1
+		case level == 3 && n == 3:
+			lesson++
+			if part == partIndex && sectionIndex == 0 && lesson == lessonIndex {
+				return i, 3, true
+			}
+		case level == 2 && n == 2:
+			lesson++
+			if partIndex == 0 && sectionIndex == 0 && lesson == lessonIndex {
+				return i, 2, true
+			}
+		}
+	}
+	return 0, 0, false
 }

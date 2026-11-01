@@ -17,7 +17,7 @@ var (
 )
 
 func (m model) menuScreen() bool {
-	return m.screen == screenCourses || m.screen == screenParts || m.screen == screenSections
+	return m.screen == screenCourses
 }
 
 func (m model) updateInputKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -83,16 +83,10 @@ func (m *model) beginRename() {
 }
 
 func (m *model) beginNew() {
-	switch m.screen {
-	case screenCourses:
-		m.newLabel = "new course"
-	case screenParts:
-		m.newLabel = "new part"
-	case screenSections:
-		m.newLabel = "new section"
-	default:
+	if m.screen != screenCourses {
 		return
 	}
+	m.newLabel = "new session"
 	m.leader = false
 	m.leaderSeq = ""
 	m.deleteArmed = false
@@ -126,88 +120,50 @@ func (m *model) commitInput() {
 }
 
 func (m *model) commitRename(name string) {
-	switch m.screen {
-	case screenCourses:
+	if m.screen == screenCourses {
 		m.renameCourse(m.selected, name)
-	case screenParts:
-		m.renamePart(m.selected, name)
-	case screenSections:
-		m.renameSection(m.selected, name)
 	}
 }
 
 func (m *model) commitNew(name string) {
-	switch m.screen {
-	case screenCourses:
+	if m.screen == screenCourses {
 		m.createCourse(name)
-	case screenParts:
-		m.createPart(name)
-	case screenSections:
-		m.createSection(name)
 	}
 }
 
 func (m *model) renameCourse(index int, name string) {
-	item, ok := m.courseAt(index)
+	if index < 0 || index >= len(m.pages) {
+		m.status = "nothing to rename"
+		return
+	}
+	p := m.pages[index]
+	item, ok := m.courseAt(p.courseIndex)
 	if !ok {
 		return
 	}
-	if name == item.Name {
+	if name == p.name {
 		m.status = "unchanged"
 		return
 	}
-	body, err := course.RenameCourse(item.Body, name)
+	body, err := course.RenameLesson(item.Body, p.partIndex, p.sectionIndex, p.lessonIndex, name)
 	if err != nil {
 		m.status = err.Error()
 		return
 	}
-	if err := m.storeCourse(index, item.SourceFile, name, body); err != nil {
-		m.status = err.Error()
-		return
-	}
-	slug := item.SourceFile
-	m.sortCourses()
-	for i, stored := range m.cfg.Courses {
-		if stored.SourceFile == slug {
-			m.selected = i
-			m.courseIndex = i
-			break
+	if lessonCount(item) < 2 {
+		body, err = course.RenameCourse(body, name)
+		if err != nil {
+			m.status = err.Error()
+			return
 		}
 	}
-	m.status = "renamed"
-}
-
-func (m *model) renamePart(index int, name string) {
-	item, ok := m.courseAt(m.courseIndex)
-	if !ok {
-		return
-	}
-	body, err := course.RenamePart(item.Body, index, name)
-	if err != nil {
+	if err := m.storeCourse(p.courseIndex, item.SourceFile, item.Name, body); err != nil {
 		m.status = err.Error()
 		return
 	}
-	if err := m.storeCourse(m.courseIndex, item.SourceFile, item.Name, body); err != nil {
-		m.status = err.Error()
-		return
-	}
-	m.status = "renamed"
-}
-
-func (m *model) renameSection(index int, name string) {
-	item, ok := m.courseAt(m.courseIndex)
-	if !ok {
-		return
-	}
-	body, err := course.RenameSection(item.Body, m.partIndex, index, name)
-	if err != nil {
-		m.status = err.Error()
-		return
-	}
-	if err := m.storeCourse(m.courseIndex, item.SourceFile, item.Name, body); err != nil {
-		m.status = err.Error()
-		return
-	}
+	m.sortCourses()
+	m.rebuildPages()
+	m.selectStoredPage(item.SourceFile, p.partIndex, p.sectionIndex, p.lessonIndex)
 	m.status = "renamed"
 }
 
@@ -227,76 +183,48 @@ func (m *model) createCourse(name string) {
 	parsed.Body = body
 	m.cfg.Courses = append(m.cfg.Courses, parsed)
 	m.sortCourses()
-	for i, item := range m.cfg.Courses {
-		if item.SourceFile == slug {
-			m.selected = i
-			m.courseIndex = i
-			break
-		}
-	}
-	m.status = "created"
-}
-
-func (m *model) createPart(name string) {
-	item, ok := m.courseAt(m.courseIndex)
-	if !ok {
-		return
-	}
-	after := m.selected
-	body, err := course.InsertPart(item.Body, name, after, usesSections(item))
-	if err != nil {
-		m.status = err.Error()
-		return
-	}
-	if err := m.storeCourse(m.courseIndex, item.SourceFile, item.Name, body); err != nil {
-		m.status = err.Error()
-		return
-	}
-	m.selected = after + 1
-	if parts := m.cfg.Courses[m.courseIndex].Parts; m.selected >= len(parts) {
-		m.selected = len(parts) - 1
-	}
-	if m.selected < 0 {
-		m.selected = 0
-	}
-	m.status = "created"
-}
-
-func (m *model) createSection(name string) {
-	item, ok := m.courseAt(m.courseIndex)
-	if !ok {
-		return
-	}
-	after := m.selected
-	body, err := course.InsertSection(item.Body, m.partIndex, after, name)
-	if err != nil {
-		m.status = err.Error()
-		return
-	}
-	if err := m.storeCourse(m.courseIndex, item.SourceFile, item.Name, body); err != nil {
-		m.status = err.Error()
-		return
-	}
-	m.selected = after + 1
-	sections := m.cfg.Courses[m.courseIndex].Parts[m.partIndex].Sections
-	if m.selected >= len(sections) {
-		m.selected = len(sections) - 1
-	}
-	if m.selected < 0 {
-		m.selected = 0
-	}
+	m.rebuildPages()
+	m.selectStoredPage(slug, 0, 0, 0)
 	m.status = "created"
 }
 
 func (m *model) deleteSelected() {
-	switch m.screen {
-	case screenCourses:
-		m.deleteCourse(m.selected)
-	case screenParts:
-		m.deletePart(m.selected)
-	case screenSections:
-		m.deleteSection(m.selected)
+	if m.screen == screenCourses {
+		m.deletePage(m.selected)
 	}
+}
+
+func (m *model) deletePage(index int) {
+	if index < 0 || index >= len(m.pages) {
+		m.status = "nothing selected"
+		return
+	}
+	p := m.pages[index]
+	item, ok := m.courseAt(p.courseIndex)
+	if !ok {
+		return
+	}
+	if lessonCount(item) < 2 {
+		m.deleteCourse(p.courseIndex)
+		return
+	}
+	body, err := course.DeleteLesson(item.Body, p.partIndex, p.sectionIndex, p.lessonIndex)
+	if err != nil {
+		m.status = err.Error()
+		return
+	}
+	if err := m.storeCourse(p.courseIndex, item.SourceFile, item.Name, body); err != nil {
+		m.status = err.Error()
+		return
+	}
+	m.rebuildPages()
+	if m.selected >= len(m.pages) {
+		m.selected = len(m.pages) - 1
+	}
+	if m.selected < 0 {
+		m.selected = 0
+	}
+	m.status = "deleted"
 }
 
 func (m *model) deleteCourse(index int) {
@@ -313,52 +241,12 @@ func (m *model) deleteCourse(index int) {
 		return
 	}
 	m.cfg.Courses = append(m.cfg.Courses[:index], m.cfg.Courses[index+1:]...)
-	if m.selected >= len(m.cfg.Courses) {
-		m.selected = len(m.cfg.Courses) - 1
+	m.rebuildPages()
+	if m.selected >= len(m.pages) {
+		m.selected = len(m.pages) - 1
 	}
 	if m.selected < 0 {
 		m.selected = 0
-	}
-	m.status = "deleted"
-}
-
-func (m *model) deletePart(index int) {
-	item, ok := m.courseAt(m.courseIndex)
-	if !ok {
-		return
-	}
-	body, err := course.DeletePart(item.Body, index)
-	if err != nil {
-		m.status = err.Error()
-		return
-	}
-	if err := m.storeCourse(m.courseIndex, item.SourceFile, item.Name, body); err != nil {
-		m.status = err.Error()
-		return
-	}
-	if m.selected >= len(m.cfg.Courses[m.courseIndex].Parts) {
-		m.selected = len(m.cfg.Courses[m.courseIndex].Parts) - 1
-	}
-	m.status = "deleted"
-}
-
-func (m *model) deleteSection(index int) {
-	item, ok := m.courseAt(m.courseIndex)
-	if !ok {
-		return
-	}
-	body, err := course.DeleteSection(item.Body, m.partIndex, index)
-	if err != nil {
-		m.status = err.Error()
-		return
-	}
-	if err := m.storeCourse(m.courseIndex, item.SourceFile, item.Name, body); err != nil {
-		m.status = err.Error()
-		return
-	}
-	sections := m.cfg.Courses[m.courseIndex].Parts[m.partIndex].Sections
-	if m.selected >= len(sections) {
-		m.selected = len(sections) - 1
 	}
 	m.status = "deleted"
 }
@@ -377,6 +265,7 @@ func (m *model) storeCourse(index int, slug, name, body string) error {
 		parsed.Name = name
 	}
 	m.cfg.Courses[index] = parsed
+	m.rebuildPages()
 	return nil
 }
 
@@ -405,18 +294,6 @@ func (m *model) sortCourses() {
 		courses[j] = item
 	}
 	m.cfg.Courses = courses
-}
-
-func usesSections(item course.Course) bool {
-	for _, part := range item.Parts {
-		if len(part.Sections) == 1 && part.Sections[0].Name == "Main" {
-			continue
-		}
-		if len(part.Sections) > 0 {
-			return true
-		}
-	}
-	return false
 }
 
 func trimPreviousWord(value string) string {

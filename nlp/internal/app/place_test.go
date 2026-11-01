@@ -37,10 +37,10 @@ func TestRestorePlaceUsesTheCourseSlug(t *testing.T) {
 	}
 
 	m.restore("alpha", "doc 9 0 0 0")
-	if m.screen != screenDoc || m.courseIndex != 0 || m.lessonIndex != 0 {
+	if m.screen != screenType || m.courseIndex != 0 || m.lessonIndex != 0 {
 		t.Fatalf("doc place screen=%d course=%d lesson=%d", m.screen, m.courseIndex, m.lessonIndex)
 	}
-	if m.sequenceName != "Alpha: Part I: Alpha: Section 1: A" {
+	if m.sequenceName != "Start (Alpha)" {
 		t.Fatalf("sequence %q", m.sequenceName)
 	}
 

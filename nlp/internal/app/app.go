@@ -52,6 +52,7 @@ type model struct {
 	partIndex    int
 	sectionIndex int
 	selected     int
+	pages        []page
 	scroll       int
 
 	sequenceName string
@@ -113,11 +114,12 @@ func newModel(cfg Config) model {
 		height:      24,
 		cursorShown: true,
 	}
+	m.rebuildPages()
 	if len(cfg.InitialLessons) > 0 {
 		m.sequenceName = cfg.InitialSequenceName
 		m.lessons = cfg.InitialLessons
 		m.lessonIndex = clamp(cfg.InitialLessonIndex, 0, len(m.lessons)-1)
-		m.screen = screenDoc
+		m.startTyping()
 	}
 	return m
 }
@@ -215,6 +217,10 @@ func (m model) updateListKey(key string) (tea.Model, tea.Cmd) {
 		m.goBack()
 	case "right", "l", "enter":
 		m.activate()
+		if m.screen == screenType && !m.cursorBlinking {
+			m.cursorBlinking = true
+			return m, cursorBlinkCmd()
+		}
 	case ",":
 		m.leader = true
 		m.leaderSeq = ""
@@ -282,36 +288,10 @@ func (m *model) moveSelection(delta int) {
 }
 
 func (m *model) activate() {
-	switch m.screen {
-	case screenCourses:
-		if len(m.cfg.Courses) == 0 {
-			return
-		}
-		m.courseIndex = m.selected
-		c := m.cfg.Courses[m.courseIndex]
-		if len(c.Parts) == 1 && c.Parts[0].Name == "Main" && len(c.Parts[0].Sections) == 1 && c.Parts[0].Sections[0].Name == "Main" {
-			m.openSequence(c.Name, c.Parts[0].Sections[0].Lessons, 0)
-		} else {
-			m.screen = screenParts
-			m.selected = 0
-		}
-	case screenParts:
-		c := m.cfg.Courses[m.courseIndex]
-		m.partIndex = m.selected
-		part := c.Parts[m.partIndex]
-		if len(part.Sections) == 1 && part.Sections[0].Name == "Main" {
-			m.openSequence(c.Name+": "+part.Name, part.Sections[0].Lessons, 0)
-		} else {
-			m.screen = screenSections
-			m.selected = 0
-		}
-	case screenSections:
-		c := m.cfg.Courses[m.courseIndex]
-		part := c.Parts[m.partIndex]
-		m.sectionIndex = m.selected
-		section := part.Sections[m.sectionIndex]
-		m.openSequence(c.Name+": "+part.Name+": "+section.Name, section.Lessons, 0)
+	if m.screen != screenCourses {
+		return
 	}
+	m.openPage(m.selected)
 }
 
 func (m *model) goBack() {
@@ -358,35 +338,17 @@ func (m model) currentLesson() course.Lesson {
 }
 
 func (m model) itemCount() int {
-	switch m.screen {
-	case screenCourses:
-		return len(m.cfg.Courses)
-	case screenParts:
-		if len(m.cfg.Courses) == 0 {
-			return 0
-		}
-		return len(m.cfg.Courses[m.courseIndex].Parts)
-	case screenSections:
-		if len(m.cfg.Courses) == 0 {
-			return 0
-		}
-		return len(m.cfg.Courses[m.courseIndex].Parts[m.partIndex].Sections)
-	default:
-		return 0
+	if m.screen == screenCourses {
+		return len(m.pages)
 	}
+	return 0
 }
 
 func (m model) itemName(index int) string {
-	switch m.screen {
-	case screenCourses:
-		return m.cfg.Courses[index].Name
-	case screenParts:
-		return m.cfg.Courses[m.courseIndex].Parts[index].Name
-	case screenSections:
-		return m.cfg.Courses[m.courseIndex].Parts[m.partIndex].Sections[index].Name
-	default:
+	if m.screen != screenCourses || index < 0 || index >= len(m.pages) {
 		return ""
 	}
+	return m.pages[index].name
 }
 
 func (m model) View() string {
@@ -478,14 +440,10 @@ func (m model) renderHelp() string {
 	lines := []string{
 		titleStyle.Render("nlp help"),
 		"",
-		"Menus:",
-		"  j/k move, l/enter open, h/esc back, q quit",
-		"  n creates a course, part, or section",
-		"  ,rn renames the selected item, dd deletes it",
-		"",
-		"Doc mode:",
-		"  j/k scroll, ctrl+j/ctrl+k half-page, n/p next/previous lesson",
-		"  t or r starts line typing, h returns to courses",
+		"Sessions:",
+		"  j/k move, enter opens the page, q quits",
+		"  n creates a session",
+		"  ,rn renames the selected session, dd deletes it",
 		"",
 		"Type mode:",
 		"  type over the visible line exactly, enter accepts it, ctrl+r resets, esc returns",
@@ -496,15 +454,7 @@ func (m model) renderHelp() string {
 }
 
 func (m model) listTitle() string {
-	switch m.screen {
-	case screenParts:
-		return m.cfg.Courses[m.courseIndex].Name
-	case screenSections:
-		c := m.cfg.Courses[m.courseIndex]
-		return c.Name + " > " + c.Parts[m.partIndex].Name
-	default:
-		return "nlp"
-	}
+	return "nlp"
 }
 
 func trimLastRune(value string) string {
@@ -569,104 +519,66 @@ func (m model) remember() {
 	if screen == screenHelp {
 		screen = m.before
 	}
-	slug := ""
-	cursor := "courses 0"
-	switch screen {
-	case screenCourses:
-		if m.selected >= 0 && m.selected < len(m.cfg.Courses) {
-			slug = m.cfg.Courses[m.selected].SourceFile
-		}
-		cursor = fmt.Sprintf("courses %d", m.selected)
-	case screenParts:
-		slug = m.courseSlug()
-		cursor = fmt.Sprintf("parts %d %d", m.courseIndex, m.selected)
-	case screenSections:
-		slug = m.courseSlug()
-		cursor = fmt.Sprintf("sections %d %d %d", m.courseIndex, m.partIndex, m.selected)
-	case screenDoc:
-		slug = m.courseSlug()
-		cursor = fmt.Sprintf("doc %d %d %d %d", m.courseIndex, m.partIndex, m.sectionIndex, m.lessonIndex)
-	case screenType:
-		slug = m.courseSlug()
-		cursor = fmt.Sprintf("type %d %d %d %d", m.courseIndex, m.partIndex, m.sectionIndex, m.lessonIndex)
+	selected := m.selected
+	if selected < 0 || selected >= len(m.pages) {
+		selected = 0
 	}
-	_ = m.session.Place(slug, cursor)
+	slug := ""
+	if len(m.pages) > 0 && m.pages[selected].courseIndex >= 0 && m.pages[selected].courseIndex < len(m.cfg.Courses) {
+		slug = m.cfg.Courses[m.pages[selected].courseIndex].SourceFile
+	}
+	kind := "pages"
+	if screen == screenType {
+		kind = "type"
+	}
+	_ = m.session.Place(slug, fmt.Sprintf("%s %d", kind, selected))
 }
 
 func (m *model) restore(slug, cursor string) {
+	m.rebuildPages()
+	if len(m.pages) == 0 {
+		return
+	}
 	fields := strings.Fields(cursor)
-	if len(fields) == 0 || len(m.cfg.Courses) == 0 {
+	if len(fields) == 0 {
 		return
 	}
-	need := map[string]int{"courses": 1, "parts": 2, "sections": 3, "doc": 4, "type": 4}
-	count, ok := need[fields[0]]
-	if !ok || len(fields)-1 < count {
-		return
-	}
-	nums := make([]int, count)
-	for i, field := range fields[1 : 1+count] {
-		n, err := strconv.Atoi(field)
-		if err != nil {
-			return
-		}
-		nums[i] = n
-	}
-	if slug != "" {
-		for i, item := range m.cfg.Courses {
-			if item.SourceFile == slug {
-				nums[0] = i
-				break
-			}
-		}
-	}
-	if fields[0] == "courses" {
-		m.screen = screenCourses
-		m.selected = clamp(nums[0], 0, len(m.cfg.Courses)-1)
-		m.courseIndex = m.selected
-		return
-	}
-	if nums[0] < 0 || nums[0] >= len(m.cfg.Courses) {
-		return
-	}
-	m.courseIndex = nums[0]
-	item := m.cfg.Courses[m.courseIndex]
 	switch fields[0] {
-	case "parts":
-		if len(item.Parts) == 0 {
-			return
+	case "pages", "courses":
+		m.screen = screenCourses
+		m.selected = m.pageIndex(slug, numberAt(fields, 1))
+		if m.selected >= 0 && m.selected < len(m.pages) {
+			m.courseIndex = m.pages[m.selected].courseIndex
 		}
-		m.screen = screenParts
-		m.selected = clamp(nums[1], 0, len(item.Parts)-1)
-		m.partIndex = m.selected
-	case "sections":
-		if nums[1] < 0 || nums[1] >= len(item.Parts) || len(item.Parts[nums[1]].Sections) == 0 {
-			return
+	case "parts", "sections":
+		m.screen = screenCourses
+		m.selected = m.pageIndex(slug, 0)
+		if m.selected >= 0 && m.selected < len(m.pages) {
+			m.courseIndex = m.pages[m.selected].courseIndex
 		}
-		m.partIndex = nums[1]
-		m.screen = screenSections
-		m.selected = clamp(nums[2], 0, len(item.Parts[nums[1]].Sections)-1)
-		m.sectionIndex = m.selected
 	case "doc", "type":
-		if nums[1] < 0 || nums[1] >= len(item.Parts) {
-			return
+		if len(fields) >= 5 {
+			courseIndex := numberAt(fields, 1)
+			if slug != "" {
+				if found := courseIndexBySlug(m.cfg.Courses, slug); found >= 0 {
+					courseIndex = found
+				}
+			}
+			m.selected = m.pageByLesson(courseIndex, numberAt(fields, 2), numberAt(fields, 3), numberAt(fields, 4))
+		} else {
+			m.selected = m.pageIndex(slug, numberAt(fields, 1))
 		}
-		part := item.Parts[nums[1]]
-		if nums[2] < 0 || nums[2] >= len(part.Sections) {
-			return
-		}
-		section := part.Sections[nums[2]]
-		m.partIndex = nums[1]
-		m.sectionIndex = nums[2]
-		name := item.Name
-		if part.Name != "Main" {
-			name += ": " + part.Name
-		}
-		if section.Name != "Main" {
-			name += ": " + section.Name
-		}
-		m.openSequence(name, section.Lessons, nums[3])
-		if fields[0] == "type" {
-			m.startTyping()
-		}
+		m.openPage(m.selected)
 	}
+}
+
+func numberAt(fields []string, index int) int {
+	if index < 0 || index >= len(fields) {
+		return 0
+	}
+	n, err := strconv.Atoi(fields[index])
+	if err != nil {
+		return 0
+	}
+	return n
 }

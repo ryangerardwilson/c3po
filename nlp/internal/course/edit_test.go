@@ -212,3 +212,23 @@ func TestInsertAfterCursorRenumbersFollowing(t *testing.T) {
 		t.Fatalf("part number changed: %q", parsed.Parts[1].Name)
 	}
 }
+
+func TestRenameAndDeleteLessonPage(t *testing.T) {
+	body, err := RenameLesson(sample, 0, 0, 0, "Prayer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(body, "#### Prayer") || strings.Contains(body, "#### Lesson 1: A") {
+		t.Fatalf("renamed lesson:\n%s", body)
+	}
+	body, err = DeleteLesson(body, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(body, "Prayer") {
+		t.Fatalf("deleted lesson remained:\n%s", body)
+	}
+	if _, err := DeleteLesson(NewCourseBody("Solo"), 0, 0, 0); err == nil {
+		t.Fatal("deleted the only session")
+	}
+}
