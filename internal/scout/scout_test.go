@@ -177,7 +177,7 @@ func TestScreensAreOnlyUnderTUI(t *testing.T) {
 		t.Fatalf("tunnel open %d\n%s", code, out)
 	}
 	out, code = call("c3po", "tui")
-	for _, name := range []string{"\n  cyclotree", "\n  l ", "\n  o ", "\n  tunnel ", "\n  gdrive ", "\n  pass ", "\n  deport ", "\n  xl ", "\n  looptab ", "\n  nlp "} {
+	for _, name := range []string{"\n  cyclotree", "\n  l ", "\n  o ", "\n  tunnel ", "\n  gdrive ", "\n  pass ", "\n  deport ", "\n  xl ", "\n  looptab "} {
 		if code != 0 || !bytes.Contains(out, []byte(name)) {
 			t.Fatalf("tui %d missing %q\n%s", code, name, out)
 		}
@@ -300,22 +300,14 @@ func TestLooptabScreen(t *testing.T) {
 	}
 }
 
-func TestNLPScreen(t *testing.T) {
-	out, code := call("c3po", "tui", "nlp", "help")
-	if code != 0 || !bytes.Contains(out, []byte("neuro-linguistic programming")) || !bytes.Contains(out, []byte("c3po tui nlp")) {
+func TestNLPScreenIsNotC3po(t *testing.T) {
+	out, code := call("c3po", "tui", "nlp")
+	if code != 2 || !bytes.Contains(out, []byte("unknown tui")) {
+		t.Fatalf("screen %d\n%s", code, out)
+	}
+	out, code = call("c3po", "help", "-f", "tui", "nlp")
+	if code != 2 || !bytes.Contains(out, []byte("unknown feature")) {
 		t.Fatalf("help %d\n%s", code, out)
-	}
-	same, sameCode := call("c3po", "help", "-f", "tui", "nlp")
-	if sameCode != 0 || !bytes.Equal(out, same) {
-		t.Fatalf("flag %d\n%s", sameCode, same)
-	}
-	out, code = call("c3po", "tui", "nlp", "version")
-	if code != 0 || !bytes.Contains(out, []byte("c3po 0.5.0")) {
-		t.Fatalf("version %d\n%s", code, out)
-	}
-	out, code = call("c3po", "tui", "nlp", "extra")
-	if code != 2 || !bytes.Contains(out, []byte("c3po tui nlp")) {
-		t.Fatalf("extra %d\n%s", code, out)
 	}
 	out, code = call("c3po", "nlp")
 	if code != 2 || !bytes.Contains(out, []byte("unknown command")) {
