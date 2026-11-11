@@ -28,6 +28,11 @@ past the last line SHALL fail with exit 1.
 
 Output SHALL begin with a header line `# <path> lines <a>-<b> of <total>`.
 When the range was clamped the header SHALL add the next range to request.
+The header SHALL end with ` sha256 <hex>`, the 64 lowercase hex digit SHA-256
+of the whole file. The tool SHALL scan the file once and keep only the lines it
+prints. A `--strict-lines` range longer than `max_read_lines` MAY fail before
+the file is read; a `--strict-lines` range past the last line SHALL fail after
+the scan.
 With `--number`, each content line SHALL be prefixed with its absolute line
 number.
 
@@ -35,6 +40,8 @@ number.
 - **WHEN** the user runs `rgw-ast read f.go --lines 1-10`
 - **THEN** stdout SHALL contain at most 10 lines of file content
 - **AND** the header SHALL contain `of <total>`
+- **AND** the header SHALL contain `sha256 <hex>` of the whole file, equal to
+  `rgw-ast hash f.go`
 
 #### Scenario: Whole-file read denied when enforced
 - **GIVEN** enforcement is active and `deny_whole_file_read` is true

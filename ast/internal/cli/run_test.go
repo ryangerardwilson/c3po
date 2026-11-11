@@ -167,6 +167,66 @@ func TestRootFlagAndHook(t *testing.T) {
 	}
 }
 
+func TestBoundedReadAndMutationsDoNotMeasure(t *testing.T) {
+	ws := t.TempDir()
+	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	cfg := config.Default()
+	cfg.Enforcement.Mode = "always"
+	cfg.Cache.Dir = t.TempDir()
+	if err := config.Write(cfgPath, cfg); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a.go", "b.go", "c.go"} {
+		mustWrite(t, filepath.Join(ws, name), "package p\n// "+name+"\n")
+	}
+	var out, errB bytes.Buffer
+	r := NewRunner(&out, &errB)
+	r.Cwd = ws
+	r.ConfigPath = cfgPath
+	hash := func(name string) string {
+		h, err := files.HashFile(filepath.Join(ws, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return h
+	}
+	cacheEntries := func() int {
+		n := 0
+		_ = filepath.WalkDir(cfg.Cache.Dir, func(_ string, d os.DirEntry, err error) error {
+			if err == nil && !d.IsDir() {
+				n++
+			}
+			return nil
+		})
+		return n
+	}
+	for _, args := range [][]string{
+		{"read", "a.go", "--lines", "1-2"},
+		{"patch", "a.go", "--expect-hash", hash("a.go"), "--old", "// a.go", "--new", "// patched"},
+		{"move", "b.go", "d.go", "--expect-hash", hash("b.go")},
+		{"delete", "c.go", "--expect-hash", hash("c.go")},
+	} {
+		out.Reset()
+		errB.Reset()
+		if code := r.Run(args); code != 0 {
+			t.Fatalf("%v: code %d %s", args, code, errB.String())
+		}
+		if n := cacheEntries(); n != 0 {
+			t.Fatalf("%v measured the tree (%d cache entries)", args, n)
+		}
+	}
+	if code := r.Run([]string{"patch", "a.go", "--old", "x", "--new", "y"}); code == 0 {
+		t.Fatal("patch without --expect-hash should fail")
+	}
+	errB.Reset()
+	if code := r.Run([]string{"read", "a.go"}); code != ExitFail || !strings.Contains(errB.String(), "whole-file read denied") {
+		t.Fatalf("whole-file read code %d %q", code, errB.String())
+	}
+	if n := cacheEntries(); n != 1 {
+		t.Fatalf("whole-file read should store the cached measure, got %d entries", n)
+	}
+}
+
 func mustWrite(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

@@ -41,7 +41,7 @@ Policy: ~/.config/c3po/ast/config.toml only.
 Every walk honors .gitignore, stops at nested git repos and worktrees, and skips
 directories that ignore themselves. Prose (Markdown, text) is prose_loc and does
 not reach threshold_loc unless enforcement.count_prose is set.
-LOC cached ~60s; mutations/hook refresh enforcement. generators.allow lists exec.
+LOC cached ~60s; the hook refreshes enforcement. generators.allow lists exec.
 Absolute paths outside the current root use their own repository's root.
 
 Outcome tracing (callers, callees, impact) is not capped at the search limit.
@@ -264,7 +264,7 @@ Example: c3po ast hash internal/cli/help.go
 	"read": `c3po ast read <file> --lines <start>-<end> [--number] [--strict-lines]
 
 Print an inclusive line range. While enforced, a whole-file read is denied.
-The header is "# <file> lines A-B of TOTAL"; a range over max_read_lines is capped and the header names the next range.
+The header is "# <file> lines A-B of TOTAL", then the next range when a range over max_read_lines is capped, then "sha256 <hex>" of the whole file.
 --strict-lines fails when the range is over max_read_lines or passes the end of the file.
 Exit 1 on a denied or missing read. Exit 2 on bad flags.
 

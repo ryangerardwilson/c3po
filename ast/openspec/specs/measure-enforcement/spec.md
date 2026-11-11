@@ -40,6 +40,10 @@ the root path, include/exclude/prose policy, scope rules, and a root content
 fingerprint. A cache entry younger than 60 seconds with a matching fingerprint
 SHALL be reused unless `--refresh` is set. Commands that need enforcement SHALL
 use the cached path rather than forcing a full recount on every invocation.
+Whole-file `read` SHALL decide enforcement from the cached measure. `read
+--lines`, `patch`, `delete`, and `move` SHALL NOT measure: `patch` requires
+`--expect-hash` whether or not enforcement is active. The PreToolUse hook SHALL
+recompute enforcement with a fresh measure.
 
 #### Scenario: Exclude node_modules
 - **GIVEN** source files exist under `node_modules/`
@@ -68,6 +72,13 @@ use the cached path rather than forcing a full recount on every invocation.
 #### Scenario: Refresh bypasses cache
 - **WHEN** the user runs `rgw-ast status --refresh`
 - **THEN** the tool SHALL recompute loc even if a warm cache entry exists
+
+#### Scenario: Bounded reads and mutations do not recount
+- **WHEN** the user runs `rgw-ast read <file> --lines <a>-<b>`, `rgw-ast patch`,
+  `rgw-ast delete`, or `rgw-ast move`
+- **THEN** the tool SHALL NOT walk the tree to recount loc
+- **AND** a whole-file `rgw-ast read` SHALL use the cached measure rather than a
+  forced recount
 
 ### Requirement: Enforcement decision
 Enforcement SHALL be derived only from global config and measured LOC:

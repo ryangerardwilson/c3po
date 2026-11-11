@@ -294,7 +294,7 @@ func (r Runner) measureRoot(cfg config.Config, wsRoot string) (measure.Result, e
 	return measure.CountCachedOpts(wsRoot, cfg, measure.CountOpts{Refresh: r.Refresh})
 }
 
-// measureFresh forces a recount for mutation/hook-adjacent enforcement.
+// measureFresh forces a recount; exec decides enforcement with it.
 func (r Runner) measureFresh(cfg config.Config, wsRoot string) (measure.Result, error) {
 	return measure.CountCachedOpts(wsRoot, cfg, measure.CountOpts{Refresh: true})
 }
@@ -723,11 +723,6 @@ func (r Runner) cmdRead(args []string) error {
 	if err != nil {
 		return err
 	}
-	m, err := r.measureFresh(cfg, wsRoot)
-	if err != nil {
-		return err
-	}
-	d := enforce.Decide(cfg, m.LOC)
 	abs, err := files.ResolvePath(wsRoot, path)
 	if err != nil {
 		return err
@@ -736,7 +731,12 @@ func (r Runner) cmdRead(args []string) error {
 	rel = filepath.ToSlash(rel)
 
 	if linesSpec == "" {
-		if d.Enforced && cfg.Enforcement.DenyWholeFileRead {
+		// The cached measure decides; a bounded read never measures.
+		m, err := r.measureRoot(cfg, wsRoot)
+		if err != nil {
+			return err
+		}
+		if enforce.Decide(cfg, m.LOC).Enforced && cfg.Enforcement.DenyWholeFileRead {
 			bin, err := files.IsBinary(abs)
 			if err != nil {
 				return err
@@ -856,21 +856,12 @@ func (r Runner) cmdPatch(args []string) error {
 	if all && symbol != "" {
 		return usageError{"--all cannot be combined with --symbol"}
 	}
-	cfg, _, wsRoot, err := r.workspaceFor(path)
-	if err != nil {
-		return err
-	}
-	// recheck enforcement with fresh measure (mutations must not use stale LOC)
-	m, err := r.measureFresh(cfg, wsRoot)
-	if err != nil {
-		return err
-	}
-	d := enforce.Decide(cfg, m.LOC)
-	if d.Enforced && cfg.Enforcement.RequireHashBeforePatch && expectHash == "" {
-		return usageError{"--expect-hash is required while enforced"}
-	}
 	if expectHash == "" {
 		return usageError{"--expect-hash is required"}
+	}
+	_, _, wsRoot, err := r.workspaceFor(path)
+	if err != nil {
+		return err
 	}
 	abs, err := files.ResolvePath(wsRoot, path)
 	if err != nil {
@@ -1031,11 +1022,8 @@ func (r Runner) cmdDelete(args []string) error {
 	if expectHash == "" {
 		return usageError{"--expect-hash is required"}
 	}
-	cfg, _, wsRoot, err := r.workspaceFor(path)
+	_, _, wsRoot, err := r.workspaceFor(path)
 	if err != nil {
-		return err
-	}
-	if _, err := r.measureFresh(cfg, wsRoot); err != nil {
 		return err
 	}
 	abs, err := files.ResolvePath(wsRoot, path)
@@ -1070,11 +1058,8 @@ func (r Runner) cmdMove(args []string) error {
 	if expectHash == "" {
 		return usageError{"--expect-hash is required"}
 	}
-	cfg, _, wsRoot, err := r.workspaceFor(args[0])
+	_, _, wsRoot, err := r.workspaceFor(args[0])
 	if err != nil {
-		return err
-	}
-	if _, err := r.measureFresh(cfg, wsRoot); err != nil {
 		return err
 	}
 	h, viaGit, err := files.MoveExact(wsRoot, args[0], args[1], expectHash, parents)

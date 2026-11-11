@@ -1,6 +1,7 @@
 package files
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -113,17 +114,64 @@ func PatchExact(path, expectHash, old, new string) (newHash string, err error) {
 // FormatReadRange returns content for [start,end] with optional line numbers and header.
 // If end-start+1 exceeds maxLines and strict is false, clamps and returns nextStart > 0.
 // With strict, a range longer than maxLines or past the last line fails.
-// The header names the total line count and, when clamped, the next range.
+// The header names the total line count, when clamped the next range, and the
+// SHA-256 of the whole file. The file is scanned once; only printed lines are kept.
 func FormatReadRange(path, rel string, start, end, maxLines int, number, strict bool) (text string, nextStart int, err error) {
 	if start < 1 || end < start {
 		return "", 0, fmt.Errorf("invalid line range %d-%d", start, end)
 	}
-	data, err := os.ReadFile(path)
+	if span := end - start + 1; strict && span > maxLines {
+		return "", 0, fmt.Errorf("line range length %d exceeds max_read_lines %d", span, maxLines)
+	}
+	keepTo := end
+	if keepTo-start+1 > maxLines {
+		keepTo = start + maxLines - 1
+	}
+	f, err := os.Open(path)
 	if err != nil {
 		return "", 0, err
 	}
-	lines := splitKeepEnds(string(data))
-	total := len(lines)
+	defer f.Close()
+	h := sha256.New()
+	br := bufio.NewReaderSize(f, 64*1024)
+	var lines []string
+	var cur []byte
+	total, partial := 0, false
+	for {
+		chunk, rerr := br.ReadSlice('\n')
+		if len(chunk) > 0 {
+			_, _ = h.Write(chunk)
+			n := total + 1
+			keep := n >= start && n <= keepTo
+			if keep {
+				cur = append(cur, chunk...)
+			}
+			partial = true
+			if chunk[len(chunk)-1] == '\n' {
+				if keep {
+					lines = append(lines, string(cur))
+					cur = cur[:0]
+				}
+				total++
+				partial = false
+			}
+		}
+		if rerr == bufio.ErrBufferFull {
+			continue
+		}
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			return "", 0, rerr
+		}
+	}
+	if partial {
+		if total+1 >= start && total+1 <= keepTo {
+			lines = append(lines, string(cur))
+		}
+		total++
+	}
 	if start > total {
 		return "", 0, fmt.Errorf("start line %d past end of file (%d lines)", start, total)
 	}
@@ -133,11 +181,7 @@ func FormatReadRange(path, rel string, start, end, maxLines int, number, strict 
 		}
 		end = total
 	}
-	span := end - start + 1
-	if span > maxLines {
-		if strict {
-			return "", 0, fmt.Errorf("line range length %d exceeds max_read_lines %d", span, maxLines)
-		}
+	if span := end - start + 1; span > maxLines {
 		end = start + maxLines - 1
 		if end > total {
 			end = total
@@ -152,17 +196,17 @@ func FormatReadRange(path, rel string, start, end, maxLines int, number, strict 
 	if nextStart > 0 {
 		fmt.Fprintf(&b, " (capped at %d; next: --lines %d-%d)", maxLines, nextStart, min(nextStart+maxLines-1, total))
 	}
-	b.WriteByte('\n')
-	for i := start - 1; i < end; i++ {
-		line := lines[i]
+	fmt.Fprintf(&b, " sha256 %s\n", hex.EncodeToString(h.Sum(nil)))
+	for i := start; i <= end; i++ {
+		line := lines[i-start]
 		if number {
 			// strip trailing newline for numbering, re-add
 			body := strings.TrimSuffix(line, "\n")
 			body = strings.TrimSuffix(body, "\r")
-			fmt.Fprintf(&b, "%6d\t%s\n", i+1, body)
+			fmt.Fprintf(&b, "%6d\t%s\n", i, body)
 		} else {
 			b.WriteString(line)
-			if !strings.HasSuffix(line, "\n") && i == end-1 {
+			if !strings.HasSuffix(line, "\n") && i == end {
 				b.WriteByte('\n')
 			}
 		}

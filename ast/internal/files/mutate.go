@@ -90,24 +90,19 @@ func CreateAbsent(path string, content []byte, parents bool, mode os.FileMode) (
 	if err := os.Rename(tmpName, path); err != nil {
 		return "", err
 	}
-	return HashFile(path)
+	return hashBytes(content), nil
 }
 
 // AppendExact appends content when hash matches.
 func AppendExact(path, expectHash string, content []byte) (string, error) {
-	cur, err := HashFile(path)
-	if err != nil {
-		return "", err
-	}
-	if !strings.EqualFold(cur, expectHash) {
-		return "", StaleHash(expectHash, cur)
-	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
-	updated := append(append([]byte{}, data...), content...)
-	return writeAtomic(path, updated)
+	if cur := hashBytes(data); !strings.EqualFold(cur, expectHash) {
+		return "", StaleHash(expectHash, cur)
+	}
+	return writeAtomic(path, append(data, content...))
 }
 
 // PatchOps applies ordered unique replacements against one expected hash.
@@ -115,16 +110,12 @@ func PatchOps(path, expectHash string, ops []Op) (string, error) {
 	if len(ops) == 0 {
 		return "", fmt.Errorf("no patch operations")
 	}
-	cur, err := HashFile(path)
-	if err != nil {
-		return "", err
-	}
-	if !strings.EqualFold(cur, expectHash) {
-		return "", StaleHash(expectHash, cur)
-	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
+	}
+	if cur := hashBytes(data); !strings.EqualFold(cur, expectHash) {
+		return "", StaleHash(expectHash, cur)
 	}
 	content := string(data)
 	for i, op := range ops {
@@ -326,6 +317,8 @@ func ReadStdin(r io.Reader) ([]byte, error) {
 	return io.ReadAll(r)
 }
 
+// writeAtomic replaces path with content, keeping the existing mode (0644 for
+// a new path), and returns the SHA-256 of the bytes it wrote.
 func writeAtomic(path string, content []byte) (string, error) {
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".rgw-ast-write-*")
 	if err != nil {
@@ -347,5 +340,5 @@ func writeAtomic(path string, content []byte) (string, error) {
 	if err := os.Rename(tmpName, path); err != nil {
 		return "", err
 	}
-	return HashFile(path)
+	return hashBytes(content), nil
 }

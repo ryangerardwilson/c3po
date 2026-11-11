@@ -2,6 +2,8 @@ package measure
 
 import (
 	"crypto/sha256"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,17 +67,37 @@ func gitDirtyFingerprint(root string) []byte {
 	// Hash content of each dirty/untracked path so repeated edits while
 	// porcelain status text is unchanged still invalidate the cache.
 	for path := range ParsePorcelainPaths(string(out)) {
-		abs := filepath.Join(root, path)
-		data, err := os.ReadFile(abs)
+		sum, err := hashDirtyFile(filepath.Join(root, path))
 		if err != nil {
 			_, _ = h.Write([]byte("missing:" + path))
 			continue
 		}
-		sum := sha256.Sum256(data)
 		_, _ = h.Write([]byte(path))
-		_, _ = h.Write(sum[:])
+		_, _ = h.Write(sum)
 	}
 	return h.Sum(nil)
+}
+
+// hashDirtyFile streams the SHA-256 of one file. A directory is an error,
+// not the digest of empty input.
+func hashDirtyFile(abs string) ([]byte, error) {
+	f, err := os.Open(abs)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.IsDir() {
+		return nil, fmt.Errorf("%s is a directory", abs)
+	}
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return nil, err
+	}
+	return h.Sum(nil), nil
 }
 
 func sampleNestedMtimes(root string) []byte {

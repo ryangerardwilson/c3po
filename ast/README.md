@@ -71,16 +71,18 @@ rgw-ast [--root <path>] cut [--json] [path]
   enforced.
 - An absolute path outside the current root uses its own repository's root,
   as the hook does.
-- Mutations and the PreToolUse hook recompute enforcement with a fresh measure.
+- The PreToolUse hook recomputes enforcement with a fresh measure. `read
+  --lines`, `patch`, `delete`, and `move` do not walk the tree to remeasure;
+  whole-file `read` decides enforcement from the cached measure.
 - Delete removes one verified regular file only. It rejects stale hashes,
   directories, symlinks, special files, and outside-root paths; `--prune-empty`
   removes only empty ancestors and never the workspace root.
 - When enforced, whole-file `read` is denied for any non-binary text; the
   error names the line count and the first range to read.
-- The read header is `# <file> lines A-B of TOTAL`. Oversized `--lines` ranges
-  clamp to `max_read_lines`, and the header names the next range
-  (`--strict-lines` fails instead, including past end of file). Prefer
-  `--number` for citations.
+- The read header is `# <file> lines A-B of TOTAL`, then the next range when
+  capped, then `sha256 <hex>` of the whole file. Oversized `--lines` ranges
+  clamp to `max_read_lines` (`--strict-lines` fails instead, including past end
+  of file). Prefer `--number` for citations.
 - Search pages with `--offset`; stderr reports `hits A-B of TOTAL; next:
   --offset B`. `--regex` and `-i` are supported. Snippets truncate to 120
   characters; use `--path` / `--glob` to scope.

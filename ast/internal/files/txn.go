@@ -2,15 +2,19 @@ package files
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/ryangerardwilson/c3po/ast/internal/trace"
 )
@@ -43,7 +47,8 @@ type ApplyOpts struct {
 type planned struct {
 	abs, rel, content, formatter, op string
 	dst, dstRel                      string // move destination
-	original                         []byte
+	original                         []byte // edit only
+	hash                             string // prepare-time hash of a move or delete
 }
 
 // ApplyAll validates every change before writing any file.
@@ -76,12 +81,9 @@ func DryRunOpts(root string, changes []FileChange, opts ApplyOpts) ([]ApplyResul
 	var out []ApplyResult
 	for _, item := range plan {
 		res := ApplyResult{Path: item.rel, To: item.dstRel, Op: item.op, Formatter: item.formatter}
-		if item.op != "move" {
-			old := ""
-			if item.op != "create" {
-				old = string(item.original)
-			}
-			res.Diff = unifiedDiff(item.rel, old, item.content)
+		// A move or delete has no diff; a delete never copies its body out.
+		if item.op == "edit" || item.op == "create" {
+			res.Diff = unifiedDiff(item.rel, string(item.original), item.content)
 		}
 		out = append(out, res)
 	}
@@ -146,7 +148,7 @@ func prepare(root string, changes []FileChange, opts ApplyOpts) ([]planned, erro
 				return nil, fmt.Errorf("change %d (%s): %w", i, ch.Path, StaleHash(ch.ExpectHash, cur))
 			}
 			dstRel, _ := filepath.Rel(root, dst)
-			plan = append(plan, planned{abs: abs, rel: rel, op: op, dst: dst, dstRel: filepath.ToSlash(dstRel)})
+			plan = append(plan, planned{abs: abs, rel: rel, op: op, dst: dst, dstRel: filepath.ToSlash(dstRel), hash: cur})
 		case "create":
 			if ch.Symbol != "" {
 				return nil, fmt.Errorf("change %d: symbol is only for edit", i)
@@ -172,34 +174,37 @@ func prepare(root string, changes []FileChange, opts ApplyOpts) ([]planned, erro
 			if ch.Symbol != "" || ch.Old != "" || ch.New != "" {
 				return nil, fmt.Errorf("change %d: delete only takes a hash or a diff", i)
 			}
-			orig, err := os.ReadFile(abs)
-			if err != nil {
-				return nil, fmt.Errorf("change %d: %w", i, err)
-			}
+			var cur string
 			if ch.ExpectHash == "" && ch.Diff != "" {
 				// A deletion diff guards by removing every line of the file.
+				orig, err := os.ReadFile(abs)
+				if err != nil {
+					return nil, fmt.Errorf("change %d: %w", i, err)
+				}
 				if rest, err := applyUnified(string(orig), ch.Diff); err != nil || strings.TrimSpace(rest) != "" {
 					return nil, fmt.Errorf("change %d: deletion diff does not match %s", i, ch.Path)
 				}
-			} else if cur := hashBytes(orig); !strings.EqualFold(cur, ch.ExpectHash) {
-				return nil, fmt.Errorf("change %d (%s): %w", i, ch.Path, StaleHash(ch.ExpectHash, cur))
+				cur = hashBytes(orig)
+			} else {
+				if cur, err = HashFile(abs); err != nil {
+					return nil, fmt.Errorf("change %d: %w", i, err)
+				}
+				if !strings.EqualFold(cur, ch.ExpectHash) {
+					return nil, fmt.Errorf("change %d (%s): %w", i, ch.Path, StaleHash(ch.ExpectHash, cur))
+				}
 			}
-			plan = append(plan, planned{abs: abs, rel: rel, op: op, original: orig})
+			plan = append(plan, planned{abs: abs, rel: rel, op: op, hash: cur})
 		default:
 			if ch.Symbol != "" && ch.Diff != "" {
 				return nil, fmt.Errorf("change %d: symbol cannot be combined with a diff", i)
 			}
-			cur, err := HashFile(abs)
+			orig, err := os.ReadFile(abs)
 			if err != nil {
 				return nil, fmt.Errorf("change %d: %w", i, err)
 			}
 			// A diff edit without a hash is guarded by its context lines.
-			if (ch.ExpectHash != "" || ch.Diff == "") && !strings.EqualFold(cur, ch.ExpectHash) {
+			if cur := hashBytes(orig); (ch.ExpectHash != "" || ch.Diff == "") && !strings.EqualFold(cur, ch.ExpectHash) {
 				return nil, fmt.Errorf("change %d (%s): %w", i, ch.Path, StaleHash(ch.ExpectHash, cur))
-			}
-			orig, err := os.ReadFile(abs)
-			if err != nil {
-				return nil, err
 			}
 			content := string(orig)
 			if ch.Symbol != "" {
@@ -277,51 +282,147 @@ func newContent(content string, ch FileChange) (string, error) {
 	return strings.Replace(content, ch.Old, ch.New, 1), nil
 }
 
+// keepPrefix names the sibling that holds a deleted file until commit ends.
+const keepPrefix = ".c3po-ast-keep-"
+
+// linkFile is os.Link; tests replace it to force the copy fallback.
+var linkFile = os.Link
+
 func commit(plan []planned) ([]ApplyResult, error) {
-	var wrote []planned
-	rollback := func() {
+	type done struct {
+		item planned
+		keep string // sibling holding a deleted file
+	}
+	var wrote []done
+	rollback := func() error {
+		var errs []error
 		for i := len(wrote) - 1; i >= 0; i-- {
 			prev := wrote[i]
-			switch prev.op {
+			switch prev.item.op {
 			case "create":
-				_ = os.Remove(prev.abs)
+				_ = os.Remove(prev.item.abs)
 			case "move":
-				_ = os.Rename(prev.dst, prev.abs)
+				_ = os.Rename(prev.item.dst, prev.item.abs)
+			case "delete":
+				if err := restoreDeleted(prev.item.abs, prev.keep); err != nil {
+					errs = append(errs, err)
+				}
 			default:
-				_, _ = writeAtomic(prev.abs, prev.original)
+				_, _ = writeAtomic(prev.item.abs, prev.item.original)
 			}
 		}
+		return errors.Join(errs...)
 	}
+	out := make([]ApplyResult, 0, len(plan))
 	for _, item := range plan {
+		res := ApplyResult{Path: item.rel, To: item.dstRel, Formatter: item.formatter, Op: item.op, Hash: item.hash}
+		var keep string
 		var err error
 		switch item.op {
 		case "delete":
-			err = os.Remove(item.abs)
+			keep, err = stageDelete(item.abs)
 		case "move":
 			err = os.Rename(item.abs, item.dst)
 		default:
-			_, err = writeAtomic(item.abs, []byte(item.content))
+			res.Hash, err = writeAtomic(item.abs, []byte(item.content))
 		}
 		if err != nil {
-			rollback()
+			if rbErr := rollback(); rbErr != nil {
+				return nil, errors.Join(err, rbErr)
+			}
 			return nil, err
 		}
-		wrote = append(wrote, item)
-	}
-	var out []ApplyResult
-	for _, item := range plan {
-		res := ApplyResult{Path: item.rel, To: item.dstRel, Formatter: item.formatter, Op: item.op}
-		switch item.op {
-		case "delete":
-			res.Hash = hashBytes(item.original)
-		case "move":
-			res.Hash, _ = HashFile(item.dst)
-		default:
-			res.Hash, _ = HashFile(item.abs)
-		}
+		wrote = append(wrote, done{item: item, keep: keep})
 		out = append(out, res)
 	}
+	for _, d := range wrote {
+		if d.keep != "" {
+			_ = os.Remove(d.keep)
+		}
+	}
 	return out, nil
+}
+
+// stageDelete moves abs aside to a unique sibling and returns the sibling.
+// A hard link keeps mode, owner, and inode; where the filesystem cannot
+// link, the file is streamed to the sibling with its mode.
+func stageDelete(abs string) (string, error) {
+	keep, err := placeKeep(abs, func(keep string) error { return linkFile(abs, keep) })
+	if err != nil && cannotLink(err) {
+		keep, err = placeKeep(abs, func(keep string) error { return copyKeep(abs, keep) })
+	}
+	if err != nil {
+		return "", err
+	}
+	if err := os.Remove(abs); err != nil {
+		_ = os.Remove(keep)
+		return "", err
+	}
+	return keep, nil
+}
+
+// placeKeep calls place with fresh sibling names until one is not taken.
+func placeKeep(abs string, place func(keep string) error) (string, error) {
+	for range 16 {
+		var b [8]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return "", err
+		}
+		keep := filepath.Join(filepath.Dir(abs), keepPrefix+filepath.Base(abs)+"-"+hex.EncodeToString(b[:]))
+		err := place(keep)
+		if err == nil {
+			return keep, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return "", err
+		}
+	}
+	return "", fmt.Errorf("no free name to keep %s", abs)
+}
+
+// cannotLink reports a filesystem that does not support the hard link.
+func cannotLink(err error) bool {
+	return errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EOPNOTSUPP) ||
+		errors.Is(err, syscall.ENOTSUP) || errors.Is(err, syscall.EMLINK) || errors.Is(err, syscall.EXDEV)
+}
+
+// copyKeep streams abs to the new path keep with the source mode.
+func copyKeep(abs, keep string) error {
+	src, err := os.Open(abs)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	info, err := src.Stat()
+	if err != nil {
+		return err
+	}
+	dst, err := os.OpenFile(keep, os.O_WRONLY|os.O_CREATE|os.O_EXCL, info.Mode().Perm())
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(dst, src)
+	if err == nil {
+		err = dst.Chmod(info.Mode().Perm())
+	}
+	if cerr := dst.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(keep)
+	}
+	return err
+}
+
+// restoreDeleted renames keep back to abs. An occupied abs is not
+// overwritten: keep stays and the error names it.
+func restoreDeleted(abs, keep string) error {
+	if _, err := os.Lstat(abs); err == nil {
+		return fmt.Errorf("restore %s: path is occupied; the deleted file is kept at %s", abs, keep)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("restore %s: %w; the deleted file is kept at %s", abs, err, keep)
+	}
+	return os.Rename(keep, abs)
 }
 
 // Format runs the checkout formatter for this path only.

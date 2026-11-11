@@ -18,7 +18,8 @@ func TestReadHeaderAndStrictEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if next != 6 || !strings.HasPrefix(text, "# f.txt lines 1-5 of 10 (capped at 5; next: --lines 6-10)\n") {
+	sum, _ := HashFile(path)
+	if next != 6 || !strings.HasPrefix(text, "# f.txt lines 1-5 of 10 (capped at 5; next: --lines 6-10) sha256 "+sum+"\n") {
 		t.Fatalf("header %q next %d", strings.SplitN(text, "\n", 2)[0], next)
 	}
 	if _, _, err := FormatReadRange(path, "f.txt", 8, 12, 5, false, true); err == nil {
@@ -26,6 +27,48 @@ func TestReadHeaderAndStrictEnd(t *testing.T) {
 	}
 	if _, _, err := FormatReadRange(path, "f.txt", 8, 12, 5, false, false); err != nil {
 		t.Fatalf("non-strict range past end should clamp: %v", err)
+	}
+}
+
+func TestReadRangeStreamsLongLinesAndTail(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "f.txt")
+	long := strings.Repeat("y", 200*1024)
+	body := "a\n" + long + "\nc\r\nd"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sum, _ := HashFile(path)
+	text, next, err := FormatReadRange(path, "f.txt", 2, 4, 10, false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "# f.txt lines 2-4 of 4 sha256 " + sum + "\n" + long + "\nc\r\nd\n"
+	if next != 0 || text != want {
+		t.Fatalf("got %q next %d", text[:min(len(text), 120)], next)
+	}
+	text, _, err = FormatReadRange(path, "f.txt", 3, 4, 10, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "# f.txt lines 3-4 of 4 sha256 " + sum + "\n     3\tc\n     4\td\n"; text != want {
+		t.Fatalf("numbered %q", text)
+	}
+	if _, _, err := FormatReadRange(path, "f.txt", 5, 5, 10, false, false); err == nil || !strings.Contains(err.Error(), "(4 lines)") {
+		t.Fatalf("start past end: %v", err)
+	}
+	if _, _, err := FormatReadRange(filepath.Join(root, "absent"), "absent", 1, 400, 10, false, true); err == nil || !strings.Contains(err.Error(), "max_read_lines") {
+		t.Fatalf("strict oversized span should fail before reading: %v", err)
+	}
+}
+
+func TestReadRangeEmptyFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "e.txt")
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := FormatReadRange(path, "e.txt", 1, 1, 10, false, false); err == nil || !strings.Contains(err.Error(), "(0 lines)") {
+		t.Fatalf("empty file: %v", err)
 	}
 }
 
