@@ -509,11 +509,11 @@ func TestBangRedirectCreatesAndEmpties(t *testing.T) {
 	m := newModel(Config{StartDir: root, Mode: ModeBrowse})
 	m.animationActive = false
 
-	next, cmd := m.Update(previewKey("!"))
+	next, _ := m.Update(previewKey("!"))
 	m = next.(model)
-	next, cmd = m.Update(previewKey("> hello.txt"))
+	next, _ = m.Update(previewKey("> hello.txt"))
 	m = next.(model)
-	next, cmd = m.Update(tui.KeyMsg{Type: tui.KeyEnter})
+	next, _ = m.Update(tui.KeyMsg{Type: tui.KeyEnter})
 	m = next.(model)
 	if m.commanding || m.status != "!> hello.txt" {
 		t.Fatalf("bang redirect commanding %v status %q", m.commanding, m.status)
@@ -541,8 +541,12 @@ func TestBangRedirectCreatesAndEmpties(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "hello.txt"), []byte("keep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	bangRedirectShell(t, m, root)
+}
+
+func bangRedirectShell(t *testing.T, m model, root string) {
 	m = submitCommand(t, m, "touch hello.txt")
-	got, err = os.ReadFile(filepath.Join(root, "hello.txt"))
+	got, err := os.ReadFile(filepath.Join(root, "hello.txt"))
 	if err != nil || string(got) != "keep" {
 		t.Fatalf("touch %q err %v", got, err)
 	}
@@ -559,7 +563,7 @@ func TestBangRedirectCreatesAndEmpties(t *testing.T) {
 		t.Fatalf("quoted %q selected %q err %v", got, m.entries[m.selected].Name, err)
 	}
 
-	next, cmd = m.Update(previewKey(":"))
+	next, cmd := m.Update(previewKey(":"))
 	m = next.(model)
 	next, cmd = m.Update(previewKey("!> other.txt extra"))
 	m = next.(model)

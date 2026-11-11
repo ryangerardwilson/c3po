@@ -74,7 +74,6 @@ func (r Runner) Run(args []string) int {
 	if rootFlag2 != "" {
 		r.RootOverride = rootFlag2
 	}
-	// global --refresh before/after verb for status/measure
 	rest, refresh, err := stripBoolFlag(rest, "--refresh")
 	if err != nil {
 		return r.usage(err.Error())
@@ -85,83 +84,103 @@ func (r Runner) Run(args []string) int {
 		WriteCommandHelp(r.Out, cmd)
 		return ExitOK
 	}
-	switch cmd {
-	case "help", "-h", "--help":
-		if len(rest) == 1 {
-			WriteCommandHelp(r.Out, rest[0])
-			return ExitOK
-		}
-		if len(rest) != 0 {
-			return r.usage("Use: c3po ast help [command]")
-		}
-		WriteHelp(r.Out)
-		return ExitOK
-	case "version", "--version", "-v":
-		err = r.cmdVersion(rest)
-	case "config":
-		err = r.cmdConfig(rest)
-	case "status":
-		err = r.cmdStatus(rest)
-	case "measure":
-		err = r.cmdMeasure(rest)
-	case "map":
-		err = r.cmdMap(rest)
-	case "show":
-		err = r.cmdShow(rest)
-	case "search":
-		err = r.cmdSearch(rest)
-	case "callers":
-		err = r.cmdTrace("callers", rest)
-	case "callees":
-		err = r.cmdTrace("callees", rest)
-	case "impact":
-		err = r.cmdTrace("impact", rest)
-	case "explain":
-		err = r.cmdExplain(rest)
-	case "gap":
-		err = r.cmdGap(rest)
-	case "hash":
-		err = r.cmdHash(rest)
-	case "read":
-		err = r.cmdRead(rest)
-	case "create":
-		err = r.cmdCreate(rest)
-	case "append":
-		err = r.cmdAppend(rest)
-	case "patch":
-		err = r.cmdPatch(rest)
-	case "apply":
-		err = r.cmdApply(rest)
-	case "delete":
-		err = r.cmdDelete(rest)
-	case "move":
-		err = r.cmdMove(rest)
-	case "exec":
-		err = r.cmdExec(rest)
-	case "doctor":
-		err = r.cmdDoctor(rest)
-	case "agents-block":
-		err = r.cmdAgentsBlock(rest)
-	case "hook":
-		err = r.cmdHook(rest)
-	case "packages":
-		err = r.cmdPackages(rest)
-	case "affected":
-		err = r.cmdAffected(rest)
-	case "graph":
-		err = r.cmdGraph(rest)
-	case "neighbors":
-		err = r.cmdNeighbors(rest)
-	case "cut":
-		err = r.cmdCut(rest)
-	default:
+	if cmd == "help" || cmd == "-h" || cmd == "--help" {
+		return r.helpCommand(rest)
+	}
+	err, ok := r.dispatchInspect(cmd, rest)
+	if !ok {
+		err, ok = r.dispatchChange(cmd, rest)
+	}
+	if !ok {
 		return r.usage(fmt.Sprintf("unknown command %q; see rgw-ast help", cmd))
 	}
 	return r.exit(err)
 }
 
-// exit prints err and returns its exit code. A cc refusal goes to stdout
-// and gap --check has already printed its report; neither has an Error line.
+func (r Runner) helpCommand(rest []string) int {
+	if len(rest) == 1 {
+		WriteCommandHelp(r.Out, rest[0])
+		return ExitOK
+	}
+	if len(rest) != 0 {
+		return r.usage("Use: c3po ast help [command]")
+	}
+	WriteHelp(r.Out)
+	return ExitOK
+}
+
+func (r Runner) dispatchInspect(cmd string, rest []string) (error, bool) {
+	switch cmd {
+	case "version", "--version", "-v":
+		return r.cmdVersion(rest), true
+	case "config":
+		return r.cmdConfig(rest), true
+	case "status":
+		return r.cmdStatus(rest), true
+	case "measure":
+		return r.cmdMeasure(rest), true
+	case "map":
+		return r.cmdMap(rest), true
+	case "show":
+		return r.cmdShow(rest), true
+	case "search":
+		return r.cmdSearch(rest), true
+	case "callers":
+		return r.cmdTrace("callers", rest), true
+	case "callees":
+		return r.cmdTrace("callees", rest), true
+	case "impact":
+		return r.cmdTrace("impact", rest), true
+	case "explain":
+		return r.cmdExplain(rest), true
+	case "gap":
+		return r.cmdGap(rest), true
+	case "hash":
+		return r.cmdHash(rest), true
+	case "read":
+		return r.cmdRead(rest), true
+	default:
+		return nil, false
+	}
+}
+
+func (r Runner) dispatchChange(cmd string, rest []string) (error, bool) {
+	switch cmd {
+	case "create":
+		return r.cmdCreate(rest), true
+	case "append":
+		return r.cmdAppend(rest), true
+	case "patch":
+		return r.cmdPatch(rest), true
+	case "apply":
+		return r.cmdApply(rest), true
+	case "delete":
+		return r.cmdDelete(rest), true
+	case "move":
+		return r.cmdMove(rest), true
+	case "exec":
+		return r.cmdExec(rest), true
+	case "doctor":
+		return r.cmdDoctor(rest), true
+	case "agents-block":
+		return r.cmdAgentsBlock(rest), true
+	case "hook":
+		return r.cmdHook(rest), true
+	case "packages":
+		return r.cmdPackages(rest), true
+	case "affected":
+		return r.cmdAffected(rest), true
+	case "graph":
+		return r.cmdGraph(rest), true
+	case "neighbors":
+		return r.cmdNeighbors(rest), true
+	case "cut":
+		return r.cmdCut(rest), true
+	default:
+		return nil, false
+	}
+}
+
 func (r Runner) exit(err error) int {
 	if err == nil {
 		return ExitOK

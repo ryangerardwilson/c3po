@@ -190,6 +190,10 @@ func TestSheetsSwitchCreateAndRename(t *testing.T) {
 	if m.sheet.Name != "Sheet2" || m.col != 0 || m.row != 0 || m.sheet.Display(0, 0) != "10" {
 		t.Fatalf("forward %s at %d,%d display %s", m.sheet.Name, m.col, m.row, m.sheet.Display(0, 0))
 	}
+	sheetsRenameAndHelp(t, m)
+}
+
+func sheetsRenameAndHelp(t *testing.T, m *model) {
 	m = press(m, runeKey('R'), tea.KeyMsg{Type: tea.KeyEsc})
 	if m.mode != modeNormal || m.sheet.Name != "Sheet2" || m.col != 0 || m.row != 0 {
 		t.Fatalf("cancel %s mode %d at %d,%d", m.sheet.Name, m.mode, m.col, m.row)
@@ -208,7 +212,7 @@ func TestSheetsSwitchCreateAndRename(t *testing.T) {
 	if m.sheet.Display(0, 0) != "10" || m.sheet.Source(0, 0) != "=Sheet1!B1" {
 		t.Fatalf("after rename display %s source %q", m.sheet.Display(0, 0), m.sheet.Source(0, 0))
 	}
-	view = m.View()
+	view := m.View()
 	if strings.Contains(view, "[Income]") || !strings.Contains(view, "Income!A1") {
 		t.Fatalf("renamed chrome:\n%s", view)
 	}
@@ -471,6 +475,10 @@ func TestSearchStepsWithCtrlNAndCtrlP(t *testing.T) {
 	if m.flash != "no search" || m.row != 0 || m.mode != modeNormal {
 		t.Fatalf("empty search mode %d row %d flash %q", m.mode, m.row, m.flash)
 	}
+	searchStepsMatch(t, m)
+}
+
+func searchStepsMatch(t *testing.T, m *model) {
 	m = press(m, runeKey('/'), runes("rent"), tea.KeyMsg{Type: tea.KeyEnter})
 	if m.mode != modeNormal || m.col != 0 || m.row != 2 || m.flash != "A3  2/2" {
 		t.Fatalf("first match at %d,%d mode %d flash %q", m.col, m.row, m.mode, m.flash)
@@ -551,11 +559,15 @@ func TestOAndOInsertRows(t *testing.T) {
 		t.Fatalf("typed o mode %d %q", m.mode, m.sheet.Source(m.col, 1))
 	}
 
+	insertRowsAboveAndEdge(t)
+}
+
+func insertRowsAboveAndEdge(t *testing.T) {
 	total := sheet.Blank()
 	total.Set(1, 0, "10")
 	total.Set(1, 1, "20")
 	total.Set(1, 2, "=SUM(B1:B2)")
-	m = ready(total)
+	m := ready(total)
 	m.row = 2
 	m.anchorR = 2
 	m = press(m, runeKey('O'))

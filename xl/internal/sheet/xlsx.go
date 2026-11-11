@@ -470,21 +470,34 @@ type pendingFormula struct {
 	si   string
 }
 
+type worksheetReader struct {
+	s             *Sheet
+	sharedStrings []string
+	inSheet       bool
+	inCell        bool
+	inF           bool
+	inV           bool
+	inInline      bool
+	inT           bool
+	ref           string
+	typ           string
+	formula       string
+	value         string
+	inline        strings.Builder
+	fKind         string
+	fSI           string
+	sawF          bool
+	shared        map[string]sharedFormula
+	pending       []pendingFormula
+}
+
 func readWorksheet(data []byte, sharedStrings []string) (*Sheet, error) {
 	dec := xml.NewDecoder(bytes.NewReader(data))
-	s := Blank()
-	inSheet := false
-	inCell := false
-	inF := false
-	inV := false
-	inInline := false
-	inT := false
-	var ref, typ, formula, value string
-	var inline strings.Builder
-	var fKind, fSI string
-	sawF := false
-	shared := map[string]sharedFormula{}
-	var pending []pendingFormula
+	rd := &worksheetReader{
+		s:             Blank(),
+		sharedStrings: sharedStrings,
+		shared:        map[string]sharedFormula{},
+	}
 	for {
 		tok, err := dec.Token()
 		if err == io.EOF {
@@ -493,111 +506,146 @@ func readWorksheet(data []byte, sharedStrings []string) (*Sheet, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read xlsx: %w", err)
 		}
-		switch el := tok.(type) {
-		case xml.StartElement:
-			switch el.Name.Local {
-			case "sheetData":
-				inSheet = true
-			case "c":
-				if !inSheet {
-					break
-				}
-				inCell = true
-				ref, typ, formula, value = "", "", "", ""
-				inline.Reset()
-				sawF = false
-				fKind, fSI = "", ""
-				for _, attr := range el.Attr {
-					switch attr.Name.Local {
-					case "r":
-						ref = attr.Value
-					case "t":
-						typ = attr.Value
-					}
-				}
-			case "f":
-				if inCell {
-					inF = true
-					sawF = true
-					formula = ""
-					fKind, fSI = "", ""
-					for _, attr := range el.Attr {
-						switch attr.Name.Local {
-						case "t":
-							fKind = attr.Value
-						case "si":
-							fSI = attr.Value
-						}
-					}
-				}
-			case "v":
-				if inCell && !inF {
-					inV = true
-					value = ""
-				}
-			case "is":
-				if inCell {
-					inInline = true
-				}
-			case "t":
-				if inInline {
-					inT = true
-				}
-			}
-		case xml.EndElement:
-			switch el.Name.Local {
-			case "sheetData":
-				inSheet = false
-			case "f":
-				inF = false
-			case "v":
-				inV = false
-			case "t":
-				inT = false
-			case "is":
-				inInline = false
-			case "c":
-				if !inCell {
-					break
-				}
-				inCell = false
-				c, r, ok := parseCellRef(ref)
-				if !ok {
-					return nil, fmt.Errorf("read xlsx: cell %s", ref)
-				}
-				f := strings.TrimSpace(formula)
-				if sawF && f == "" && fKind == "shared" && fSI != "" {
-					if master, ok := shared[fSI]; ok {
-						f = shiftFormula(master.src, c-master.c, r-master.r)
-					} else {
-						pending = append(pending, pendingFormula{c: c, r: r, si: fSI})
-						break
-					}
-				}
-				if sawF && f != "" && fKind == "shared" && fSI != "" {
-					shared[fSI] = sharedFormula{src: f, c: c, r: r}
-				}
-				src, err := cellSource(sawF, f, typ, value, inline.String(), sharedStrings)
-				if err != nil {
-					return nil, err
-				}
-				if err := putCell(s, c, r, src); err != nil {
-					return nil, err
-				}
-			}
-		case xml.CharData:
-			switch {
-			case inF:
-				formula += string(el)
-			case inV:
-				value += string(el)
-			case inT:
-				inline.Write(el)
-			}
+		if err := rd.token(tok); err != nil {
+			return nil, err
 		}
 	}
-	for _, item := range pending {
-		master, ok := shared[item.si]
+	return rd.finish()
+}
+
+func (rd *worksheetReader) token(tok xml.Token) error {
+	switch el := tok.(type) {
+	case xml.StartElement:
+		rd.onStart(el)
+	case xml.EndElement:
+		return rd.onEnd(el)
+	case xml.CharData:
+		rd.onChar(el)
+	}
+	return nil
+}
+
+func (rd *worksheetReader) onStart(el xml.StartElement) {
+	switch el.Name.Local {
+	case "sheetData":
+		rd.inSheet = true
+	case "c":
+		rd.startCell(el)
+	case "f":
+		rd.startFormula(el)
+	case "v":
+		if rd.inCell && !rd.inF {
+			rd.inV = true
+			rd.value = ""
+		}
+	case "is":
+		if rd.inCell {
+			rd.inInline = true
+		}
+	case "t":
+		if rd.inInline {
+			rd.inT = true
+		}
+	}
+}
+
+func (rd *worksheetReader) startCell(el xml.StartElement) {
+	if !rd.inSheet {
+		return
+	}
+	rd.inCell = true
+	rd.ref, rd.typ, rd.formula, rd.value = "", "", "", ""
+	rd.inline.Reset()
+	rd.sawF = false
+	rd.fKind, rd.fSI = "", ""
+	for _, attr := range el.Attr {
+		switch attr.Name.Local {
+		case "r":
+			rd.ref = attr.Value
+		case "t":
+			rd.typ = attr.Value
+		}
+	}
+}
+
+func (rd *worksheetReader) startFormula(el xml.StartElement) {
+	if !rd.inCell {
+		return
+	}
+	rd.inF = true
+	rd.sawF = true
+	rd.formula = ""
+	rd.fKind, rd.fSI = "", ""
+	for _, attr := range el.Attr {
+		switch attr.Name.Local {
+		case "t":
+			rd.fKind = attr.Value
+		case "si":
+			rd.fSI = attr.Value
+		}
+	}
+}
+
+func (rd *worksheetReader) onEnd(el xml.EndElement) error {
+	switch el.Name.Local {
+	case "sheetData":
+		rd.inSheet = false
+	case "f":
+		rd.inF = false
+	case "v":
+		rd.inV = false
+	case "t":
+		rd.inT = false
+	case "is":
+		rd.inInline = false
+	case "c":
+		return rd.endCell()
+	}
+	return nil
+}
+
+func (rd *worksheetReader) endCell() error {
+	if !rd.inCell {
+		return nil
+	}
+	rd.inCell = false
+	c, r, ok := parseCellRef(rd.ref)
+	if !ok {
+		return fmt.Errorf("read xlsx: cell %s", rd.ref)
+	}
+	f := strings.TrimSpace(rd.formula)
+	if rd.sawF && f == "" && rd.fKind == "shared" && rd.fSI != "" {
+		if master, ok := rd.shared[rd.fSI]; ok {
+			f = shiftFormula(master.src, c-master.c, r-master.r)
+		} else {
+			rd.pending = append(rd.pending, pendingFormula{c: c, r: r, si: rd.fSI})
+			return nil
+		}
+	}
+	if rd.sawF && f != "" && rd.fKind == "shared" && rd.fSI != "" {
+		rd.shared[rd.fSI] = sharedFormula{src: f, c: c, r: r}
+	}
+	src, err := cellSource(rd.sawF, f, rd.typ, rd.value, rd.inline.String(), rd.sharedStrings)
+	if err != nil {
+		return err
+	}
+	return putCell(rd.s, c, r, src)
+}
+
+func (rd *worksheetReader) onChar(el xml.CharData) {
+	switch {
+	case rd.inF:
+		rd.formula += string(el)
+	case rd.inV:
+		rd.value += string(el)
+	case rd.inT:
+		rd.inline.Write(el)
+	}
+}
+
+func (rd *worksheetReader) finish() (*Sheet, error) {
+	for _, item := range rd.pending {
+		master, ok := rd.shared[item.si]
 		if !ok {
 			return nil, fmt.Errorf("read xlsx: shared formula %s", item.si)
 		}
@@ -606,11 +654,11 @@ func readWorksheet(data []byte, sharedStrings []string) (*Sheet, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err := putCell(s, item.c, item.r, src); err != nil {
+		if err := putCell(rd.s, item.c, item.r, src); err != nil {
 			return nil, err
 		}
 	}
-	return s, nil
+	return rd.s, nil
 }
 
 func cellSource(sawF bool, formula, typ, value, inline string, sharedStrings []string) (string, error) {

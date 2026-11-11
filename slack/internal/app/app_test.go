@@ -90,6 +90,10 @@ func TestHelpAndParseContract(t *testing.T) {
 		}
 	}
 
+	helpParseListAndEvents(t)
+}
+
+func helpParseListAndEvents(t *testing.T) {
 	channelsArgs, err := parseArgs([]string{"2", "list", "channels"})
 	if err != nil {
 		t.Fatalf("parse list channels: %v", err)

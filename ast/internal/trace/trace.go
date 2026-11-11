@@ -105,9 +105,7 @@ type index struct {
 // Query traces callers, callees, or both (impact) for one symbol.
 func Query(root string, cfg config.Config, query, mode string, limit, offset int) (Result, error) {
 	mode = strings.TrimSpace(mode)
-	switch mode {
-	case "callers", "callees", "impact":
-	default:
+	if mode != "callers" && mode != "callees" && mode != "impact" {
 		return Result{}, fmt.Errorf("unknown trace mode %q", mode)
 	}
 	if limit <= 0 {
@@ -135,41 +133,55 @@ func Query(root string, cfg config.Config, query, mode string, limit, offset int
 		return res, fmt.Errorf("no symbol %q", query)
 	}
 	if len(hits) != 1 {
-		res.Ambiguous = true
-		res.Assessment = &Assessment{
-			Conclusion:  "ambiguous",
-			StopReasons: []string{"ambiguous symbol: pass path:symbol from candidates"},
-			Unsupported: []string{},
-		}
-		for _, h := range hits {
-			res.Candidates = append(res.Candidates, exportSym(h))
-		}
-		sort.Slice(res.Candidates, func(i, j int) bool {
-			if res.Candidates[i].Path != res.Candidates[j].Path {
-				return res.Candidates[i].Path < res.Candidates[j].Path
-			}
-			return res.Candidates[i].Line < res.Candidates[j].Line
-		})
-		return res, nil
+		return ambiguousQuery(res, hits), nil
 	}
-	res.Resolved = exportSym(hits[0])
+	ix.fillTrace(&res, hits[0], mode, limit, offset)
+	return res, nil
+}
+
+func ambiguousQuery(res Result, hits []symbol) Result {
+	res.Ambiguous = true
+	res.Assessment = &Assessment{
+		Conclusion:  "ambiguous",
+		StopReasons: []string{"ambiguous symbol: pass path:symbol from candidates"},
+		Unsupported: []string{},
+	}
+	for _, h := range hits {
+		res.Candidates = append(res.Candidates, exportSym(h))
+	}
+	sort.Slice(res.Candidates, func(i, j int) bool {
+		if res.Candidates[i].Path != res.Candidates[j].Path {
+			return res.Candidates[i].Path < res.Candidates[j].Path
+		}
+		return res.Candidates[i].Line < res.Candidates[j].Line
+	})
+	return res
+}
+
+func (ix *index) fillTrace(res *Result, hit symbol, mode string, limit, offset int) {
+	res.Resolved = exportSym(hit)
+	callers, callees := ix.traceEdges(hit, mode, res)
+	ix.pageTrace(res, callers, callees, mode, limit, offset)
+	ix.assessTrace(res, callers, callees, hit, mode)
+}
+
+func (ix *index) traceEdges(hit symbol, mode string, res *Result) (callers, callees []Edge) {
 	if mode == "callers" || mode == "impact" {
 		res.Callers = []Edge{}
 	}
 	if mode == "callees" || mode == "impact" {
 		res.Callees = []Edge{}
 	}
-	var callers, callees []Edge
 	for _, e := range ix.edges {
-		if e.toID == hits[0].id || (e.toID == "" && nameMatch(e.callee, hits[0])) {
+		if e.toID == hit.id || (e.toID == "" && nameMatch(e.callee, hit)) {
 			callers = append(callers, Edge{
 				Confidence: e.confidence, Kind: e.kind,
 				File: e.fromPath, Line: e.callLine, Symbol: e.fromName,
-				PeerFile: hits[0].path, PeerLine: hits[0].line, PeerSymbol: hits[0].name,
+				PeerFile: hit.path, PeerLine: hit.line, PeerSymbol: hit.name,
 				CalleeText: e.callee, Reason: e.reason,
 			})
 		}
-		if e.fromID == hits[0].id {
+		if e.fromID == hit.id {
 			callees = append(callees, Edge{
 				Confidence: e.confidence, Kind: e.kind,
 				File: e.fromPath, Line: e.callLine, Symbol: e.fromName,
@@ -180,6 +192,10 @@ func Query(root string, cfg config.Config, query, mode string, limit, offset int
 	}
 	sortEdges(callers)
 	sortEdges(callees)
+	return callers, callees
+}
+
+func (ix *index) pageTrace(res *Result, callers, callees []Edge, mode string, limit, offset int) {
 	if mode == "callers" || mode == "impact" {
 		res.Callers, res.Truncated = page(callers, limit, offset, res.Truncated)
 	}
@@ -192,6 +208,9 @@ func Query(root string, cfg config.Config, query, mode string, limit, offset int
 		next := offset + limit
 		res.NextOffset = &next
 	}
+}
+
+func (ix *index) assessTrace(res *Result, callers, callees []Edge, hit symbol, mode string) {
 	unresolved := 0
 	for _, e := range append(append([]Edge{}, callers...), callees...) {
 		if e.Confidence == "unresolved" {
@@ -212,34 +231,7 @@ func Query(root string, cfg config.Config, query, mode string, limit, offset int
 		Unsupported:     []string{},
 	}
 	if mode == "impact" && !res.Ambiguous {
-		const maxDepth, pathLimit = 6, 8
-		up := ix.walkPaths(hits[0].id, true, maxDepth, pathLimit)
-		down := ix.walkPaths(hits[0].id, false, maxDepth, pathLimit)
-		res.Upstream = up.paths
-		res.Downstream = down.paths
-		res.Paths = up.paths
-		if res.Upstream == nil {
-			res.Upstream = [][]Edge{}
-		}
-		if res.Downstream == nil {
-			res.Downstream = [][]Edge{}
-		}
-		if res.Paths == nil {
-			res.Paths = [][]Edge{}
-		}
-		assess.MaxDepth = maxDepth
-		assess.PathLimit = pathLimit
-		assess.CycleCuts = up.cycles + down.cycles
-		if up.depthCut || down.depthCut {
-			assess.StopReasons = append(assess.StopReasons, "max depth")
-		}
-		if up.limited || down.limited {
-			assess.StopReasons = append(assess.StopReasons, "path limit")
-			res.Omitted = append(res.Omitted, "further impact paths omitted")
-		}
-		if assess.CycleCuts > 0 {
-			assess.StopReasons = append(assess.StopReasons, "cycle")
-		}
+		ix.assessImpact(res, assess, hit)
 	}
 	assess.Complete = unresolved == 0 && len(assess.StopReasons) == 0
 	if assess.Complete {
@@ -248,7 +240,37 @@ func Query(root string, cfg config.Config, query, mode string, limit, offset int
 		assess.Conclusion = "partial"
 	}
 	res.Assessment = assess
-	return res, nil
+}
+
+func (ix *index) assessImpact(res *Result, assess *Assessment, hit symbol) {
+	const maxDepth, pathLimit = 6, 8
+	up := ix.walkPaths(hit.id, true, maxDepth, pathLimit)
+	down := ix.walkPaths(hit.id, false, maxDepth, pathLimit)
+	res.Upstream = up.paths
+	res.Downstream = down.paths
+	res.Paths = up.paths
+	if res.Upstream == nil {
+		res.Upstream = [][]Edge{}
+	}
+	if res.Downstream == nil {
+		res.Downstream = [][]Edge{}
+	}
+	if res.Paths == nil {
+		res.Paths = [][]Edge{}
+	}
+	assess.MaxDepth = maxDepth
+	assess.PathLimit = pathLimit
+	assess.CycleCuts = up.cycles + down.cycles
+	if up.depthCut || down.depthCut {
+		assess.StopReasons = append(assess.StopReasons, "max depth")
+	}
+	if up.limited || down.limited {
+		assess.StopReasons = append(assess.StopReasons, "path limit")
+		res.Omitted = append(res.Omitted, "further impact paths omitted")
+	}
+	if assess.CycleCuts > 0 {
+		assess.StopReasons = append(assess.StopReasons, "cycle")
+	}
 }
 
 type pathWalk struct {

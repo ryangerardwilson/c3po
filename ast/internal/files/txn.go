@@ -123,139 +123,165 @@ func prepare(root string, changes []FileChange, opts ApplyOpts) ([]planned, erro
 	if len(changes) == 0 {
 		return nil, fmt.Errorf("no changes")
 	}
-	format := func(abs, content string) (string, string) {
-		if opts.NoFormat {
-			return content, ""
-		}
-		out, tool := Format(root, abs, []byte(content))
-		return string(out), tool
-	}
 	var plan []planned
 	seen := map[string]bool{}
 	for i, ch := range changes {
-		op := ch.Op
-		if op == "" {
-			op = "edit"
-		}
-		if op != "edit" && op != "create" && op != "delete" && op != "move" {
-			return nil, fmt.Errorf("change %d: unknown op %s", i, op)
-		}
-		abs, err := ResolvePath(root, ch.Path)
+		item, err := planChange(root, opts, seen, i, ch)
 		if err != nil {
-			return nil, fmt.Errorf("change %d: %w", i, err)
+			return nil, err
 		}
-		if seen[abs] {
-			return nil, fmt.Errorf("change %d: duplicate path %s", i, ch.Path)
-		}
-		seen[abs] = true
-		rel, _ := filepath.Rel(root, abs)
-		rel = filepath.ToSlash(rel)
-		switch op {
-		case "move":
-			if ch.To == "" || ch.Symbol != "" || ch.Diff != "" || ch.Old != "" || ch.New != "" {
-				return nil, fmt.Errorf("change %d: move takes only to and a hash", i)
-			}
-			dst, err := ResolvePath(root, ch.To)
-			if err != nil {
-				return nil, fmt.Errorf("change %d: %w", i, err)
-			}
-			if seen[dst] {
-				return nil, fmt.Errorf("change %d: duplicate path %s", i, ch.To)
-			}
-			seen[dst] = true
-			if _, err := os.Lstat(dst); err == nil {
-				return nil, fmt.Errorf("change %d: %s already exists", i, ch.To)
-			}
-			if _, err := os.Stat(filepath.Dir(dst)); err != nil {
-				return nil, fmt.Errorf("change %d: destination directory missing", i)
-			}
-			cur, err := HashFile(abs)
-			if err != nil {
-				return nil, fmt.Errorf("change %d: %w", i, err)
-			}
-			if !strings.EqualFold(cur, ch.ExpectHash) {
-				return nil, fmt.Errorf("change %d (%s): %w", i, ch.Path, StaleHash(ch.ExpectHash, cur))
-			}
-			dstRel, _ := filepath.Rel(root, dst)
-			plan = append(plan, planned{abs: abs, rel: rel, op: op, dst: dst, dstRel: filepath.ToSlash(dstRel), hash: cur})
-		case "create":
-			if ch.Symbol != "" {
-				return nil, fmt.Errorf("change %d: symbol is only for edit", i)
-			}
-			if _, err := os.Stat(abs); err == nil {
-				return nil, fmt.Errorf("change %d: %s already exists", i, ch.Path)
-			} else if !os.IsNotExist(err) {
-				return nil, fmt.Errorf("change %d: %w", i, err)
-			}
-			if ch.ExpectHash != "" && !strings.EqualFold(ch.ExpectHash, "absent") {
-				return nil, fmt.Errorf("change %d: create expects an absent hash", i)
-			}
-			if _, err := os.Stat(filepath.Dir(abs)); err != nil {
-				return nil, fmt.Errorf("change %d: parent directory missing", i)
-			}
-			content, err := newContent("", ch)
-			if err != nil {
-				return nil, fmt.Errorf("change %d: %w", i, err)
-			}
-			formatted, tool := format(abs, content)
-			plan = append(plan, planned{abs: abs, rel: rel, content: formatted, formatter: tool, op: op})
-		case "delete":
-			if ch.Symbol != "" || ch.Old != "" || ch.New != "" {
-				return nil, fmt.Errorf("change %d: delete only takes a hash or a diff", i)
-			}
-			var cur string
-			if ch.ExpectHash == "" && ch.Diff != "" {
-				// A deletion diff guards by removing every line of the file.
-				orig, err := os.ReadFile(abs)
-				if err != nil {
-					return nil, fmt.Errorf("change %d: %w", i, err)
-				}
-				if rest, err := applyUnified(string(orig), ch.Diff); err != nil || strings.TrimSpace(rest) != "" {
-					return nil, fmt.Errorf("change %d: deletion diff does not match %s", i, ch.Path)
-				}
-				cur = hashBytes(orig)
-			} else {
-				if cur, err = HashFile(abs); err != nil {
-					return nil, fmt.Errorf("change %d: %w", i, err)
-				}
-				if !strings.EqualFold(cur, ch.ExpectHash) {
-					return nil, fmt.Errorf("change %d (%s): %w", i, ch.Path, StaleHash(ch.ExpectHash, cur))
-				}
-			}
-			plan = append(plan, planned{abs: abs, rel: rel, op: op, hash: cur})
-		default:
-			if ch.Symbol != "" && ch.Diff != "" {
-				return nil, fmt.Errorf("change %d: symbol cannot be combined with a diff", i)
-			}
-			orig, err := os.ReadFile(abs)
-			if err != nil {
-				return nil, fmt.Errorf("change %d: %w", i, err)
-			}
-			// A diff edit without a hash is guarded by its context lines.
-			if cur := hashBytes(orig); (ch.ExpectHash != "" || ch.Diff == "") && !strings.EqualFold(cur, ch.ExpectHash) {
-				return nil, fmt.Errorf("change %d (%s): %w", i, ch.Path, StaleHash(ch.ExpectHash, cur))
-			}
-			content := string(orig)
-			if ch.Symbol != "" {
-				start, end, ok := trace.SymbolSpan(abs, rel, ch.Symbol)
-				if !ok {
-					return nil, fmt.Errorf("change %d: symbol %s not in %s", i, ch.Symbol, ch.Path)
-				}
-				content, err = replaceOnceInSpan(content, ch.Old, ch.New, start, end)
-				if err != nil {
-					return nil, fmt.Errorf("change %d: %w", i, err)
-				}
-			} else {
-				content, err = newContent(content, ch)
-				if err != nil {
-					return nil, fmt.Errorf("change %d: %w", i, err)
-				}
-			}
-			formatted, tool := format(abs, content)
-			plan = append(plan, planned{abs: abs, rel: rel, content: formatted, formatter: tool, op: op, original: orig})
-		}
+		plan = append(plan, item)
 	}
 	return plan, nil
+}
+
+func planChange(root string, opts ApplyOpts, seen map[string]bool, i int, ch FileChange) (planned, error) {
+	op := ch.Op
+	if op == "" {
+		op = "edit"
+	}
+	if op != "edit" && op != "create" && op != "delete" && op != "move" {
+		return planned{}, fmt.Errorf("change %d: unknown op %s", i, op)
+	}
+	abs, err := ResolvePath(root, ch.Path)
+	if err != nil {
+		return planned{}, fmt.Errorf("change %d: %w", i, err)
+	}
+	if seen[abs] {
+		return planned{}, fmt.Errorf("change %d: duplicate path %s", i, ch.Path)
+	}
+	seen[abs] = true
+	rel, _ := filepath.Rel(root, abs)
+	rel = filepath.ToSlash(rel)
+	switch op {
+	case "move":
+		return planMove(root, seen, i, ch, abs, rel)
+	case "create":
+		return planCreate(root, opts, i, ch, abs, rel)
+	case "delete":
+		return planDelete(i, ch, abs, rel)
+	default:
+		return planEdit(root, opts, i, ch, abs, rel)
+	}
+}
+
+func planMove(root string, seen map[string]bool, i int, ch FileChange, abs, rel string) (planned, error) {
+	if ch.To == "" || ch.Symbol != "" || ch.Diff != "" || ch.Old != "" || ch.New != "" {
+		return planned{}, fmt.Errorf("change %d: move takes only to and a hash", i)
+	}
+	dst, err := ResolvePath(root, ch.To)
+	if err != nil {
+		return planned{}, fmt.Errorf("change %d: %w", i, err)
+	}
+	if seen[dst] {
+		return planned{}, fmt.Errorf("change %d: duplicate path %s", i, ch.To)
+	}
+	seen[dst] = true
+	if _, err := os.Lstat(dst); err == nil {
+		return planned{}, fmt.Errorf("change %d: %s already exists", i, ch.To)
+	}
+	if _, err := os.Stat(filepath.Dir(dst)); err != nil {
+		return planned{}, fmt.Errorf("change %d: destination directory missing", i)
+	}
+	cur, err := HashFile(abs)
+	if err != nil {
+		return planned{}, fmt.Errorf("change %d: %w", i, err)
+	}
+	if !strings.EqualFold(cur, ch.ExpectHash) {
+		return planned{}, fmt.Errorf("change %d (%s): %w", i, ch.Path, StaleHash(ch.ExpectHash, cur))
+	}
+	dstRel, _ := filepath.Rel(root, dst)
+	return planned{abs: abs, rel: rel, op: "move", dst: dst, dstRel: filepath.ToSlash(dstRel), hash: cur}, nil
+}
+
+func planCreate(root string, opts ApplyOpts, i int, ch FileChange, abs, rel string) (planned, error) {
+	if ch.Symbol != "" {
+		return planned{}, fmt.Errorf("change %d: symbol is only for edit", i)
+	}
+	if _, err := os.Stat(abs); err == nil {
+		return planned{}, fmt.Errorf("change %d: %s already exists", i, ch.Path)
+	} else if !os.IsNotExist(err) {
+		return planned{}, fmt.Errorf("change %d: %w", i, err)
+	}
+	if ch.ExpectHash != "" && !strings.EqualFold(ch.ExpectHash, "absent") {
+		return planned{}, fmt.Errorf("change %d: create expects an absent hash", i)
+	}
+	if _, err := os.Stat(filepath.Dir(abs)); err != nil {
+		return planned{}, fmt.Errorf("change %d: parent directory missing", i)
+	}
+	content, err := newContent("", ch)
+	if err != nil {
+		return planned{}, fmt.Errorf("change %d: %w", i, err)
+	}
+	formatted, tool := formatPlanned(root, opts, abs, content)
+	return planned{abs: abs, rel: rel, content: formatted, formatter: tool, op: "create"}, nil
+}
+
+func planDelete(i int, ch FileChange, abs, rel string) (planned, error) {
+	if ch.Symbol != "" || ch.Old != "" || ch.New != "" {
+		return planned{}, fmt.Errorf("change %d: delete only takes a hash or a diff", i)
+	}
+	var cur string
+	if ch.ExpectHash == "" && ch.Diff != "" {
+		// A deletion diff guards by removing every line of the file.
+		orig, err := os.ReadFile(abs)
+		if err != nil {
+			return planned{}, fmt.Errorf("change %d: %w", i, err)
+		}
+		if rest, err := applyUnified(string(orig), ch.Diff); err != nil || strings.TrimSpace(rest) != "" {
+			return planned{}, fmt.Errorf("change %d: deletion diff does not match %s", i, ch.Path)
+		}
+		cur = hashBytes(orig)
+	} else {
+		var err error
+		if cur, err = HashFile(abs); err != nil {
+			return planned{}, fmt.Errorf("change %d: %w", i, err)
+		}
+		if !strings.EqualFold(cur, ch.ExpectHash) {
+			return planned{}, fmt.Errorf("change %d (%s): %w", i, ch.Path, StaleHash(ch.ExpectHash, cur))
+		}
+	}
+	return planned{abs: abs, rel: rel, op: "delete", hash: cur}, nil
+}
+
+func planEdit(root string, opts ApplyOpts, i int, ch FileChange, abs, rel string) (planned, error) {
+	if ch.Symbol != "" && ch.Diff != "" {
+		return planned{}, fmt.Errorf("change %d: symbol cannot be combined with a diff", i)
+	}
+	orig, err := os.ReadFile(abs)
+	if err != nil {
+		return planned{}, fmt.Errorf("change %d: %w", i, err)
+	}
+	// A diff edit without a hash is guarded by its context lines.
+	if cur := hashBytes(orig); (ch.ExpectHash != "" || ch.Diff == "") && !strings.EqualFold(cur, ch.ExpectHash) {
+		return planned{}, fmt.Errorf("change %d (%s): %w", i, ch.Path, StaleHash(ch.ExpectHash, cur))
+	}
+	content := string(orig)
+	if ch.Symbol != "" {
+		start, end, ok := trace.SymbolSpan(abs, rel, ch.Symbol)
+		if !ok {
+			return planned{}, fmt.Errorf("change %d: symbol %s not in %s", i, ch.Symbol, ch.Path)
+		}
+		content, err = replaceOnceInSpan(content, ch.Old, ch.New, start, end)
+		if err != nil {
+			return planned{}, fmt.Errorf("change %d: %w", i, err)
+		}
+	} else {
+		content, err = newContent(content, ch)
+		if err != nil {
+			return planned{}, fmt.Errorf("change %d: %w", i, err)
+		}
+	}
+	formatted, tool := formatPlanned(root, opts, abs, content)
+	return planned{abs: abs, rel: rel, content: formatted, formatter: tool, op: "edit", original: orig}, nil
+}
+
+func formatPlanned(root string, opts ApplyOpts, abs, content string) (string, string) {
+	if opts.NoFormat {
+		return content, ""
+	}
+	out, tool := Format(root, abs, []byte(content))
+	return string(out), tool
 }
 
 func replaceOnceInSpan(content, old, new string, start, end int) (string, error) {

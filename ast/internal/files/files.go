@@ -134,43 +134,9 @@ func FormatReadRange(path, rel string, start, end, maxLines int, number, strict 
 	defer f.Close()
 	h := sha256.New()
 	br := bufio.NewReaderSize(f, 64*1024)
-	var lines []string
-	var cur []byte
-	total, partial := 0, false
-	for {
-		chunk, rerr := br.ReadSlice('\n')
-		if len(chunk) > 0 {
-			_, _ = h.Write(chunk)
-			n := total + 1
-			keep := n >= start && n <= keepTo
-			if keep {
-				cur = append(cur, chunk...)
-			}
-			partial = true
-			if chunk[len(chunk)-1] == '\n' {
-				if keep {
-					lines = append(lines, string(cur))
-					cur = cur[:0]
-				}
-				total++
-				partial = false
-			}
-		}
-		if rerr == bufio.ErrBufferFull {
-			continue
-		}
-		if rerr == io.EOF {
-			break
-		}
-		if rerr != nil {
-			return "", 0, rerr
-		}
-	}
-	if partial {
-		if total+1 >= start && total+1 <= keepTo {
-			lines = append(lines, string(cur))
-		}
-		total++
+	lines, total, err := readHashedLines(br, h, start, keepTo)
+	if err != nil {
+		return "", 0, err
 	}
 	if start > total {
 		return "", 0, fmt.Errorf("start line %d past end of file (%d lines)", start, total)
@@ -212,6 +178,47 @@ func FormatReadRange(path, rel string, start, end, maxLines int, number, strict 
 		}
 	}
 	return b.String(), nextStart, nil
+}
+
+func readHashedLines(r *bufio.Reader, h io.Writer, start, keepTo int) (lines []string, total int, err error) {
+	var cur []byte
+	partial := false
+	for {
+		chunk, rerr := r.ReadSlice('\n')
+		if len(chunk) > 0 {
+			_, _ = h.Write(chunk)
+			n := total + 1
+			keep := n >= start && n <= keepTo
+			if keep {
+				cur = append(cur, chunk...)
+			}
+			partial = true
+			if chunk[len(chunk)-1] == '\n' {
+				if keep {
+					lines = append(lines, string(cur))
+					cur = cur[:0]
+				}
+				total++
+				partial = false
+			}
+		}
+		if rerr == bufio.ErrBufferFull {
+			continue
+		}
+		if rerr == io.EOF {
+			break
+		}
+		if rerr != nil {
+			return nil, 0, rerr
+		}
+	}
+	if partial {
+		if total+1 >= start && total+1 <= keepTo {
+			lines = append(lines, string(cur))
+		}
+		total++
+	}
+	return lines, total, nil
 }
 
 func fileMode(path string) os.FileMode {

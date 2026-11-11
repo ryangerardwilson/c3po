@@ -64,11 +64,15 @@ func TestHelpVersionAndAdd(t *testing.T) {
 			t.Fatal("refused route was saved")
 		}
 	}
-	out, _, code = run(&a, "remove", "lab")
+	tunnelRemoveAndUsage(t, a)
+}
+
+func tunnelRemoveAndUsage(t *testing.T, a app) {
+	out, _, code := run(&a, "remove", "lab")
 	if code != 0 || !strings.Contains(out, "removed lab") {
 		t.Fatalf("remove %d %s", code, out)
 	}
-	_, errOut, code = run(&a, "nope")
+	_, errOut, code := run(&a, "nope")
 	if code != 2 || !strings.Contains(errOut, "c3po tui tunnel") || strings.Contains(errOut, "c3po tunnel open") {
 		t.Fatalf("unknown %d %s", code, errOut)
 	}

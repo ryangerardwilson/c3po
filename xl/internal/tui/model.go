@@ -109,22 +109,37 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) onNormal(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := k.String()
+	if m.consumeDelete(key) {
+		return m, nil
+	}
+	m.onMotion(key)
+	m.onEdit(key)
+	return m, nil
+}
+
+func (m *model) consumeDelete(key string) bool {
 	if m.deleteArmed {
 		m.deleteArmed = false
 		if key == "d" {
 			if m.mode == modeNormal {
 				m.deleteRow()
 			}
-			return m, nil
+			return true
 		}
 		if key == "esc" {
-			return m, nil
+			return true
 		}
-	} else if key == "d" && m.mode == modeNormal {
+		return false
+	}
+	if key == "d" && m.mode == modeNormal {
 		m.deleteArmed = true
 		m.flash = "d"
-		return m, nil
+		return true
 	}
+	return false
+}
+
+func (m *model) onMotion(key string) {
 	switch key {
 	case "h", "left":
 		m.move(-1, 0)
@@ -162,6 +177,11 @@ func (m *model) onNormal(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			c, r = 0, 0
 		}
 		m.moveTo(c, r)
+	}
+}
+
+func (m *model) onEdit(key string) {
+	switch key {
 	case "v":
 		if m.mode == modeVisual {
 			m.mode = modeNormal
@@ -216,7 +236,6 @@ func (m *model) onNormal(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeNormal
 		m.anchorC, m.anchorR = m.col, m.row
 	}
-	return m, nil
 }
 
 func (m *model) onInsert(k tea.KeyMsg) (tea.Model, tea.Cmd) {

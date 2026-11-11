@@ -123,8 +123,10 @@ func parseArgs(argv []string) (Args, error) {
 		return args, UsageError{Message: "Use: c3po slack <preset> <command>"}
 	}
 	args.Preset = argv[0]
-	command := argv[1]
-	remaining := argv[2:]
+	return parsePresetCommand(args, argv[1], argv[2:])
+}
+
+func parsePresetCommand(args Args, command string, remaining []string) (Args, error) {
 	switch command {
 	case "contacts":
 		return parseContactsArgs(args, remaining)
@@ -573,52 +575,39 @@ func parseListArgs(args Args, remaining []string) (Args, error) {
 		return args, err
 	}
 	args.OutputJSON = outputJSON
-	if len(remaining) > 0 {
+	if len(remaining) > 0 && remaining[0] != "messages" {
 		switch remaining[0] {
-		case "channels":
-			rest, extraVerbose := extractVerbose(remaining[1:])
-			args.Verbose = args.Verbose || extraVerbose
-			rest, extraJSON, err := extractOutputJSON(rest, "Use: c3po slack <preset> list channels [output json|--json] [verbose]")
-			if err != nil {
-				return args, err
-			}
-			if len(rest) > 0 {
-				return args, UsageError{Message: "Use: c3po slack <preset> list channels [output json|--json] [verbose]"}
-			}
-			args.Command = "list-channels"
-			args.OutputJSON = outputJSON || extraJSON
-			return args, nil
-		case "dms":
-			rest, extraVerbose := extractVerbose(remaining[1:])
-			args.Verbose = args.Verbose || extraVerbose
-			rest, extraJSON, err := extractOutputJSON(rest, "Use: c3po slack <preset> list dms [output json|--json] [verbose]")
-			if err != nil {
-				return args, err
-			}
-			if len(rest) > 0 {
-				return args, UsageError{Message: "Use: c3po slack <preset> list dms [output json|--json] [verbose]"}
-			}
-			args.Command = "list-dms"
-			args.OutputJSON = outputJSON || extraJSON
-			return args, nil
-		case "contacts":
-			rest, extraVerbose := extractVerbose(remaining[1:])
-			args.Verbose = args.Verbose || extraVerbose
-			rest, extraJSON, err := extractOutputJSON(rest, "Use: c3po slack <preset> list contacts [output json|--json]")
-			if err != nil {
-				return args, err
-			}
-			if len(rest) > 0 {
-				return args, UsageError{Message: "Use: c3po slack <preset> list contacts [output json|--json]"}
-			}
-			args.Command = "list-contacts"
-			args.OutputJSON = outputJSON || extraJSON
-			return args, nil
-		case "messages":
-			remaining = remaining[1:]
+		case "channels", "dms", "contacts":
+			return parseListDirectory(args, remaining[0], remaining[1:], outputJSON)
 		}
 	}
+	if len(remaining) > 0 && remaining[0] == "messages" {
+		remaining = remaining[1:]
+	}
 	args.Command = "ls"
+	return parseListFilters(args, remaining)
+}
+
+func parseListDirectory(args Args, kind string, remaining []string, outputJSON bool) (Args, error) {
+	usage := "Use: c3po slack <preset> list " + kind + " [output json|--json]"
+	if kind != "contacts" {
+		usage += " [verbose]"
+	}
+	rest, extraVerbose := extractVerbose(remaining)
+	args.Verbose = args.Verbose || extraVerbose
+	rest, extraJSON, err := extractOutputJSON(rest, usage)
+	if err != nil {
+		return args, err
+	}
+	if len(rest) > 0 {
+		return args, UsageError{Message: usage}
+	}
+	args.Command = "list-" + kind
+	args.OutputJSON = outputJSON || extraJSON
+	return args, nil
+}
+
+func parseListFilters(args Args, remaining []string) (Args, error) {
 	for i := 0; i < len(remaining); {
 		token := remaining[i]
 		switch token {

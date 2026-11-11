@@ -68,103 +68,9 @@ func parseShell(src string, vars map[string]string) (shScript, error) {
 }
 
 func (lx *lexer) run() error {
-	src := lx.src
-	for lx.i < len(src) {
-		c := src[lx.i]
-		switch {
-		case c == '\\':
-			if lx.i+1 < len(src) {
-				if src[lx.i+1] == '\n' {
-					lx.i += 2
-					continue
-				}
-				lx.buf.WriteByte(src[lx.i+1])
-				lx.inWord, lx.quoted = true, true
-				lx.i += 2
-			} else {
-				lx.i++
-			}
-		case c == '\'':
-			end := strings.IndexByte(src[lx.i+1:], '\'')
-			if end < 0 {
-				return errShellSyntax
-			}
-			lx.buf.WriteString(src[lx.i+1 : lx.i+1+end])
-			lx.inWord, lx.quoted = true, true
-			lx.i += end + 2
-		case c == '"':
-			if err := lx.doubleQuoted(); err != nil {
-				return err
-			}
-		case c == '$':
-			if err := lx.dollar(); err != nil {
-				return err
-			}
-		case c == '`':
-			if err := lx.backquote(); err != nil {
-				return err
-			}
-		case c == '#' && !lx.inWord:
-			for lx.i < len(src) && src[lx.i] != '\n' {
-				lx.i++
-			}
-		case c == '~' && !lx.inWord && (lx.i+1 == len(src) || strings.IndexByte("/ \t\n;|&)", src[lx.i+1]) >= 0):
-			lx.buf.WriteString(lx.vars["HOME"])
-			lx.inWord = true
-			lx.i++
-		case c == ' ' || c == '\t' || c == '\r':
-			lx.finishWord()
-			lx.i++
-		case c == '\n':
-			if err := lx.endCommand(); err != nil {
-				return err
-			}
-			lx.i++
-			if err := lx.heredocBodies(); err != nil {
-				return err
-			}
-		case c == ';' || c == '(' || c == ')':
-			if err := lx.endCommand(); err != nil {
-				return err
-			}
-			lx.i++
-		case c == '&':
-			if lx.i+1 < len(src) && src[lx.i+1] == '>' {
-				lx.finishWord()
-				op := "&>"
-				lx.i += 2
-				if lx.i < len(src) && src[lx.i] == '>' {
-					op = "&>>"
-					lx.i++
-				}
-				if err := lx.setPending(op); err != nil {
-					return err
-				}
-				continue
-			}
-			if err := lx.endCommand(); err != nil {
-				return err
-			}
-			lx.i++
-			if lx.i < len(src) && src[lx.i] == '&' {
-				lx.i++
-			}
-		case c == '|':
-			if err := lx.endCommand(); err != nil {
-				return err
-			}
-			lx.i++
-			if lx.i < len(src) && (src[lx.i] == '|' || src[lx.i] == '&') {
-				lx.i++
-			}
-		case c == '<' || c == '>':
-			if err := lx.redirect(); err != nil {
-				return err
-			}
-		default:
-			lx.buf.WriteByte(c)
-			lx.inWord = true
-			lx.i++
+	for lx.i < len(lx.src) {
+		if err := lx.step(); err != nil {
+			return err
 		}
 	}
 	if err := lx.endCommand(); err != nil {
@@ -173,6 +79,141 @@ func (lx *lexer) run() error {
 	if len(lx.docs) > 0 {
 		// A heredoc with no body line: bash reads to end of input.
 		lx.docs = nil
+	}
+	return nil
+}
+
+func (lx *lexer) step() error {
+	c := lx.src[lx.i]
+	switch {
+	case c == '\\' || c == '\'' || c == '"' || c == '$' || c == '`':
+		return lx.stepQuote(c)
+	default:
+		return lx.stepBreak(c)
+	}
+}
+
+func (lx *lexer) stepQuote(c byte) error {
+	src := lx.src
+	switch c {
+	case '\\':
+		if lx.i+1 < len(src) {
+			if src[lx.i+1] == '\n' {
+				lx.i += 2
+				return nil
+			}
+			lx.buf.WriteByte(src[lx.i+1])
+			lx.inWord, lx.quoted = true, true
+			lx.i += 2
+		} else {
+			lx.i++
+		}
+	case '\'':
+		end := strings.IndexByte(src[lx.i+1:], '\'')
+		if end < 0 {
+			return errShellSyntax
+		}
+		lx.buf.WriteString(src[lx.i+1 : lx.i+1+end])
+		lx.inWord, lx.quoted = true, true
+		lx.i += end + 2
+	case '"':
+		if err := lx.doubleQuoted(); err != nil {
+			return err
+		}
+	case '$':
+		if err := lx.dollar(); err != nil {
+			return err
+		}
+	case '`':
+		if err := lx.backquote(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (lx *lexer) stepBreak(c byte) error {
+	src := lx.src
+	switch c {
+	case '#':
+		if !lx.inWord {
+			for lx.i < len(src) && src[lx.i] != '\n' {
+				lx.i++
+			}
+		} else {
+			lx.buf.WriteByte(c)
+			lx.inWord = true
+			lx.i++
+		}
+	case '~':
+		if !lx.inWord && (lx.i+1 == len(src) || strings.IndexByte("/ \t\n;|&)", src[lx.i+1]) >= 0) {
+			lx.buf.WriteString(lx.vars["HOME"])
+			lx.inWord = true
+			lx.i++
+		} else {
+			lx.buf.WriteByte(c)
+			lx.inWord = true
+			lx.i++
+		}
+	case ' ', '\t', '\r':
+		lx.finishWord()
+		lx.i++
+	case '\n':
+		if err := lx.endCommand(); err != nil {
+			return err
+		}
+		lx.i++
+		if err := lx.heredocBodies(); err != nil {
+			return err
+		}
+	case ';', '(', ')':
+		if err := lx.endCommand(); err != nil {
+			return err
+		}
+		lx.i++
+	case '&':
+		return lx.stepAmpersand()
+	case '|':
+		if err := lx.endCommand(); err != nil {
+			return err
+		}
+		lx.i++
+		if lx.i < len(src) && (src[lx.i] == '|' || src[lx.i] == '&') {
+			lx.i++
+		}
+	case '<', '>':
+		if err := lx.redirect(); err != nil {
+			return err
+		}
+	default:
+		lx.buf.WriteByte(c)
+		lx.inWord = true
+		lx.i++
+	}
+	return nil
+}
+
+func (lx *lexer) stepAmpersand() error {
+	src := lx.src
+	if lx.i+1 < len(src) && src[lx.i+1] == '>' {
+		lx.finishWord()
+		op := "&>"
+		lx.i += 2
+		if lx.i < len(src) && src[lx.i] == '>' {
+			op = "&>>"
+			lx.i++
+		}
+		if err := lx.setPending(op); err != nil {
+			return err
+		}
+		return nil
+	}
+	if err := lx.endCommand(); err != nil {
+		return err
+	}
+	lx.i++
+	if lx.i < len(src) && src[lx.i] == '&' {
+		lx.i++
 	}
 	return nil
 }
@@ -639,7 +680,28 @@ func (a *writeAnalysis) command(c shCommand, cwd string, depth int) string {
 	prevHint := a.hint
 	a.hint = ""
 	defer func() { a.hint = prevHint }()
-	for _, r := range c.redirs {
+	a.commandRedirects(c.redirs, cwd)
+	words := stripPrefixes(c.words)
+	if len(words) == 0 {
+		return cwd
+	}
+	name := filepath.Base(words[0].text)
+	args := words[1:]
+	a.generator(words, cwd)
+	if strings.HasPrefix(name, "python") {
+		name = "python"
+	}
+	a.commandHint(name)
+	if next, done := a.commandChdir(name, args, cwd); done {
+		return next
+	}
+	a.commandFiles(name, args, cwd)
+	a.commandProcess(name, args, cwd, depth)
+	return cwd
+}
+
+func (a *writeAnalysis) commandRedirects(redirs []shRedir, cwd string) {
+	for _, r := range redirs {
 		switch r.op {
 		case ">", ">>", ">|", "&>", "&>>", "<>":
 		case ">&":
@@ -654,16 +716,9 @@ func (a *writeAnalysis) command(c shCommand, cwd string, depth int) string {
 		}
 		a.addWord(r.target, cwd)
 	}
-	words := stripPrefixes(c.words)
-	if len(words) == 0 {
-		return cwd
-	}
-	name := filepath.Base(words[0].text)
-	args := words[1:]
-	a.generator(words, cwd)
-	if strings.HasPrefix(name, "python") {
-		name = "python"
-	}
+}
+
+func (a *writeAnalysis) commandHint(name string) {
 	switch name {
 	case "mv":
 		a.hint = hintMove
@@ -672,17 +727,25 @@ func (a *writeAnalysis) command(c shCommand, cwd string, depth int) string {
 	case "sed", "perl", "ruby":
 		a.hint = hintPatch
 	}
+}
+
+func (a *writeAnalysis) commandChdir(name string, args []shWord, cwd string) (string, bool) {
+	if name != "cd" {
+		return cwd, false
+	}
+	ops := operands(args)
+	switch {
+	case len(ops) == 0:
+		return a.home, true
+	case ops[0].dynamic || ops[0].text == "-":
+		return cwd, true
+	default:
+		return absPath(ops[0].text, cwd), true
+	}
+}
+
+func (a *writeAnalysis) commandFiles(name string, args []shWord, cwd string) {
 	switch name {
-	case "cd":
-		ops := operands(args)
-		switch {
-		case len(ops) == 0:
-			return a.home
-		case ops[0].dynamic || ops[0].text == "-":
-			return cwd
-		default:
-			return absPath(ops[0].text, cwd)
-		}
 	case "rm", "rmdir", "unlink", "touch", "shred", "mv", "tee":
 		for _, w := range operands(args) {
 			a.addWord(w, cwd)
@@ -723,6 +786,11 @@ func (a *writeAnalysis) command(c shCommand, cwd string, depth int) string {
 				a.addWord(shWord{text: strings.TrimPrefix(w.text, "of="), dynamic: w.dynamic}, cwd)
 			}
 		}
+	}
+}
+
+func (a *writeAnalysis) commandProcess(name string, args []shWord, cwd string, depth int) {
+	switch name {
 	case "find":
 		a.find(args, cwd, depth)
 	case "xargs":
@@ -743,18 +811,7 @@ func (a *writeAnalysis) command(c shCommand, cwd string, depth int) string {
 			a.add(".", cwd)
 		}
 	case "sh", "bash", "zsh", "dash", "ksh":
-		for i, w := range args {
-			if strings.HasPrefix(w.text, "-") && !strings.HasPrefix(w.text, "--") && strings.Contains(w.text, "c") {
-				if i+1 < len(args) {
-					if args[i+1].dynamic {
-						a.add(".", cwd)
-					} else {
-						a.script(args[i+1].text, cwd, depth+1)
-					}
-				}
-				break
-			}
-		}
+		a.commandShell(args, cwd, depth)
 	case "eval":
 		parts := make([]string, 0, len(args))
 		for _, w := range args {
@@ -765,7 +822,21 @@ func (a *writeAnalysis) command(c shCommand, cwd string, depth int) string {
 		}
 		a.script(strings.Join(parts, " "), cwd, depth+1)
 	}
-	return cwd
+}
+
+func (a *writeAnalysis) commandShell(args []shWord, cwd string, depth int) {
+	for i, w := range args {
+		if strings.HasPrefix(w.text, "-") && !strings.HasPrefix(w.text, "--") && strings.Contains(w.text, "c") {
+			if i+1 < len(args) {
+				if args[i+1].dynamic {
+					a.add(".", cwd)
+				} else {
+					a.script(args[i+1].text, cwd, depth+1)
+				}
+			}
+			break
+		}
+	}
 }
 
 func (a *writeAnalysis) find(args []shWord, cwd string, depth int) {

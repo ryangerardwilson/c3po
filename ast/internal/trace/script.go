@@ -602,17 +602,7 @@ func callbackEnd(lines []string, start int) int {
 		for j < len(line) {
 			c := line[j]
 			if c == '"' || c == '\'' || c == '`' {
-				q := c
-				j++
-				for j < len(line) && line[j] != q {
-					if line[j] == '\\' && j+1 < len(line) {
-						j++
-					}
-					j++
-				}
-				if j < len(line) {
-					j++
-				}
+				j = skipQuoted(line, j)
 				continue
 			}
 			if !started {
@@ -661,6 +651,21 @@ func callbackEnd(lines []string, start int) int {
 		}
 	}
 	return len(lines)
+}
+
+func skipQuoted(line string, j int) int {
+	q := line[j]
+	j++
+	for j < len(line) && line[j] != q {
+		if line[j] == '\\' && j+1 < len(line) {
+			j++
+		}
+		j++
+	}
+	if j < len(line) {
+		j++
+	}
+	return j
 }
 
 // tsFuncEnd returns the inclusive 1-based end line of a function that starts at lines[start].
