@@ -42,6 +42,16 @@ type ApplyResult struct {
 // ApplyOpts changes how a transaction writes.
 type ApplyOpts struct {
 	NoFormat bool // write the edited bytes exactly
+	// Check sees the bytes every edit and create would write, after
+	// formatting. An error from it writes nothing, in a dry run too.
+	Check func([]Written) error
+}
+
+// Written is the bytes one edit or create would write to the slash path
+// Rel. Old is nil for a create.
+type Written struct {
+	Rel      string
+	Old, New []byte
 }
 
 type planned struct {
@@ -60,7 +70,7 @@ func ApplyAll(root string, changes []FileChange) ([]ApplyResult, error) {
 
 // ApplyAllOpts is ApplyAll with options.
 func ApplyAllOpts(root string, changes []FileChange, opts ApplyOpts) ([]ApplyResult, error) {
-	plan, err := prepare(root, changes, opts)
+	plan, err := prepareChecked(root, changes, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +84,7 @@ func DryRun(root string, changes []FileChange) ([]ApplyResult, error) {
 
 // DryRunOpts is DryRun with options.
 func DryRunOpts(root string, changes []FileChange, opts ApplyOpts) ([]ApplyResult, error) {
-	plan, err := prepare(root, changes, opts)
+	plan, err := prepareChecked(root, changes, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +98,25 @@ func DryRunOpts(root string, changes []FileChange, opts ApplyOpts) ([]ApplyResul
 		out = append(out, res)
 	}
 	return out, nil
+}
+
+// prepareChecked is prepare, then opts.Check on the bytes of every edit and
+// create in the plan.
+func prepareChecked(root string, changes []FileChange, opts ApplyOpts) ([]planned, error) {
+	plan, err := prepare(root, changes, opts)
+	if err != nil || opts.Check == nil {
+		return plan, err
+	}
+	var writes []Written
+	for _, item := range plan {
+		if item.op == "edit" || item.op == "create" {
+			writes = append(writes, Written{Rel: item.rel, Old: item.original, New: []byte(item.content)})
+		}
+	}
+	if err := opts.Check(writes); err != nil {
+		return nil, err
+	}
+	return plan, nil
 }
 
 func prepare(root string, changes []FileChange, opts ApplyOpts) ([]planned, error) {

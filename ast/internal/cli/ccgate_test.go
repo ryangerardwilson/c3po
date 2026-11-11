@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -228,21 +229,151 @@ func TestPatchCCHashMismatchHasNoCCLine(t *testing.T) {
 	}
 }
 
-func TestPatchCCSymbolPatchIsNotGated(t *testing.T) {
+const symbolOld, symbolNew = "\treturn 0\n", "\tif x == 99 {\n\t\treturn 99\n\t}\n\treturn 0\n"
+
+func TestPatchCCSymbolCrossingIsRefused(t *testing.T) {
 	w := newCCWS(t)
 	old := "package p\n\n" + ccFunc("F", 29)
 	h := w.write("pkg/f.go", old)
-	newSrc := "package p\n\n" + ccFunc("F", 30)
-	code, out, errS := w.run("patch", "pkg/f.go", "--expect-hash", h, "--symbol", "F",
-		"--old", "\treturn 0\n", "--new", "\tif x == 29 {\n\t\treturn 29\n\t}\n\treturn 0\n")
+	code, out, errS := w.run("patch", "pkg/f.go", "--expect-hash", h, "--symbol", "F", "--old", symbolOld, "--new", symbolNew)
+	if code != ExitFail || out != "refused  pkg/f.go:F  cc 29 -> 30 crosses 30\n" || strings.Contains(errS, "Error") {
+		t.Fatalf("code %d out=%q err=%q", code, out, errS)
+	}
+	if w.read("pkg/f.go") != old {
+		t.Fatal("refused symbol patch was written")
+	}
+}
+
+var symbolOK = regexp.MustCompile(`^ok  [0-9a-f]{64}  pkg/f\.go  formatter \S+$`)
+
+func TestPatchCCSymbolRiseIsWrittenWithoutCCLine(t *testing.T) {
+	for _, cc := range []int{5, 30} {
+		w := newCCWS(t)
+		h := w.write("pkg/f.go", "package p\n\n"+ccFunc("F", cc))
+		code, out, errS := w.run("patch", "pkg/f.go", "--expect-hash", h, "--symbol", "F", "--old", symbolOld, "--new", symbolNew)
+		if code != 0 {
+			t.Fatalf("cc %d: code %d out=%q err=%q", cc, code, out, errS)
+		}
+		if lines := outLines(out); len(lines) != 1 || !symbolOK.MatchString(lines[0]) {
+			t.Fatalf("cc %d: out %q", cc, out)
+		}
+		if !strings.Contains(w.read("pkg/f.go"), "return 99") {
+			t.Fatalf("cc %d: file not written", cc)
+		}
+	}
+}
+
+// fromFile writes content outside the workspace and returns its path.
+func fromFile(t *testing.T, content string) string {
+	t.Helper()
+	p := filepath.Join(t.TempDir(), "src")
+	mustWrite(t, p, content)
+	return p
+}
+
+func TestCreateCCNewHighIsRefused(t *testing.T) {
+	w := newCCWS(t)
+	src := fromFile(t, "package p\n\n"+ccFunc("A", 2)+"\n"+ccFunc("B", 31))
+	code, out, errS := w.run("create", "pkg/n.go", "--expect-absent", "--parents", "--from-file", src)
+	if code != ExitFail || out != "refused  pkg/n.go:B  cc new -> 31 crosses 30\n" || strings.Contains(errS, "Error") {
+		t.Fatalf("code %d out=%q err=%q", code, out, errS)
+	}
+	if _, err := os.Stat(filepath.Join(w.ws, "pkg")); !os.IsNotExist(err) {
+		t.Fatalf("refused create made pkg: %v", err)
+	}
+}
+
+func TestCreateCCWritesWithoutCCLine(t *testing.T) {
+	cases := map[string]string{
+		"pkg/f.go":  "package p\n\n" + ccFunc("A", 29),
+		"pkg/u.go":  "package p\n\nfunc F( {\n" + ccFunc("B", 40),
+		"pkg/f.py":  "def g(x):\n" + strings.Repeat("    if x:\n        pass\n", 40),
+		"pkg/f.txt": strings.Repeat("if x\n", 40),
+	}
+	for rel, content := range cases {
+		w := newCCWS(t)
+		code, out, errS := w.run("create", rel, "--expect-absent", "--parents", "--from-file", fromFile(t, content))
+		if code != 0 {
+			t.Fatalf("%s: code %d out=%q err=%q", rel, code, out, errS)
+		}
+		if lines := outLines(out); len(lines) != 1 || !strings.HasPrefix(lines[0], "ok  ") {
+			t.Fatalf("%s: out %q", rel, out)
+		}
+		if w.read(rel) != content {
+			t.Fatalf("%s not written", rel)
+		}
+	}
+}
+
+// manifest is an apply manifest of changes, written outside the workspace.
+func manifest(t *testing.T, changes ...map[string]string) string {
+	t.Helper()
+	b, err := json.Marshal(map[string]any{"files": changes})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fromFile(t, string(b))
+}
+
+func TestApplyCCRefusesWholeTransaction(t *testing.T) {
+	w := newCCWS(t)
+	oldA := "package p\n\n" + ccFunc("F", 29)
+	hA := w.write("pkg/a.go", oldA)
+	hT := w.write("pkg/c.txt", "x\n")
+	m := manifest(t,
+		map[string]string{"path": "pkg/c.txt", "expect_hash": hT, "old": "x\n", "new": "y\n"},
+		map[string]string{"path": "pkg/b.go", "op": "create", "new": "package p\n\n" + ccFunc("B", 31)},
+		map[string]string{"path": "pkg/a.go", "expect_hash": hA, "old": oldA, "new": "package p\n\n" + ccFunc("F", 30)},
+	)
+	want := "refused  pkg/a.go:F  cc 29 -> 30 crosses 30\nrefused  pkg/b.go:B  cc new -> 31 crosses 30\n"
+	for _, args := range [][]string{{"apply", "--from-file", m, "--dry-run"}, {"apply", "--from-file", m}} {
+		code, out, errS := w.run(args...)
+		if code != ExitFail || out != want || strings.Contains(errS, "Error") {
+			t.Fatalf("%v: code %d out=%q err=%q", args, code, out, errS)
+		}
+	}
+	if w.read("pkg/a.go") != oldA || w.read("pkg/c.txt") != "x\n" {
+		t.Fatal("refused apply wrote a file")
+	}
+	if _, err := os.Stat(filepath.Join(w.ws, "pkg/b.go")); !os.IsNotExist(err) {
+		t.Fatal("refused apply created b.go")
+	}
+}
+
+func TestApplyCCWritesWithoutCCLine(t *testing.T) {
+	w := newCCWS(t)
+	oldHigh := "package p\n\n" + ccFunc("F", 30)
+	hHigh := w.write("pkg/high.go", oldHigh)
+	g := "\n" + ccFunc("G", 40)
+	oldGone := "package p\n\n" + ccFunc("A", 2) + g
+	hGone := w.write("pkg/gone.go", oldGone)
+	hBad := w.write("pkg/bad.go", "package p\n\nfunc F( {\n")
+	hPy := w.write("pkg/f.py", "x = 1\n")
+	pyNew := "def g(x):\n" + strings.Repeat("    if x:\n        pass\n", 40)
+	m := manifest(t,
+		map[string]string{"path": "pkg/high.go", "expect_hash": hHigh, "old": oldHigh, "new": "package p\n\n" + ccFunc("F", 33)},
+		map[string]string{"path": "pkg/gone.go", "expect_hash": hGone, "old": g, "new": ""},
+		map[string]string{"path": "pkg/bad.go", "expect_hash": hBad, "old": "package p\n", "new": "package p\n\n" + ccFunc("H", 40)},
+		map[string]string{"path": "pkg/f.py", "expect_hash": hPy, "old": "x = 1\n", "new": pyNew},
+	)
+	code, out, errS := w.run("apply", "--from-file", m)
 	if code != 0 {
 		t.Fatalf("code %d out=%q err=%q", code, out, errS)
 	}
-	if strings.Contains(out, "refused") || strings.Contains(out, "cc  ") || !strings.Contains(out, "formatter") {
+	lines := outLines(out)
+	if len(lines) != 4 || strings.Contains(out, "cc  ") || strings.Contains(out, "refused") {
 		t.Fatalf("out %q", out)
 	}
-	if w.read("pkg/f.go") != newSrc {
-		t.Fatalf("file %q", w.read("pkg/f.go"))
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "ok  ") {
+			t.Fatalf("out %q", out)
+		}
+	}
+	if w.read("pkg/high.go") != "package p\n\n"+ccFunc("F", 33) || strings.Contains(w.read("pkg/gone.go"), "func G") || w.read("pkg/f.py") != pyNew {
+		t.Fatal("apply did not write")
+	}
+	if !strings.Contains(w.read("pkg/bad.go"), "func H") {
+		t.Fatal("unparsed Go not written")
 	}
 }
 

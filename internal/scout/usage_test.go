@@ -36,6 +36,9 @@ func TestUsageReportSplitsHumanAndAgent(t *testing.T) {
 	if !bytes.Contains(unused, []byte("\n  ast cut\n")) {
 		t.Fatal("missing unused ast cut")
 	}
+	if !bytes.Contains(unused, []byte("\n  ast gap\n")) {
+		t.Fatal("missing unused ast gap")
+	}
 	if bytes.Contains(used, []byte("usage")) {
 		t.Fatal("the report included itself")
 	}

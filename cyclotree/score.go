@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	fileparse "github.com/ryangerardwilson/c3po/cyclotree/internal/parse"
+	"github.com/ryangerardwilson/c3po/cyclotree/score"
 )
 
 // scoredFn is one scored function. File is relative to the directory
@@ -98,12 +98,8 @@ func scoreFile(abs, rel string) []scoredFn {
 	if !ok {
 		return nil
 	}
-	fns, _ := fileparse.File(rel, language(rel), src)
 	var out []scoredFn
-	for _, fn := range fns {
-		if fn.Cyclomatic <= 0 {
-			continue
-		}
+	for _, fn := range score.File(rel, src) {
 		out = append(out, scoredFn{
 			File: rel, Name: fn.Name, Language: fn.Language,
 			Line: fn.Line, Cyclomatic: fn.Cyclomatic,
@@ -112,22 +108,7 @@ func scoreFile(abs, rel string) []scoredFn {
 	return out
 }
 
-func language(path string) string {
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".go":
-		return "go"
-	case ".py":
-		return "python"
-	case ".rs":
-		return "rust"
-	case ".ts", ".tsx":
-		return "typescript"
-	case ".js", ".jsx", ".mjs", ".cjs":
-		return "javascript"
-	default:
-		return ""
-	}
-}
+func language(path string) string { return score.Language(path) }
 
 // skipNames are VCS and dependency directories. They are not a language list.
 var skipNames = map[string]bool{

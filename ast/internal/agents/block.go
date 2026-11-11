@@ -19,8 +19,9 @@ cannot silently overwrite a file.
 - **Edit** with ` + "`c3po ast patch <file> --expect-hash <sha> --old <text> --new <text>`" + `.
   ` + "`c3po ast hash <file>`" + ` prints the hash; each patch prints the next one. For several
   files at once: ` + "`c3po ast apply --from-file <manifest.json|git diff>`" + `.
-  A Go patch that raises a function from below ` + "`max_cc`" + ` to ` + "`max_cc`" + ` or above is refused and
-  not written; functions already at or above ` + "`max_cc`" + ` stay editable (` + "`max_cc`" + ` defaults to 30).
+  A Go create, patch, symbol patch, or apply that adds a function at ` + "`max_cc`" + ` or above,
+  or raises one from below to ` + "`max_cc`" + ` or above, is refused and not written; functions
+  already at or above ` + "`max_cc`" + ` stay editable (default 30). ` + "`c3po ast gap`" + ` lists them.
 - **Create** with a host Write to a new path, or ` + "`c3po ast create <file> --expect-absent --stdin`" + `.
 - **Move** with ` + "`c3po ast move <src> <dst> --expect-hash <sha>`" + `; **delete** with
   ` + "`c3po ast delete <file> --expect-hash <sha>`" + `.

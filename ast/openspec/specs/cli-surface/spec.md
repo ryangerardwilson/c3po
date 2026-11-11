@@ -9,7 +9,8 @@ The `rgw-ast` binary SHALL expose a flat verb grammar for agent and human use.
 Supported top-level commands SHALL include: `help`, `version`, `config`,
 `status`, `measure`, `map`, `show`, `search`, `hash`, `read`, `patch`,
 `create`, `append`, `delete`, `move`, `apply`, `explain`, `hook`, `exec`,
-`doctor`, `agents-block`, `packages`, `affected`, `graph`, `neighbors`, `cut`.
+`doctor`, `agents-block`, `packages`, `affected`, `graph`, `neighbors`, `cut`,
+`gap`.
 `--version` and `-v` SHALL behave as `version`.
 
 Global flag `--root <path>` MAY appear before the verb or immediately after it

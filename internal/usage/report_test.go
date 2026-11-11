@@ -18,6 +18,9 @@ func TestTextLeadsWithUnused(t *testing.T) {
 	if usedAt < 0 || cutAt < 0 || cutAt > usedAt {
 		t.Fatalf("ast cut not in unused\n%s", text)
 	}
+	if gapAt := strings.Index(text, "\n  ast gap\n"); gapAt < 0 || gapAt > usedAt {
+		t.Fatalf("ast gap not in unused\n%s", text)
+	}
 	if strings.Contains(text, "outside the catalog") {
 		t.Fatal("empty store listed an outside feature")
 	}

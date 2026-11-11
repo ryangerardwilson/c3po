@@ -37,6 +37,8 @@ func TestFeatureNames(t *testing.T) {
 		{[]string{"c3po", "ast", "nope"}, "unknown"},
 		{[]string{"c3po", "ast", "--root"}, "unknown"},
 		{[]string{"c3po", "ast", "cut"}, "ast cut"},
+		{[]string{"c3po", "ast", "gap", "--check"}, "ast gap"},
+		{[]string{"rgw-ast", "gap", "--help"}, "help"},
 		{[]string{"c3po", "ast", "agents-block"}, "ast agents-block"},
 		{[]string{"c3po", "ast", "hook", "lots", "of", "tool", "json"}, "ast hook"},
 		{[]string{"c3po", "tui"}, "tui"},
@@ -128,7 +130,7 @@ func TestCatalogKeysStayPlain(t *testing.T) {
 	if Known("unknown") {
 		t.Fatal("unknown is a catalog feature")
 	}
-	for _, name := range []string{"ast cut", "ast patch", "pass upgrade", "tunnel logs", "gmail tidy audit", "help", "usage"} {
+	for _, name := range []string{"ast cut", "ast gap", "ast patch", "pass upgrade", "tunnel logs", "gmail tidy audit", "help", "usage"} {
 		if !Known(name) {
 			t.Fatalf("missing %s", name)
 		}

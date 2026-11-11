@@ -53,18 +53,31 @@ func uniqueMatchError(content, old string) error {
 
 // CreateAbsent writes content only if path does not exist.
 func CreateAbsent(path string, content []byte, parents bool, mode os.FileMode) (string, error) {
+	return CreateAbsentCheck(path, content, parents, mode, nil)
+}
+
+// CreateAbsentCheck is CreateAbsent with a check on content after the path
+// is found absent and before any directory or file is made. An error from
+// check writes nothing.
+func CreateAbsentCheck(path string, content []byte, parents bool, mode os.FileMode, check func(content []byte) error) (string, error) {
 	if _, err := os.Stat(path); err == nil {
 		return "", fmt.Errorf("path already exists: %s", path)
 	} else if !os.IsNotExist(err) {
 		return "", err
 	}
+	if !parents {
+		if _, err := os.Stat(filepath.Dir(path)); err != nil {
+			return "", fmt.Errorf("parent directory missing (use --parents): %w", err)
+		}
+	}
+	if check != nil {
+		if err := check(content); err != nil {
+			return "", err
+		}
+	}
 	if parents {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return "", err
-		}
-	} else {
-		if _, err := os.Stat(filepath.Dir(path)); err != nil {
-			return "", fmt.Errorf("parent directory missing (use --parents): %w", err)
 		}
 	}
 	if mode == 0 {

@@ -118,6 +118,8 @@ func (r Runner) Run(args []string) int {
 		err = r.cmdTrace("impact", rest)
 	case "explain":
 		err = r.cmdExplain(rest)
+	case "gap":
+		err = r.cmdGap(rest)
 	case "hash":
 		err = r.cmdHash(rest)
 	case "read":
@@ -155,6 +157,12 @@ func (r Runner) Run(args []string) int {
 	default:
 		return r.usage(fmt.Sprintf("unknown command %q; see rgw-ast help", cmd))
 	}
+	return r.exit(err)
+}
+
+// exit prints err and returns its exit code. A cc refusal goes to stdout
+// and gap --check has already printed its report; neither has an Error line.
+func (r Runner) exit(err error) int {
 	if err == nil {
 		return ExitOK
 	}
@@ -166,6 +174,9 @@ func (r Runner) Run(args []string) int {
 	var refused ccRefused
 	if errors.As(err, &refused) {
 		_, _ = fmt.Fprintln(r.Out, refused.Error())
+		return ExitFail
+	}
+	if errors.Is(err, errGapOver) {
 		return ExitFail
 	}
 	_, _ = fmt.Fprintln(r.Err, "Error:", err.Error())
@@ -787,7 +798,7 @@ func (r Runner) cmdCreate(args []string) error {
 	if fromFile == "" && !stdin {
 		return usageError{"provide --from-file or --stdin"}
 	}
-	_, _, wsRoot, err := r.workspaceFor(path)
+	cfg, _, wsRoot, err := r.workspaceFor(path)
 	if err != nil {
 		return err
 	}
@@ -804,7 +815,11 @@ func (r Runner) cmdCreate(args []string) error {
 	if err != nil {
 		return err
 	}
-	h, err := files.CreateAbsent(abs, content, parents, 0o644)
+	rel, _ := filepath.Rel(wsRoot, abs)
+	gate := ccCheck(ccMax(cfg.MaxCC))
+	h, err := files.CreateAbsentCheck(abs, content, parents, 0o644, func(content []byte) error {
+		return gate([]files.Written{{Rel: filepath.ToSlash(rel), New: content}})
+	})
 	if err != nil {
 		return err
 	}
@@ -899,9 +914,9 @@ func (r Runner) cmdPatch(args []string) error {
 		ops = []files.Op{{Old: old, New: newText, All: all}}
 	}
 	if symbol != "" {
-		results, err := files.ApplyAll(wsRoot, []files.FileChange{{
+		results, err := files.ApplyAllOpts(wsRoot, []files.FileChange{{
 			Path: path, ExpectHash: expectHash, Old: ops[0].Old, New: ops[0].New, Symbol: symbol,
-		}})
+		}}, files.ApplyOpts{Check: ccCheck(ccMax(cfg.MaxCC))})
 		if err != nil {
 			return err
 		}
@@ -913,12 +928,9 @@ func (r Runner) cmdPatch(args []string) error {
 // plainPatch writes a patch without --symbol and prints the cc lines of a
 // Go file after the ok line. maxCC at or below 0 means the default.
 func (r Runner) plainPatch(maxCC int, wsRoot, abs, expectHash string, ops []files.Op) error {
-	if maxCC <= 0 {
-		maxCC = config.DefaultMaxCC
-	}
 	rel, _ := filepath.Rel(wsRoot, abs)
 	var notes []string
-	newHash, err := files.PatchOpsCheck(abs, expectHash, ops, ccGate(filepath.ToSlash(rel), maxCC, &notes))
+	newHash, err := files.PatchOpsCheck(abs, expectHash, ops, ccGate(filepath.ToSlash(rel), ccMax(maxCC), &notes))
 	if err != nil {
 		return err
 	}
@@ -966,10 +978,11 @@ func (r Runner) cmdApply(args []string) error {
 	if err != nil {
 		return err
 	}
-	_, _, wsRoot, err := r.workspace()
+	cfg, _, wsRoot, err := r.workspace()
 	if err != nil {
 		return err
 	}
+	opts.Check = ccCheck(ccMax(cfg.MaxCC))
 	if dry {
 		results, err := files.DryRunOpts(wsRoot, changes, opts)
 		if err != nil {

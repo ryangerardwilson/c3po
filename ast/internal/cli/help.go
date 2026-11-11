@@ -21,6 +21,7 @@ Commands:
   callees [--json] [--limit N] [--offset N] <symbol>
   impact [--json] [--limit N] [--offset N] <symbol>
   explain <path>
+  gap [--json] [--check]
   hash <file>...
   read <file> --lines <a>-<b> [--number] [--strict-lines]
   create <file> --expect-absent (--from-file <f>|--stdin) [--parents]
@@ -179,11 +180,12 @@ Exact text swap after the hash matches. Without --symbol the old text must occur
 A text that occurs more than once fails and lists every matching line; --all replaces every occurrence.
 --ops-file is a JSON array of {"old","new","all"} applied in order, one write.
 Each success prints the new hash: pass it as --expect-hash to the next patch of that file.
-Without --symbol a Go file is scored before the write: each function declaration, named Type.Method or Name as cyclotree names it, gets the cyclomatic number cyclotree reports.
-After the ok line, one line per declaration whose score changed, sorted by name: "cc  <path>:<Name>  <old> -> <new>", "new -> <score>", or "<score> -> gone".
-When the old or new file does not parse, or two declarations share a name, the file is written and the line is "cc  <path>  unparsed".
+A Go file is scored before the write, with or without --symbol, on the bytes that would be written: each function declaration, named Type.Method or Name as cyclotree names it, gets the cyclomatic number cyclotree reports.
+Without --symbol, after the ok line, one line per declaration whose score changed, sorted by name: "cc  <path>:<Name>  <old> -> <new>", "new -> <score>", or "<score> -> gone".
+When the old or new file does not parse, or two declarations share a name, the file is written; without --symbol the line is "cc  <path>  unparsed".
 A declaration that rises from below max_cc (config, default 30) to max_cc or above, or a new one at max_cc or above, is refused: nothing is written, no ok line, one "refused  <path>:<Name>  cc <old> -> <new> crosses <max_cc>" line each on stdout, exit 1.
-A declaration already at or above max_cc may rise further. A removal is never refused. Other files get no cc line.
+A declaration already at or above max_cc may rise further. A removal is never refused. Other files are not scored.
+create and apply refuse the same way. c3po ast gap lists the functions already at or above max_cc.
 With --symbol the old text must occur once inside that function, method, or JSX component, and the checkout formatter runs on that file only (gofmt, ruff when declared, biome when biome.json exists, prettier or dprint when that Markdown tool is declared).
 A formatter wrapping change does not reject the edit. A missing formatter keeps the edit.
 Hash mismatch or a missing symbol exits 1 with no cc line. Missing flags exit 2.
@@ -195,6 +197,7 @@ Example: c3po ast patch file.go --expect-hash <sha> --symbol A --old 'old' --new
 One transaction for edit, create, delete, and move. Every hash and match is checked before any write. A bad hash, a missing match, or a failed write leaves the tree untouched.
 Go, Python, TypeScript, and declared-Markdown files are formatted unless --no-format. Output names the formatter, or "none".
 --dry-run prints the planned op and the final unified diff and writes nothing.
+Each Go edit or create is scored after formatting as patch scores it (c3po ast help patch). One crossing max_cc refuses the whole transaction: nothing is written, one refused line per declaration sorted by path then name, exit 1. --dry-run prints the same refused lines.
 
 JSON manifest: {"files":[{"path","expect_hash","op":"edit|create|delete|move","old","new","symbol","diff","to"}]}
 op defaults to edit. create uses expect_hash "absent" or an empty hash. delete takes only the hash. move takes "to" and the hash.
@@ -259,6 +262,17 @@ Exit 1 when the path cannot be explained. Exit 2 when the path is missing from t
 
 Example: c3po ast explain internal/trace/trace.go
 `,
+	"gap": `c3po ast gap [--json] [--check]
+
+List every scored function whose cyclomatic number is at or above max_cc (config, default 30): the debt a patch-only history would not hold.
+Walks the same scope as map and measure. Scores Go, Python, Rust, TypeScript, and JavaScript as cyclotree does; Go numbers are the patch gate's.
+Text is "gap  <root>", "max_cc  N", "over  N", then "<cyclomatic>  <path>:<Name>  <language>" sorted by cyclomatic descending, then path and name.
+--json prints {"root","max_cc","over","functions":[{"path","name","language","line","cyclomatic"}]}.
+Exit 0 even when over is not 0. --check exits 1 when over is not 0.
+Exit 1 when the walk or a read fails. Exit 2 on an unknown flag or an operand.
+
+Example: c3po ast gap --check
+`,
 	"hash": `c3po ast hash <file>...
 
 Print the sha256 of each regular file. Use it immediately before patch, apply, or delete.
@@ -278,6 +292,7 @@ Example: c3po ast read internal/cli/help.go --lines 1-40
 	"create": `c3po ast create <file> --expect-absent (--from-file <f>|--stdin) [--parents]
 
 Create one file that must not already exist. --parents creates ancestor directories.
+A Go file with a function declaration at or above max_cc is refused: nothing is written, one "refused  <path>:<Name>  cc new -> <score> crosses <max_cc>" line each, exit 1. A Go file that does not parse is written.
 Exit 1 when the path exists or the parent is missing. Exit 2 on bad flags.
 For several files, use apply.
 

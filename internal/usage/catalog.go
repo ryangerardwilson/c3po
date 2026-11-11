@@ -35,6 +35,7 @@ var Catalog = []string{
 	"ast callees",
 	"ast impact",
 	"ast explain",
+	"ast gap",
 	"ast hash",
 	"ast read",
 	"ast create",

@@ -35,6 +35,7 @@ rgw-ast [--root <path>] show <symbol|path:symbol|path>
 rgw-ast [--root <path>] search [--path <dir>] [--glob <pat>] [--offset N] [--regex] [-i] <query>
 rgw-ast search --help
 rgw-ast [--root <path>] explain <path>
+rgw-ast [--root <path>] gap [--json] [--check]
 rgw-ast [--root <path>] callers [--json] [--limit N] [--offset N] <symbol>
 rgw-ast [--root <path>] callees [--json] [--limit N] [--offset N] <symbol>
 rgw-ast [--root <path>] impact [--json] [--limit N] [--offset N] <symbol>
@@ -90,8 +91,17 @@ rgw-ast [--root <path>] cut [--json] [path]
   replaces every occurrence. A stale hash says how to recover.
 - A plain Go `patch` prints a `cc` line per function declaration whose
   cyclomatic number changed. It refuses, writes nothing, and exits 1 when a
-  function rises from below `max_cc` (default 30) to `max_cc` or above.
-  Functions already at or above `max_cc` stay editable.
+  function rises from below `max_cc` (default 30) to `max_cc` or above, or a
+  new one is at `max_cc` or above. `patch --symbol`, `create`, and each Go
+  file in `apply` refuse the same way on the bytes they would write (a refused
+  `apply` writes nothing), and print no `cc` line on success. Functions
+  already at or above `max_cc` stay editable. A Go file that does not parse is
+  written.
+- `gap` lists every scored function (Go, Python, Rust, TypeScript,
+  JavaScript, as cyclotree scores them) at or above `max_cc`, walking the
+  same scope as `map`: highest first, then path and name. It exits 0;
+  `--check` exits 1 when the list is not empty. `--json` gives
+  `root`, `max_cc`, `over`, and `functions`.
 - `move` renames one hash-verified file (with `git mv` when tracked).
 - `map` lists symbols in path order, then line order. `--json` reports
   `truncated` and `next_offset`. `--depth 0` lists only the selected directory.
