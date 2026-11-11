@@ -13,6 +13,7 @@ import (
 	"github.com/ryangerardwilson/c3po/gdrive"
 	"github.com/ryangerardwilson/c3po/gmail"
 	"github.com/ryangerardwilson/c3po/internal/tuisession"
+	"github.com/ryangerardwilson/c3po/internal/usage"
 	"github.com/ryangerardwilson/c3po/internal/version"
 	"github.com/ryangerardwilson/c3po/internal/xdg"
 	"github.com/ryangerardwilson/c3po/l"
@@ -58,7 +59,15 @@ func Main(args []string) int {
 }
 
 // Run dispatches one app from the program name or the c3po arguments.
+// The usage note is recorded after the command returns. A failed note does
+// not change the exit code.
 func Run(args []string, stdout, stderr io.Writer) int {
+	code := dispatch(args, stdout, stderr)
+	usage.Note(code, args)
+	return code
+}
+
+func dispatch(args []string, stdout, stderr io.Writer) int {
 	if err := xdg.Migrate(); err != nil {
 		fmt.Fprintf(stderr, "c3po: config: %s\n", err)
 		return 1
@@ -93,6 +102,9 @@ func c3po(args []string, stdout, stderr io.Writer) int {
 	if isVersion(args[0]) {
 		fmt.Fprintln(stdout, "c3po "+version.String())
 		return 0
+	}
+	if args[0] == "usage" {
+		return usageCommand(args[1:], stdout, stderr)
 	}
 	return runApp(args, stdout, stderr)
 }
@@ -203,6 +215,24 @@ func passScreen(args []string, stdout, stderr io.Writer) int {
 	}
 	fmt.Fprint(stderr, pass.ScreenHelp)
 	return 2
+}
+
+func usageCommand(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 1 {
+		fmt.Fprintln(stderr, "usage: c3po usage [prefix]")
+		return 2
+	}
+	prefix := ""
+	if len(args) == 1 {
+		prefix = args[0]
+	}
+	text, err := usage.Report(prefix)
+	if err != nil {
+		fmt.Fprintf(stderr, "c3po: usage: %s\n", err)
+		return 1
+	}
+	fmt.Fprint(stdout, text)
+	return 0
 }
 
 func isHelp(s string) bool {

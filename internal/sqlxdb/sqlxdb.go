@@ -31,6 +31,17 @@ const recordModel = "model record\n" +
 	"  item_key text not null\n" +
 	"  body text not null\n"
 
+// usageModel is the daily feature counter. One row is one feature, one actor,
+// and one UTC day. n is how many times it ran. ok is how many of those exited 0.
+const usageModel = "model usage\n" +
+	"  id integer primary key\n" +
+	"  feature text not null\n" +
+	"  actor text not null\n" +
+	"  day text not null\n" +
+	"  n integer not null\n" +
+	"  ok integer not null\n" +
+	"  last integer not null\n"
+
 const createORM = `CREATE TABLE IF NOT EXISTS sqlx_orm (
   model TEXT PRIMARY KEY,
   body TEXT NOT NULL,
@@ -50,6 +61,18 @@ const createRecord = `CREATE TABLE IF NOT EXISTS record (
   "item_key" TEXT NOT NULL,
   "body" TEXT NOT NULL
 )`
+
+const createUsage = `CREATE TABLE IF NOT EXISTS usage (
+  "id" INTEGER PRIMARY KEY,
+  "feature" TEXT NOT NULL,
+  "actor" TEXT NOT NULL,
+  "day" TEXT NOT NULL,
+  "n" INTEGER NOT NULL,
+  "ok" INTEGER NOT NULL,
+  "last" INTEGER NOT NULL
+)`
+
+const createUsageIndex = `CREATE UNIQUE INDEX IF NOT EXISTS usage_feature_actor_day ON usage(feature, actor, day)`
 
 // Read returns the sqlx record for a production path, or the file otherwise.
 func Read(app, kind, key, path string) ([]byte, error) {
@@ -194,7 +217,7 @@ func ensure(dbPath string) error {
 	if err := prepareDirs(dbPath); err != nil {
 		return err
 	}
-	sql := "PRAGMA journal_mode=WAL;\n" + createORM + ";\n" + createMeta + ";\n" + createRecord + ";\n" + ormUpsertSQL()
+	sql := "PRAGMA journal_mode=WAL;\n" + createORM + ";\n" + createMeta + ";\n" + createRecord + ";\n" + createUsage + ";\n" + createUsageIndex + ";\n" + ormUpsertSQL()
 	if err := execSQL(dbPath, sql); err != nil {
 		return err
 	}
@@ -236,7 +259,7 @@ func ormFile(dbPath string) (string, bool) {
 }
 
 func ormText() string {
-	return metaModel + "\n" + recordModel
+	return metaModel + "\n" + recordModel + "\n" + usageModel
 }
 
 func ormUpsertSQL() string {
@@ -247,6 +270,7 @@ func ormUpsertSQL() string {
 	}{
 		{"meta", metaModel, 0},
 		{"record", recordModel, 1},
+		{"usage", usageModel, 2},
 	}
 	var b strings.Builder
 	for _, model := range models {

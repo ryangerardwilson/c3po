@@ -21,6 +21,7 @@ Usage:
   c3po tunnel add|remove|list|start|stop|status|logs|run
   c3po tui cyclotree|l|o|tunnel|gdrive|pass|deport|xl|looptab [args...]
   c3po version
+  c3po usage [prefix]
   c3po help [-f <category> [feature]]
 
 `
