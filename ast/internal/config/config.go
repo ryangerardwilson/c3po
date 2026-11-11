@@ -17,6 +17,7 @@ const (
 	DefaultMaxReadLines = 200
 	DefaultMaxSearch    = 50
 	DefaultMaxMap       = 200
+	DefaultMaxCC        = 30
 )
 
 // Config is the sole global policy for rgw-ast.
@@ -32,6 +33,9 @@ type Config struct {
 	Cache         Cache       `toml:"cache"`
 	Generators    Generators  `toml:"generators"`
 	MaxMapEntries int         `toml:"max_map_entries"`
+	// MaxCC is the cyclomatic number a plain Go patch may not raise a
+	// function declaration to from below.
+	MaxCC int `toml:"max_cc"`
 }
 
 // Generators configures trusted external scaffolding tools.
@@ -117,6 +121,7 @@ func Default() Config {
 			},
 		},
 		MaxMapEntries: DefaultMaxMap,
+		MaxCC:         DefaultMaxCC,
 	}
 }
 
@@ -242,6 +247,9 @@ func normalize(cfg *Config) {
 	}
 	if cfg.MaxMapEntries <= 0 {
 		cfg.MaxMapEntries = DefaultMaxMap
+	}
+	if cfg.MaxCC <= 0 {
+		cfg.MaxCC = DefaultMaxCC
 	}
 	if cfg.Enforcement.Mode == "" {
 		cfg.Enforcement.Mode = DefaultMode

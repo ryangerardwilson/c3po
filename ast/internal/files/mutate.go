@@ -107,6 +107,12 @@ func AppendExact(path, expectHash string, content []byte) (string, error) {
 
 // PatchOps applies ordered unique replacements against one expected hash.
 func PatchOps(path, expectHash string, ops []Op) (string, error) {
+	return PatchOpsCheck(path, expectHash, ops, nil)
+}
+
+// PatchOpsCheck is PatchOps with a check on the old and new bytes after the
+// replacements and before the write. An error from check writes nothing.
+func PatchOpsCheck(path, expectHash string, ops []Op, check func(old, new []byte) error) (string, error) {
 	if len(ops) == 0 {
 		return "", fmt.Errorf("no patch operations")
 	}
@@ -127,6 +133,11 @@ func PatchOps(path, expectHash string, ops []Op) (string, error) {
 			return "", fmt.Errorf("op %d: %w", i, uniqueMatchError(content, op.Old))
 		}
 		content = strings.ReplaceAll(content, op.Old, op.New)
+	}
+	if check != nil {
+		if err := check(data, []byte(content)); err != nil {
+			return "", err
+		}
 	}
 	return writeAtomic(path, []byte(content))
 }

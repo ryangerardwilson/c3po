@@ -179,9 +179,14 @@ Exact text swap after the hash matches. Without --symbol the old text must occur
 A text that occurs more than once fails and lists every matching line; --all replaces every occurrence.
 --ops-file is a JSON array of {"old","new","all"} applied in order, one write.
 Each success prints the new hash: pass it as --expect-hash to the next patch of that file.
+Without --symbol a Go file is scored before the write: each function declaration, named Type.Method or Name as cyclotree names it, gets the cyclomatic number cyclotree reports.
+After the ok line, one line per declaration whose score changed, sorted by name: "cc  <path>:<Name>  <old> -> <new>", "new -> <score>", or "<score> -> gone".
+When the old or new file does not parse, or two declarations share a name, the file is written and the line is "cc  <path>  unparsed".
+A declaration that rises from below max_cc (config, default 30) to max_cc or above, or a new one at max_cc or above, is refused: nothing is written, no ok line, one "refused  <path>:<Name>  cc <old> -> <new> crosses <max_cc>" line each on stdout, exit 1.
+A declaration already at or above max_cc may rise further. A removal is never refused. Other files get no cc line.
 With --symbol the old text must occur once inside that function, method, or JSX component, and the checkout formatter runs on that file only (gofmt, ruff when declared, biome when biome.json exists, prettier or dprint when that Markdown tool is declared).
 A formatter wrapping change does not reject the edit. A missing formatter keeps the edit.
-Hash mismatch or a missing symbol exits 1. Missing flags exit 2.
+Hash mismatch or a missing symbol exits 1 with no cc line. Missing flags exit 2.
 
 Example: c3po ast patch file.go --expect-hash <sha> --symbol A --old 'old' --new 'new'
 `,

@@ -88,6 +88,10 @@ rgw-ast [--root <path>] cut [--json] [path]
   characters; use `--path` / `--glob` to scope.
 - A non-unique `patch` match fails and lists every matching line; `--all`
   replaces every occurrence. A stale hash says how to recover.
+- A plain Go `patch` prints a `cc` line per function declaration whose
+  cyclomatic number changed. It refuses, writes nothing, and exits 1 when a
+  function rises from below `max_cc` (default 30) to `max_cc` or above.
+  Functions already at or above `max_cc` stay editable.
 - `move` renames one hash-verified file (with `git mv` when tracked).
 - `map` lists symbols in path order, then line order. `--json` reports
   `truncated` and `next_offset`. `--depth 0` lists only the selected directory.

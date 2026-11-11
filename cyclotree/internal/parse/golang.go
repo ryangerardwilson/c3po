@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/ryangerardwilson/c3po/cyclotree/internal/metric"
+	"github.com/ryangerardwilson/c3po/internal/gocyclo"
 )
 
 // ParseGo scores every function and function literal in src.
@@ -29,7 +30,7 @@ func ParseGo(file string, src []byte) ([]metric.Function, []string) {
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch fn := n.(type) {
 		case *ast.FuncDecl:
-			out = append(out, scoreGo(goFn{fset, code, file, declName(fn), fn.Type, fn.Body, fn.Pos(), fn.End()}))
+			out = append(out, scoreGo(goFn{fset, code, file, gocyclo.Name(fn), fn.Type, fn.Body, fn.Pos(), fn.End()}))
 		case *ast.FuncLit:
 			out = append(out, scoreLit(goFn{fset, code, file, "", fn.Type, fn.Body, fn.Pos(), fn.End()}, src, perLine))
 		}
@@ -76,40 +77,6 @@ func goSig(src []byte, fset *token.FileSet, pos, end token.Pos) string {
 	return strconv.FormatUint(h.Sum64(), 16)
 }
 
-func declName(fn *ast.FuncDecl) string {
-	name := "func"
-	if fn.Name != nil {
-		name = fn.Name.Name
-	}
-	recv := recvName(fn)
-	if recv == "" {
-		return name
-	}
-	return recv + "." + name
-}
-
-func recvName(fn *ast.FuncDecl) string {
-	if fn.Recv == nil || len(fn.Recv.List) == 0 {
-		return ""
-	}
-	return typeName(fn.Recv.List[0].Type)
-}
-
-func typeName(e ast.Expr) string {
-	switch t := e.(type) {
-	case *ast.Ident:
-		return t.Name
-	case *ast.StarExpr:
-		return typeName(t.X)
-	case *ast.IndexExpr:
-		return typeName(t.X)
-	case *ast.IndexListExpr:
-		return typeName(t.X)
-	default:
-		return ""
-	}
-}
-
 type goFn struct {
 	fset *token.FileSet
 	code []bool
@@ -124,7 +91,7 @@ type goFn struct {
 func scoreGo(fn goFn) metric.Function {
 	start := fn.fset.Position(fn.pos).Line
 	stop := fn.fset.Position(fn.end).Line
-	st := &gstate{fset: fn.fset, name: shortName(fn.name), cyclo: 1}
+	st := &gstate{fset: fn.fset, name: shortName(fn.name)}
 	if fn.body != nil {
 		walkStmt(fn.body, 0, st)
 	}
@@ -134,7 +101,7 @@ func scoreGo(fn goFn) metric.Function {
 	return metric.Function{
 		File: fn.file, Line: start, EndLine: stop, Name: fn.name, Language: "go",
 		Cognitive: st.cog, Nesting: st.nest, Lines: countBetween(fn.code, start, stop),
-		Params: paramCount(fn.typ), Cyclomatic: st.cyclo, Events: st.events,
+		Params: paramCount(fn.typ), Cyclomatic: gocyclo.Body(fn.body), Events: st.events,
 	}
 }
 
@@ -167,7 +134,6 @@ type gstate struct {
 	name   string
 	cog    int
 	nest   int
-	cyclo  int
 	recur  token.Pos
 	events []metric.Event
 }
@@ -175,7 +141,6 @@ type gstate struct {
 func (st *gstate) add(pos token.Pos, e metric.Event) {
 	e.Line = st.fset.Position(pos).Line
 	st.cog += e.Cog
-	st.cyclo += e.Cyclo
 	if e.Depth > st.nest {
 		st.nest = e.Depth
 	}
@@ -272,18 +237,13 @@ func walkSwitch(body *ast.BlockStmt, init ast.Stmt, tag ast.Expr, nesting int, s
 		pos, list = body.Lbrace, body.List
 	}
 	st.add(pos, metric.Event{Kind: "switch", Nesting: nesting, Cog: 1 + nesting, Depth: nesting + 1})
-	cases := 0
 	for _, s := range list {
 		cc, ok := s.(*ast.CaseClause)
 		if !ok {
 			continue
 		}
-		cases++
 		st.add(cc.Case, metric.Event{Kind: "case", Nesting: nesting + 1, Cyclo: 1})
 		walkList(cc.Body, nesting+1, st)
-	}
-	if cases == 0 {
-		st.cyclo++
 	}
 }
 

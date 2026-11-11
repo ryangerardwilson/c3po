@@ -163,6 +163,11 @@ func (r Runner) Run(args []string) int {
 		_, _ = fmt.Fprintln(r.Err, "Error:", ue.Error())
 		return ExitUsage
 	}
+	var refused ccRefused
+	if errors.As(err, &refused) {
+		_, _ = fmt.Fprintln(r.Out, refused.Error())
+		return ExitFail
+	}
 	_, _ = fmt.Fprintln(r.Err, "Error:", err.Error())
 	return ExitFail
 }
@@ -859,7 +864,7 @@ func (r Runner) cmdPatch(args []string) error {
 	if expectHash == "" {
 		return usageError{"--expect-hash is required"}
 	}
-	_, _, wsRoot, err := r.workspaceFor(path)
+	cfg, _, wsRoot, err := r.workspaceFor(path)
 	if err != nil {
 		return err
 	}
@@ -902,11 +907,28 @@ func (r Runner) cmdPatch(args []string) error {
 		}
 		return r.notedSymbol(results)
 	}
-	newHash, err := files.PatchOps(abs, expectHash, ops)
+	return r.plainPatch(cfg.MaxCC, wsRoot, abs, expectHash, ops)
+}
+
+// plainPatch writes a patch without --symbol and prints the cc lines of a
+// Go file after the ok line. maxCC at or below 0 means the default.
+func (r Runner) plainPatch(maxCC int, wsRoot, abs, expectHash string, ops []files.Op) error {
+	if maxCC <= 0 {
+		maxCC = config.DefaultMaxCC
+	}
+	rel, _ := filepath.Rel(wsRoot, abs)
+	var notes []string
+	newHash, err := files.PatchOpsCheck(abs, expectHash, ops, ccGate(filepath.ToSlash(rel), maxCC, &notes))
 	if err != nil {
 		return err
 	}
-	return r.notedHash(wsRoot, abs, newHash)
+	if err := r.notedHash(wsRoot, abs, newHash); err != nil {
+		return err
+	}
+	for _, line := range notes {
+		_, _ = fmt.Fprintln(r.Out, line)
+	}
+	return nil
 }
 
 // formatterName reports the formatter that ran, or none.
