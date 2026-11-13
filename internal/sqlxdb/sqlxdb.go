@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"os/user"
@@ -16,8 +15,6 @@ import (
 )
 
 const DatabaseName = "c3po"
-
-const sqliteTimeoutMS = "5000"
 
 const metaModel = "model meta\n" +
 	"  id integer primary key\n" +
@@ -40,39 +37,8 @@ const usageModel = "model usage\n" +
 	"  day text not null\n" +
 	"  n integer not null\n" +
 	"  ok integer not null\n" +
-	"  last integer not null\n"
-
-const createORM = `CREATE TABLE IF NOT EXISTS sqlx_orm (
-  model TEXT PRIMARY KEY,
-  body TEXT NOT NULL,
-  position INTEGER NOT NULL
-)`
-
-const createMeta = `CREATE TABLE IF NOT EXISTS meta (
-  "id" INTEGER PRIMARY KEY,
-  "key" TEXT NOT NULL,
-  "value" TEXT
-)`
-
-const createRecord = `CREATE TABLE IF NOT EXISTS record (
-  "id" INTEGER PRIMARY KEY,
-  "app" TEXT NOT NULL,
-  "kind" TEXT NOT NULL,
-  "item_key" TEXT NOT NULL,
-  "body" TEXT NOT NULL
-)`
-
-const createUsage = `CREATE TABLE IF NOT EXISTS usage (
-  "id" INTEGER PRIMARY KEY,
-  "feature" TEXT NOT NULL,
-  "actor" TEXT NOT NULL,
-  "day" TEXT NOT NULL,
-  "n" INTEGER NOT NULL,
-  "ok" INTEGER NOT NULL,
-  "last" INTEGER NOT NULL
-)`
-
-const createUsageIndex = `CREATE UNIQUE INDEX IF NOT EXISTS usage_feature_actor_day ON usage(feature, actor, day)`
+	"  last integer not null\n" +
+	"  index usage_feature_actor_day unique feature actor day\n"
 
 // Read returns the sqlx record for a production path, or the file otherwise.
 func Read(app, kind, key, path string) ([]byte, error) {
@@ -214,103 +180,15 @@ func loginHome() (string, error) {
 }
 
 func ensure(dbPath string) error {
-	if err := prepareDirs(dbPath); err != nil {
+	_ = dbPath
+	if _, err := sqlxCall("create", "database", DatabaseName); err != nil {
 		return err
 	}
-	sql := "PRAGMA journal_mode=WAL;\n" + createORM + ";\n" + createMeta + ";\n" + createRecord + ";\n" + createUsage + ";\n" + createUsageIndex + ";\n" + ormUpsertSQL()
-	if err := execSQL(dbPath, sql); err != nil {
-		return err
-	}
-	return writeORMFile(dbPath)
-}
-
-func prepareDirs(dbPath string) error {
-	dataDir := filepath.Dir(dbPath)
-	if err := os.MkdirAll(dataDir, 0o700); err != nil {
-		return err
-	}
-	if err := os.Chmod(dataDir, 0o700); err != nil {
-		return err
-	}
-	orm, ok := ormFile(dbPath)
-	if !ok {
-		return nil
-	}
-	root := filepath.Dir(dataDir)
-	if err := os.Chmod(root, 0o700); err != nil && !os.IsPermission(err) {
-		return err
-	}
-	ormDir := filepath.Dir(orm)
-	if err := os.MkdirAll(ormDir, 0o700); err != nil {
-		return err
-	}
-	return os.Chmod(ormDir, 0o700)
-}
-
-func ormFile(dbPath string) (string, bool) {
-	if filepath.Base(dbPath) != DatabaseName+".sqlite" {
-		return "", false
-	}
-	dataDir := filepath.Dir(dbPath)
-	if filepath.Base(dataDir) != "data" {
-		return "", false
-	}
-	return filepath.Join(filepath.Dir(dataDir), "orm", DatabaseName), true
+	return sqlxMigrate(ormText())
 }
 
 func ormText() string {
 	return metaModel + "\n" + recordModel + "\n" + usageModel
-}
-
-func ormUpsertSQL() string {
-	models := []struct {
-		name string
-		body string
-		pos  int
-	}{
-		{"meta", metaModel, 0},
-		{"record", recordModel, 1},
-		{"usage", usageModel, 2},
-	}
-	var b strings.Builder
-	for _, model := range models {
-		fmt.Fprintf(&b, "INSERT INTO sqlx_orm(model, body, position) VALUES (%s, %s, %d) ON CONFLICT(model) DO UPDATE SET body = excluded.body, position = excluded.position;\n", quote(model.name), quote(model.body), model.pos)
-	}
-	return b.String()
-}
-
-func writeORMFile(dbPath string) error {
-	orm, ok := ormFile(dbPath)
-	if !ok {
-		return nil
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(orm), ".orm-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	done := false
-	defer func() {
-		if !done {
-			_ = os.Remove(tmpName)
-		}
-	}()
-	if err := tmp.Chmod(0o600); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if _, err := tmp.WriteString(ormText()); err != nil {
-		_ = tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(tmpName, orm); err != nil {
-		return err
-	}
-	done = true
-	return os.Chmod(orm, 0o600)
 }
 
 func importOnce(dbPath string) error {
@@ -530,7 +408,8 @@ func quote(value string) string {
 }
 
 func queryJSON(dbPath, sql string, dest any) error {
-	raw, err := run(dbPath, sql, "-json")
+	_ = dbPath
+	raw, err := sqlxCall(DatabaseName, "query", "--json", sql)
 	if err != nil {
 		return err
 	}
@@ -545,81 +424,67 @@ func queryJSON(dbPath, sql string, dest any) error {
 }
 
 func execSQL(dbPath, sql string) error {
-	cmd := exec.Command(sqliteBin(), append(sqliteArgs(), dbPath)...)
-	stdin, err := cmd.StdinPipe()
+	_ = dbPath
+	file, err := os.CreateTemp("", DatabaseName+"-sql-*")
 	if err != nil {
 		return err
 	}
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Start(); err != nil {
-		_ = stdin.Close()
+	sqlPath := file.Name()
+	defer os.Remove(sqlPath)
+	if _, err := file.WriteString(sql); err != nil {
+		_ = file.Close()
 		return err
 	}
-	_, writeErr := io.WriteString(stdin, sql)
-	closeErr := stdin.Close()
-	waitErr := cmd.Wait()
-	if waitErr != nil {
-		_ = chmodDB(dbPath)
-		return sqliteErr(stderr.String(), stdout.String(), waitErr)
+	if err := file.Close(); err != nil {
+		return err
 	}
-	if writeErr != nil {
-		_ = chmodDB(dbPath)
-		return writeErr
-	}
-	if closeErr != nil {
-		_ = chmodDB(dbPath)
-		return closeErr
-	}
-	return chmodDB(dbPath)
+	_, err = sqlxCall(DatabaseName, "exec", "--file", sqlPath)
+	return err
 }
 
-func run(dbPath, sql string, flags ...string) (string, error) {
-	args := append(sqliteArgs(flags...), dbPath, sql)
-	cmd := exec.Command(sqliteBin(), args...)
+func sqlxBin() string {
+	if bin := os.Getenv("SQLX_BIN"); bin != "" {
+		return bin
+	}
+	path, err := exec.LookPath("sqlx")
+	if err != nil {
+		return "sqlx"
+	}
+	return path
+}
+
+func sqlxCall(args ...string) (string, error) {
+	cmd := exec.Command(sqlxBin(), args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		_ = chmodDB(dbPath)
-		return stdout.String(), sqliteErr(stderr.String(), stdout.String(), err)
-	}
-	if err := chmodDB(dbPath); err != nil {
-		return stdout.String(), err
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = strings.TrimSpace(stdout.String())
+		}
+		if msg == "" {
+			msg = err.Error()
+		}
+		return stdout.String(), fmt.Errorf("%s", msg)
 	}
 	return stdout.String(), nil
 }
 
-func sqliteArgs(flags ...string) []string {
-	args := []string{"-batch", "-cmd", ".timeout " + sqliteTimeoutMS, "-cmd", ".bail on"}
-	return append(args, flags...)
-}
-
-func sqliteBin() string {
-	if bin := os.Getenv("SQLX_SQLITE"); bin != "" {
-		return bin
-	}
-	return "/usr/bin/sqlite3"
-}
-
-func sqliteErr(stderr, stdout string, err error) error {
-	msg := strings.TrimSpace(stderr)
-	if msg == "" {
-		msg = strings.TrimSpace(stdout)
-	}
-	if msg == "" {
-		msg = err.Error()
-	}
-	return errors.New(msg)
-}
-
-func chmodDB(dbPath string) error {
-	if _, err := os.Stat(dbPath); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil
-		}
+func sqlxMigrate(body string) error {
+	file, err := os.CreateTemp("", DatabaseName+"-orm-*")
+	if err != nil {
 		return err
 	}
-	return os.Chmod(dbPath, 0o600)
+	name := file.Name()
+	defer os.Remove(name)
+	if _, err := file.WriteString(body); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	_, err = sqlxCall(DatabaseName, "migrate", name)
+	return err
 }
