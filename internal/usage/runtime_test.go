@@ -21,6 +21,12 @@ func fakeSQLX(t *testing.T, delay string) string {
 	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	nebula := filepath.Join(t.TempDir(), "nebula")
+	put := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"" + logPath + "\"\nexit 0\n"
+	if err := os.WriteFile(nebula, []byte(put), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NEBULA_BIN", nebula)
 	if err := os.WriteFile(filepath.Join(runtime, "c3po.sqlite"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -71,8 +77,9 @@ func TestRuntimeIncrementOnlyAppendsTheJournal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(string(log)) != "local\nremote" {
-		t.Fatalf("worker sqlx commits %q", log)
+	text := string(log)
+	if strings.Count(text, "local") != 1 || strings.Contains(text, "remote") || !strings.Contains(text, "s3 put") || !strings.Contains(text, "s3://sqlx/c3po.sqlite") {
+		t.Fatalf("worker backup %q", log)
 	}
 	if rows, err := localRows(); err != nil || len(rows) != 0 {
 		t.Fatalf("journal after the worker %#v %v", rows, err)

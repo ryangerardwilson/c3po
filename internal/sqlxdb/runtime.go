@@ -1,14 +1,17 @@
 package sqlxdb
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // RuntimeMode reports whether this process is on the production path:
-// the runtime sqlite is the source of truth and Postgres is only the backup.
+// the runtime sqlite is the source of truth and s3 is the backup.
 // SQLX_ROOT and SQLX_ENGINE=sqlite stay on the local tree used by tests.
 func RuntimeMode() bool {
 	switch os.Getenv("SQLX_ENGINE") {
@@ -21,7 +24,7 @@ func RuntimeMode() bool {
 	}
 }
 
-// RuntimeDB is the sqlite file sqlx serves while the machine is up.
+// RuntimeDB is the sqlite file sql serves while the machine is up.
 func RuntimeDB() string {
 	name := DatabaseName + ".sqlite"
 	if v := os.Getenv("SQLX_RUNTIME"); v != "" {
@@ -69,9 +72,29 @@ func ExecRuntime(sql string) error {
 	return execSQLEnv([]string{"SQLX_COMMIT=local"}, sql)
 }
 
-// ExecBackup sends sql to the backup and does not write the runtime copy again.
-func ExecBackup(sql string) error {
-	return execSQLEnv([]string{"SQLX_COMMIT=remote"}, sql)
+// ExecBackup publishes the runtime sqlite. The worker already wrote it.
+func ExecBackup() error {
+	bin := os.Getenv("NEBULA_BIN")
+	if bin == "" {
+		found, err := exec.LookPath("nebula")
+		if err != nil {
+			bin = "nebula"
+		} else {
+			bin = found
+		}
+	}
+	object := "s3://sqlx/" + DatabaseName + ".sqlite"
+	cmd := exec.Command(bin, "s3", "put", RuntimeDB(), object)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("%s", msg)
+	}
+	return nil
 }
 
 // TouchRuntime opens the runtime database so a missing copy can be restored.

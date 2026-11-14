@@ -32,7 +32,7 @@ const (
 
 // rememberRuntime appends one run to the local journal and wakes the
 // detached worker. The command opens neither the runtime sqlite nor the
-// Postgres backup. A missing runtime copy wakes a restore instead.
+// s3 backup. A missing runtime copy wakes a restore instead.
 func rememberRuntime(feature, actor, day string, okAdd int, last int64) error {
 	if err := addLocal(feature, actor, day, okAdd, last); err != nil {
 		return err
@@ -46,7 +46,7 @@ func rememberRuntime(feature, actor, day string, okAdd int, last int64) error {
 }
 
 // FlushBackup is the detached usage worker. It writes the journal to the
-// runtime sqlite, then sends what it wrote to the Postgres backup, and stays
+// runtime sqlite, then publishes that file with s3, and stays
 // until no increment has arrived for workerIdle, so a burst of commands
 // shares one worker.
 func FlushBackup() {
@@ -152,14 +152,14 @@ func (w *worker) toRuntime() bool {
 	return true
 }
 
-// toBackup sends the queued statements to the backup. A failed send goes
-// back on the queue for the next worker.
+// toBackup publishes the runtime sqlite. A failed publish puts the
+// queued statements back for the next worker.
 func toBackup() (bool, error) {
 	script, err := takeQueue()
 	if err != nil || strings.TrimSpace(script) == "" {
 		return false, err
 	}
-	if err := sqlxdb.ExecBackup(script); err != nil {
+	if err := sqlxdb.ExecBackup(); err != nil {
 		_ = enqueue(script)
 		return false, err
 	}

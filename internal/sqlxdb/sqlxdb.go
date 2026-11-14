@@ -450,9 +450,9 @@ func sqlxBin() string {
 	if bin := os.Getenv("SQLX_BIN"); bin != "" {
 		return bin
 	}
-	path, err := exec.LookPath("sqlx")
+	path, err := exec.LookPath("sql")
 	if err != nil {
-		return "sqlx"
+		return "sql"
 	}
 	return path
 }
