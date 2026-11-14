@@ -146,3 +146,100 @@ func TestHookRoutesDirectDeletionToGuardedCommand(t *testing.T) {
 		t.Fatalf("unexpected decision %s", out.String())
 	}
 }
+
+// measureCacheFile returns the hook's measure cache entry, or "".
+func measureCacheFile(t *testing.T, cfg config.Config) string {
+	t.Helper()
+	matches, _ := filepath.Glob(filepath.Join(cfg.Cache.Dir, "measure", "*.json"))
+	if len(matches) > 1 {
+		t.Fatalf("cache entries %v", matches)
+	}
+	if len(matches) == 0 {
+		return ""
+	}
+	return matches[0]
+}
+
+func setCachedLOC(t *testing.T, path string, loc int) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ent map[string]any
+	if err := json.Unmarshal(data, &ent); err != nil {
+		t.Fatal(err)
+	}
+	ent["loc"] = loc
+	data, _ = json.Marshal(ent)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHookReusesMeasureUntilTheTreeChanges(t *testing.T) {
+	repo, cfg := enforcedRepo(t)
+	cfg.ThresholdLOC = 50
+	edit := Request{ToolName: "Edit", ToolInput: map[string]any{"file_path": filepath.Join(repo, "a.go")}}
+
+	create := Request{ToolName: "Write", ToolInput: map[string]any{"file_path": filepath.Join(repo, "new.go")}}
+	if got := decide(t, cfg, create); got != "allow" {
+		t.Fatalf("create %s", got)
+	}
+	if path := measureCacheFile(t, cfg); path != "" {
+		t.Fatalf("a create measured the tree: %s", path)
+	}
+
+	if got := decide(t, cfg, edit); got != "allow" {
+		t.Fatalf("small tree %s", got)
+	}
+	path := measureCacheFile(t, cfg)
+	if path == "" {
+		t.Fatal("the judged edit stored no measure")
+	}
+	// A matching fingerprint is trusted: a cached count over the threshold
+	// enforces although the tree itself is small.
+	setCachedLOC(t, path, 1000)
+	if got := decide(t, cfg, edit); got != "deny" {
+		t.Fatalf("the cached measure was recounted: %s", got)
+	}
+
+	// With a small cached count, growing the tree past the threshold
+	// changes the fingerprint and the hook recounts.
+	setCachedLOC(t, path, 3)
+	if got := decide(t, cfg, edit); got != "allow" {
+		t.Fatalf("small cached count %s", got)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "big.go"), []byte("package a\n"+strings.Repeat("//\n", 100)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := decide(t, cfg, edit); got != "deny" {
+		t.Fatalf("a stale cache hid a tree over the threshold: %s", got)
+	}
+}
+
+func TestHookReasonAvoidsAnAmbiguousRelativePath(t *testing.T) {
+	repo, cfg := enforcedRepo(t)
+	sub := filepath.Join(repo, "ast")
+	for _, dir := range []string{repo, sub} {
+		if err := os.MkdirAll(filepath.Join(dir, "internal"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "internal", "v.go"), []byte("package v\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	target := filepath.Join(repo, "internal", "v.go")
+	data, _ := json.Marshal(Request{Cwd: sub, ToolName: "Edit", ToolInput: map[string]any{"file_path": target}})
+	var out bytes.Buffer
+	if err := Run(bytes.NewReader(data), &out, cfg, "/", ""); err != nil {
+		t.Fatal(err)
+	}
+	var dec Decision
+	if err := json.Unmarshal(out.Bytes(), &dec); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(dec.PermissionDecisionReason, "c3po ast patch "+target+" ") {
+		t.Fatalf("reason %q", dec.PermissionDecisionReason)
+	}
+}

@@ -26,7 +26,7 @@ Commands:
   read <file> --lines <a>-<b> [--number] [--strict-lines]
   create <file> --expect-absent (--from-file <f>|--stdin) [--parents]
   append <file> --expect-hash <sha> (--from-file <f>|--stdin)
-  patch <file> --expect-hash <sha> [--symbol Name | --all] (--old/--new | --old-file/--new-file | --ops-file <json>)
+  patch <file> --expect-hash <sha> [--symbol Name | --all] (--old|--old-file) (--new|--new-file|--stdin) | --ops-file <json>
   apply --from-file <manifest.json|diff> [--dry-run] [--no-format]
   delete <file> --expect-hash <sha> [--prune-empty]
   move <src> <dst> --expect-hash <sha> [--parents]
@@ -42,8 +42,12 @@ Policy: ~/.config/c3po/ast/config.toml only.
 Every walk honors .gitignore, stops at nested git repos and worktrees, and skips
 directories that ignore themselves. Prose (Markdown, text) is prose_loc and does
 not reach threshold_loc unless enforcement.count_prose is set.
-LOC cached ~60s; the hook refreshes enforcement. generators.allow lists exec.
-Absolute paths outside the current root use their own repository's root.
+LOC cached ~60s, keyed by a fingerprint of dirty files, HEAD, and policy; the
+hook reuses it until that changes. generators.allow lists exec.
+Relative file paths resolve from the git root, not the current directory. When
+the same relative path also exists under the current directory, the command
+fails and names both. Absolute paths outside the current root use their own
+repository's root, for patch and apply alike.
 
 Outcome tracing (callers, callees, impact) is not capped at the search limit.
 Confidence is statically-confirmed, framework-inferred, configuration-inferred,
@@ -174,9 +178,13 @@ Exit 1 when the name is missing or ambiguous.
 
 Example: c3po ast show path/file.py:Screen.paint
 `,
-	"patch": `c3po ast patch <file> --expect-hash <sha> [--symbol Name | --all] (--old <text> --new <text> | --old-file <f> --new-file <f> | --ops-file <json>)
+	"patch": `c3po ast patch <file> --expect-hash <sha> [--symbol Name | --all] (--old <text> | --old-file <f>) (--new <text> | --new-file <f> | --stdin)
+c3po ast patch <file> --expect-hash <sha> --ops-file <json>
 
 Exact text swap after the hash matches. Without --symbol the old text must occur once and the bytes are not formatted.
+The old text is --old or --old-file. The new text is --new, --new-file, or --stdin. Each is used byte for byte: a heredoc ends with a newline, so its old text needs one too. Quote the heredoc delimiter (<<'EOF') so the shell leaves the body alone.
+A relative <file> resolves from the git root (c3po ast help). The sha256 a read --lines header prints is the --expect-hash.
+To format, use apply: the hook denies gofmt -w on an enforced file because it changes the hash patch printed.
 A text that occurs more than once fails and lists every matching line; --all replaces every occurrence.
 --ops-file is a JSON array of {"old","new","all"} applied in order, one write.
 Each success prints the new hash: pass it as --expect-hash to the next patch of that file.
@@ -188,15 +196,19 @@ A declaration already at or above max_cc may rise further. A removal is never re
 create and apply refuse the same way. c3po ast gap lists the functions already at or above max_cc.
 With --symbol the old text must occur once inside that function, method, or JSX component, and the checkout formatter runs on that file only (gofmt, ruff when declared, biome when biome.json exists, prettier or dprint when that Markdown tool is declared).
 A formatter wrapping change does not reject the edit. A missing formatter keeps the edit.
-Hash mismatch or a missing symbol exits 1 with no cc line. Missing flags exit 2.
+Hash mismatch or a missing symbol exits 1 with no cc line; a mismatch prints the file's current hash. Missing flags exit 2.
 
 Example: c3po ast patch file.go --expect-hash <sha> --symbol A --old 'old' --new 'new'
+Example: c3po ast patch notes.md --expect-hash <sha> --old-file /tmp/old.txt --stdin <<'EOF'
+new text
+EOF
 `,
 	"apply": `c3po ast apply --from-file <manifest.json|diff> [--dry-run] [--no-format]
 
 One transaction for edit, create, delete, and move. Every hash and match is checked before any write. A bad hash, a missing match, or a failed write leaves the tree untouched.
 Go, Python, TypeScript, and declared-Markdown files are formatted unless --no-format. Output names the formatter, or "none".
 --dry-run prints the planned op and the final unified diff and writes nothing.
+Paths resolve as patch resolves them: relative from the git root, absolute from their own repository (the first path picks it), so a path a hook reason prints works in both.
 Each Go edit or create is scored after formatting as patch scores it (c3po ast help patch). One crossing max_cc refuses the whole transaction: nothing is written, one refused line per declaration sorted by path then name, exit 1. --dry-run prints the same refused lines.
 
 JSON manifest: {"files":[{"path","expect_hash","op":"edit|create|delete|move","old","new","symbol","diff","to"}]}
@@ -250,7 +262,7 @@ Example: c3po ast measure --json --refresh
 	"agents-block": `c3po ast agents-block
 
 Print the canonical AGENTS.md block. This command does not write a file.
-Paste it between <!-- c3po ast:begin --> and <!-- c3po ast:end -->.
+Paste it between <!-- rgw-ast:begin --> and <!-- rgw-ast:end -->, the markers c3po ast doctor checks.
 Exit 0. Extra arguments are a usage error.
 
 Example: c3po ast agents-block
@@ -276,6 +288,7 @@ Example: c3po ast gap --check
 	"hash": `c3po ast hash <file>...
 
 Print the sha256 of each regular file. Use it immediately before patch, apply, or delete.
+read --lines prints the same hash in its header.
 Exit 1 when a file is missing. Exit 2 when no file is given.
 
 Example: c3po ast hash internal/cli/help.go
@@ -284,6 +297,7 @@ Example: c3po ast hash internal/cli/help.go
 
 Print an inclusive line range. While enforced, a whole-file read is denied.
 The header is "# <file> lines A-B of TOTAL", then the next range when a range over max_read_lines is capped, then "sha256 <hex>" of the whole file.
+That sha256 is the --expect-hash for the next patch, apply, move, or delete, so a bounded read needs no separate hash.
 --strict-lines fails when the range is over max_read_lines or passes the end of the file.
 Exit 1 on a denied or missing read. Exit 2 on bad flags.
 
@@ -324,6 +338,8 @@ Example: c3po ast delete tmp.go --expect-hash <sha>
 	"exec": `c3po ast exec [--json] -- <command...>
 
 Run one allowlisted generator. generators.allow is global. The report lists created and modified paths with hashes.
+A command outside generators.allow fails before the tree is measured or snapshotted.
+Ignored paths are compared by size and mtime and hashed only when new or changed. Ignored dependency and build trees (node_modules, vendor, dist, .venv, ...) and nested repositories are reported only when created or removed; their files are not listed or hashed.
 Exit 1 when the generator exits non-zero or the command is not allowed. Exit 2 when -- is missing.
 
 Example: c3po ast exec -- npm exec -- openspec validate --all --strict --no-interactive

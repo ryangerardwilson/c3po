@@ -600,8 +600,10 @@ type genCall struct {
 const (
 	hintMove   = "use c3po ast move <src> <dst> --expect-hash <sha> (c3po ast hash <src> prints the hash)"
 	hintDelete = "use c3po ast delete <file> --expect-hash <sha> (c3po ast hash <file> prints the hash)"
-	hintPatch  = "use c3po ast hash <file>, then c3po ast patch <file> --expect-hash <sha> --old <text> --new <text> [--all]"
+	hintPatch  = "use c3po ast hash <file> (or the sha256 c3po ast read --lines prints), then c3po ast patch <file> --expect-hash <sha> --old <text> --new <text>. " + patchSources
 	hintInline = "inline interpreter code writes files; use c3po ast patch/create/move/delete instead"
+	hintFormat = "an in-place formatter rewrites the file, so the hash your last c3po ast patch printed stops matching." +
+		" Write the change with c3po ast apply --from-file <manifest.json|git diff>, which runs gofmt and prints the formatted hash"
 )
 
 func (a *writeAnalysis) add(path, cwd string) {
@@ -625,11 +627,12 @@ func (a *writeAnalysis) script(src, cwd string, depth int) {
 	if err == nil && a.learn(sc) {
 		sc, err = parseShell(src, a.vars) // expand the variables just learned
 	}
-	if err != nil || sc.opaque {
+	if err != nil {
 		a.add(".", cwd)
-		if err != nil {
-			return
-		}
+		return
+	}
+	if sc.opaque {
+		a.targets = append(a.targets, shTarget{path: absPath(".", cwd), hint: opaqueHint(sc)})
 	}
 	for _, sub := range sc.subs {
 		a.script(sub, cwd, depth+1)
@@ -637,6 +640,37 @@ func (a *writeAnalysis) script(src, cwd string, depth int) {
 	for _, c := range sc.cmds {
 		cwd = a.command(c, cwd, depth)
 	}
+}
+
+// opaqueHint explains a write judged only because an unquoted heredoc body
+// runs substitutions. A c3po ast command fed that way is already the right
+// command, so the reason only asks for a quoted delimiter.
+func opaqueHint(sc shScript) string {
+	for _, c := range sc.cmds {
+		if name := astCommand(stripPrefixes(c.words)); name != "" {
+			return "the heredoc delimiter is unquoted, so the shell runs $(...) and backquotes in its body before " + name +
+				" reads it. Quote the delimiter (<<'EOF') and rerun the same " + name + " command"
+		}
+	}
+	return "an unquoted heredoc body runs $(...) or backquotes; quote the delimiter (<<'EOF'), or " + shellDenyDefault
+}
+
+// astCommand returns "c3po ast <sub>" when words run c3po ast or rgw-ast.
+func astCommand(words []shWord) string {
+	if len(words) == 0 {
+		return ""
+	}
+	switch filepath.Base(words[0].text) {
+	case "rgw-ast":
+		if len(words) > 1 {
+			return "c3po ast " + words[1].text
+		}
+	case "c3po":
+		if len(words) > 2 && words[1].text == "ast" {
+			return "c3po ast " + words[2].text
+		}
+	}
+	return ""
 }
 
 // learn records NAME=value commands whose value is static, so later $NAME
@@ -696,6 +730,7 @@ func (a *writeAnalysis) command(c shCommand, cwd string, depth int) string {
 		return next
 	}
 	a.commandFiles(name, args, cwd)
+	a.commandFormat(name, args, cwd)
 	a.commandProcess(name, args, cwd, depth)
 	return cwd
 }
@@ -879,6 +914,67 @@ func (a *writeAnalysis) find(args []shWord, cwd string, depth int) {
 			}
 		}
 	}
+}
+
+// commandFormat records the files an in-place formatter rewrites.
+func (a *writeAnalysis) commandFormat(name string, args []shWord, cwd string) {
+	var targets []shWord
+	switch {
+	case name == "gofmt":
+		targets = gofmtWrites(args)
+	case name == "go" && len(args) > 0 && args[0].text == "fmt":
+		targets = goFmtDirs(args[1:])
+	}
+	if len(targets) > 0 {
+		a.hint = hintFormat
+	}
+	for _, w := range targets {
+		a.addWord(w, cwd)
+	}
+}
+
+// gofmtWrites returns the operands gofmt rewrites: all of them with -w,
+// none without it. gofmt -w on standard input is an error, not a write.
+func gofmtWrites(args []shWord) []shWord {
+	write := false
+	var ops []shWord
+	for i := 0; i < len(args); i++ {
+		t := strings.TrimPrefix(args[i].text, "-")
+		switch {
+		case !strings.HasPrefix(args[i].text, "-") || args[i].text == "-":
+			ops = append(ops, args[i])
+		case t == "w" || t == "-w" || t == "w=true" || t == "-w=true":
+			write = true
+		case t == "r" || t == "-r" || t == "cpuprofile" || t == "-cpuprofile":
+			i++ // the flag's value
+		}
+	}
+	if !write {
+		return nil
+	}
+	return ops
+}
+
+// goFmtDirs returns the directories go fmt rewrites. ./... names its root;
+// an import path or no package at all is judged as the current directory.
+func goFmtDirs(args []shWord) []shWord {
+	var dirs []shWord
+	for _, w := range args {
+		switch t := w.text; {
+		case t == "-n":
+			return nil // prints the commands without running them
+		case strings.HasPrefix(t, "-"):
+		case strings.HasPrefix(t, ".") || strings.HasPrefix(t, "/"):
+			w.text = strings.TrimSuffix(strings.TrimSuffix(t, "..."), "/")
+			dirs = append(dirs, w)
+		default:
+			dirs = append(dirs, shWord{text: "."})
+		}
+	}
+	if len(dirs) == 0 {
+		dirs = []shWord{{text: "."}}
+	}
+	return dirs
 }
 
 // copyValuedOptions are the options of copy-like commands whose value is the

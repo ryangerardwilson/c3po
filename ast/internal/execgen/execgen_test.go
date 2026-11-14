@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ryangerardwilson/c3po/ast/internal/config"
@@ -131,4 +132,45 @@ func TestExecDetectsDirtyPathReturningClean(t *testing.T) {
 		}
 	}
 	t.Fatalf("dirty-to-clean content delta missing: %+v", rep.Changes)
+}
+
+func TestExecDoesNotListOrHashIgnoredDependencyTrees(t *testing.T) {
+	root := t.TempDir()
+	if err := exec.Command("git", "init", root).Run(); err != nil {
+		t.Skip(err)
+	}
+	must(t, os.WriteFile(filepath.Join(root, ".gitignore"), []byte("node_modules/\ndist/\n*.log\n"), 0o644))
+	must(t, os.MkdirAll(filepath.Join(root, "node_modules", "pkg"), 0o755))
+	must(t, os.WriteFile(filepath.Join(root, "node_modules", "pkg", "index.js"), []byte("x\n"), 0o644))
+
+	cfg := config.Default()
+	cfg.Generators.Allow = []string{"sh -c"}
+	script := "printf y > node_modules/pkg/index.js; printf z > node_modules/pkg/new.js; " +
+		"mkdir -p dist/a && printf d > dist/a/out.js; printf w > gen.log; printf s > src.go"
+	rep, err := Run(root, cfg, []string{"sh", "-c", script}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]Change{}
+	for _, c := range rep.IgnoredObserved {
+		got[c.Path] = c
+	}
+	for path := range got {
+		if strings.HasPrefix(path, "node_modules/") || strings.HasPrefix(path, "dist/a") {
+			t.Fatalf("listed a file inside an ignored tree: %+v", rep.IgnoredObserved)
+		}
+	}
+	if c := got["dist/"]; c.Status != "created_ignored" || c.Hash != "" {
+		t.Fatalf("new ignored tree: %+v", rep.IgnoredObserved)
+	}
+	if c := got["gen.log"]; c.Status != "created_ignored" || c.Hash == "" {
+		t.Fatalf("ignored file write: %+v", rep.IgnoredObserved)
+	}
+	found := false
+	for _, c := range rep.Changes {
+		found = found || (c.Path == "src.go" && c.Status == "created" && c.Hash != "")
+	}
+	if !found {
+		t.Fatalf("generator write missing: %+v", rep.Changes)
+	}
 }

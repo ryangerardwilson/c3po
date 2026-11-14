@@ -72,14 +72,20 @@ number.
 replacements when the file hash matches. Content sources:
 - `--old` / `--new` argv pairs (single op)
 - `--old-file` / `--new-file`
+- `--old` or `--old-file` with `--stdin`, which reads the new text from
+  standard input; `--stdin` SHALL NOT combine with `--new`, `--new-file`, or
+  `--ops-file`
 - `--ops-file <json>` as an array of `{"old":"...","new":"...","all":bool}`
   applied in order against the original content, then one atomic write
+
+Every source SHALL be used byte for byte; a plain patch SHALL NOT format.
 
 If the hash mismatches, old string is not found, or old string matches more
 than once for an op without `--all` (or `"all": true`), the tool SHALL fail
 without modifying the file. A multiple-match failure SHALL list the line
 number of every match. A hash mismatch SHALL say to re-hash or use the hash
-printed by the last write. With `--all`, every occurrence SHALL be replaced.
+printed by the last write, and SHALL print the file's current hash. With
+`--all`, every occurrence SHALL be replaced.
 When enforcement is active and `require_hash_before_patch` is true, omitting
 `--expect-hash` SHALL be a usage or runtime error.
 
@@ -106,10 +112,30 @@ When enforcement is active and `require_hash_before_patch` is true, omitting
 - **THEN** the process SHALL exit 1
 - **AND** stderr SHALL contain `3` and `9`
 
+#### Scenario: New text from stdin
+- **GIVEN** a file containing `one\ntwo\n` with hash H
+- **WHEN** patch runs with `--expect-hash H --old 'two\n' --stdin` and stdin `TWO\n`
+- **THEN** the file SHALL contain exactly `one\nTWO\n`
+
 #### Scenario: Replace all
 - **GIVEN** `x = 1` occurs twice
 - **WHEN** patch runs with `--old 'x = 1' --new 'x = 2' --all`
 - **THEN** both occurrences SHALL be replaced
+
+### Requirement: Relative paths resolve from the git root
+A relative path given to `hash`, `read`, `create`, `append`, `patch`,
+`delete`, `move`, or `apply` SHALL resolve from the workspace root (the git
+root, or `--root`), not from the process directory. When the process
+directory is below that root and the same relative path also exists under
+the process directory, the command SHALL exit 1 without writing, and the
+error SHALL name both absolute paths.
+
+#### Scenario: Same relative path at the root and under the directory
+- **GIVEN** `internal/version/v.go` and `ast/internal/version/v.go` both exist
+- **AND** the process directory is `ast/`
+- **WHEN** the user runs `rgw-ast hash internal/version/v.go`
+- **THEN** the process SHALL exit 1
+- **AND** stderr SHALL name both files
 
 ### Requirement: Transactional apply
 `rgw-ast apply --from-file <manifest.json|bundle.diff> [--dry-run] [--no-format]`

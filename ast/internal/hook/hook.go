@@ -71,14 +71,14 @@ func Evaluate(req Request, cfg config.Config, cwd, rootOverride string) (Decisio
 		if target == "" {
 			target = absPath(".", cwd) // no path given: judge the session directory
 		}
+		if createTools[tool] {
+			if _, err := os.Lstat(target); os.IsNotExist(err) {
+				return allow(), nil // a create cannot clobber anything, so it is not measured
+			}
+		}
 		repo, enforced, err := j.enforced(target)
 		if err != nil || !enforced {
 			return allow(), err
-		}
-		if createTools[tool] {
-			if _, err := os.Lstat(target); os.IsNotExist(err) {
-				return allow(), nil // a create cannot clobber anything
-			}
 		}
 		return deny(j.fileDenyReason(repo, target, name, cwd)), nil
 	}
@@ -249,7 +249,9 @@ func (j *judge) enforced(target string) (string, bool, error) {
 	if on, ok := j.measured[repo]; ok {
 		return repo, on, nil
 	}
-	m, err := measure.CountCachedOpts(repo, j.cfg, measure.CountOpts{Refresh: true})
+	// The cache is keyed by a fingerprint of the tree's dirty files, HEAD, and
+	// policy, so a tree that grew past the threshold misses it and is recounted.
+	m, err := measure.CountCached(repo, j.cfg)
 	if err != nil {
 		return "", false, err
 	}

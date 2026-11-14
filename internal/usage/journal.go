@@ -43,6 +43,29 @@ func addLocal(feature, actor, day string, okAdd int, last int64) error {
 	})
 }
 
+// subtractLocal removes rows that were written to the runtime sqlite from
+// the journal. Runs added while they were written stay in the journal.
+func subtractLocal(done []sqlxdb.UsageRow) error {
+	type key struct{ feature, actor, day string }
+	written := map[key]sqlxdb.UsageRow{}
+	for _, row := range done {
+		written[key{row.Feature, row.Actor, row.Day}] = row
+	}
+	return updateLocal(func(rows []sqlxdb.UsageRow) ([]sqlxdb.UsageRow, bool) {
+		keep := []sqlxdb.UsageRow{}
+		for _, row := range rows {
+			if w, ok := written[key{row.Feature, row.Actor, row.Day}]; ok {
+				row.N -= w.N
+				row.OK = max(row.OK-w.OK, 0)
+			}
+			if row.N > 0 {
+				keep = append(keep, row)
+			}
+		}
+		return keep, true
+	})
+}
+
 func localRows() ([]sqlxdb.UsageRow, error) {
 	path, err := journalPath()
 	if err != nil {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -57,16 +58,26 @@ func gitDirtyFingerprint(root string) []byte {
 	if out == nil {
 		if runGit(root, "rev-parse", "--is-inside-work-tree") != nil {
 			// clean or empty status
-			return append([]byte("git-clean\n"), sampleNestedMtimes(root)...)
+			return append([]byte("git-clean\n"), sampleNestedMtimes(root, 3)...)
 		}
-		return sampleNestedMtimes(root)
+		// Without git there is no status to say what changed, so every file
+		// the count could read is sampled.
+		return sampleNestedMtimes(root, -1)
 	}
 	h := sha256.New()
 	_, _ = h.Write([]byte("porcelain\n"))
 	_, _ = h.Write(out)
 	// Hash content of each dirty/untracked path so repeated edits while
 	// porcelain status text is unchanged still invalidate the cache.
-	for path := range ParsePorcelainPaths(string(out)) {
+	// Paths are hashed in sorted order: map order would make the fingerprint
+	// differ between runs on the same tree.
+	dirty := ParsePorcelainPaths(string(out))
+	paths := make([]string, 0, len(dirty))
+	for path := range dirty {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
 		sum, err := hashDirtyFile(filepath.Join(root, path))
 		if err != nil {
 			_, _ = h.Write([]byte("missing:" + path))
@@ -100,7 +111,9 @@ func hashDirtyFile(abs string) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
-func sampleNestedMtimes(root string) []byte {
+// sampleNestedMtimes hashes the path, size, and mtime of entries under root
+// down to maxDepth levels. A negative maxDepth has no limit.
+func sampleNestedMtimes(root string, maxDepth int) []byte {
 	h := sha256.New()
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -110,7 +123,7 @@ func sampleNestedMtimes(root string) []byte {
 		if err != nil || rel == "." {
 			return nil
 		}
-		if depth := pathDepth(rel); depth > 3 {
+		if depth := pathDepth(rel); maxDepth >= 0 && depth > maxDepth {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
@@ -129,10 +142,11 @@ func sampleNestedMtimes(root string) []byte {
 			return nil
 		}
 		_, _ = h.Write([]byte(rel))
-		nsec := info.ModTime().UnixNano()
-		var b [8]byte
+		nsec, size := info.ModTime().UnixNano(), info.Size()
+		var b [16]byte
 		for i := 0; i < 8; i++ {
 			b[i] = byte(nsec >> (8 * i))
+			b[8+i] = byte(size >> (8 * i))
 		}
 		_, _ = h.Write(b[:])
 		return nil

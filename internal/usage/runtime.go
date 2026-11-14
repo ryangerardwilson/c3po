@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -13,71 +12,176 @@ import (
 )
 
 // wakeBackup and wakeRestore start detached work. Tests replace them.
-var wakeBackup = func() { spawnWorker("__usage-backup", "usage-backup.pid") }
+var wakeBackup = func() { spawnWorker("__usage-backup", backupLock) }
 
-var wakeRestore = func() { spawnWorker("__usage-restore", "usage-restore.pid") }
+var wakeRestore = func() { spawnWorker("__usage-restore", restoreLock) }
 
-// rememberRuntime stores one run in the runtime sqlite. The Postgres backup
-// is started in the background. A missing runtime copy is held in the local
-// journal and a restore is started without blocking the command.
+// The usage worker waits workerIdle for another increment before it exits
+// and looks every workerPoll. Tests replace them.
+var (
+	workerIdle = 3 * time.Second
+	workerPoll = 100 * time.Millisecond
+)
+
+// A worker holds its lock file while it runs. A held lock means a worker is
+// alive, so a command does not start another one.
+const (
+	backupLock  = "usage-backup.lock"
+	restoreLock = "usage-restore.lock"
+)
+
+// rememberRuntime appends one run to the local journal and wakes the
+// detached worker. The command opens neither the runtime sqlite nor the
+// Postgres backup. A missing runtime copy wakes a restore instead.
 func rememberRuntime(feature, actor, day string, okAdd int, last int64) error {
-	if !sqlxdb.RuntimeReady() {
-		if err := addLocal(feature, actor, day, okAdd, last); err != nil {
-			return err
-		}
+	if err := addLocal(feature, actor, day, okAdd, last); err != nil {
+		return err
+	}
+	if sqlxdb.RuntimeReady() {
+		wakeBackup()
+	} else {
 		wakeRestore()
-		return nil
+	}
+	return nil
+}
+
+// FlushBackup is the detached usage worker. It writes the journal to the
+// runtime sqlite, then sends what it wrote to the Postgres backup, and stays
+// until no increment has arrived for workerIdle, so a burst of commands
+// shares one worker.
+func FlushBackup() {
+	for {
+		lock, ok := tryLock(backupLock)
+		if !ok {
+			return // another worker is draining
+		}
+		w := &worker{}
+		seen := w.drain()
+		_ = lock.Close()
+		// A command that appended after the last look found the lock held
+		// and started no worker. Take its increment rather than strand it.
+		if journalStamp() == seen {
+			return
+		}
+	}
+}
+
+// RestoreRuntime opens the runtime database so sqlx can restore it from the
+// backup, then drains the journal that waited for it.
+func RestoreRuntime() {
+	lock, ok := tryLock(restoreLock)
+	if !ok {
+		return
+	}
+	_ = sqlxdb.TouchRuntime()
+	_ = lock.Close()
+	if sqlxdb.RuntimeReady() {
+		FlushBackup()
+	}
+}
+
+// subtractJournal removes rows the runtime sqlite already has. Tests replace
+// it so a failed removal cannot apply the same increment again.
+var subtractJournal = subtractLocal
+
+type worker struct {
+	backupDown bool   // the last send failed; wait for new rows before retrying
+	applied    string // runtime script already executed while its journal removal failed
+}
+
+// drain moves batches until none has arrived for workerIdle and returns the
+// journal stamp it saw last.
+func (w *worker) drain() stamp {
+	quiet := time.Now()
+	for {
+		seen := journalStamp()
+		if w.step() {
+			quiet = time.Now()
+			continue
+		}
+		if time.Since(quiet) >= workerIdle {
+			return seen
+		}
+		time.Sleep(workerPoll)
+	}
+}
+
+// step moves one batch and reports whether anything moved.
+func (w *worker) step() bool {
+	moved := w.toRuntime()
+	if moved {
+		w.backupDown = false
+	}
+	if w.backupDown {
+		return moved
+	}
+	sent, err := toBackup()
+	w.backupDown = err != nil
+	return moved || sent
+}
+
+// toRuntime writes the journal to the runtime sqlite, then removes those rows
+// and queues the same statements for the backup. A failed sqlite write leaves
+// the journal alone. applied stops a failed removal from writing those rows
+// again on the next look.
+func (w *worker) toRuntime() bool {
+	if !sqlxdb.RuntimeReady() {
+		return false
 	}
 	rows, err := localRows()
-	if err != nil {
-		rows = nil
+	if err != nil || len(rows) == 0 {
+		w.applied = ""
+		return false
 	}
 	var b strings.Builder
 	for _, row := range rows {
 		b.WriteString(sqlxdb.UsageBody(row.Feature, row.Actor, row.Day, row.N, row.OK, row.Last))
 	}
-	b.WriteString(sqlxdb.UsageBody(feature, actor, day, 1, okAdd, last))
 	script := sqlxdb.WrapUsage(b.String())
-	if err := sqlxdb.ExecRuntime(script); err != nil {
-		return addLocal(feature, actor, day, okAdd, last)
-	}
-	if len(rows) > 0 {
-		_ = clearJournal()
-	}
-	if err := enqueue(script); err != nil {
-		return err
-	}
-	wakeBackup()
-	return nil
-}
-
-func clearJournal() error {
-	return updateLocal(func([]sqlxdb.UsageRow) ([]sqlxdb.UsageRow, bool) {
-		return []sqlxdb.UsageRow{}, true
-	})
-}
-
-// FlushBackup applies queued usage statements to the Postgres backup.
-// The command that queued them has already returned.
-func FlushBackup() {
-	defer clearPid("usage-backup.pid")
-	for {
-		script, err := takeQueue()
-		if err != nil || strings.TrimSpace(script) == "" {
-			time.Sleep(50 * time.Millisecond)
-			script, err = takeQueue()
-			if err != nil || strings.TrimSpace(script) == "" {
-				return
-			}
+	if script != w.applied {
+		if err := sqlxdb.ExecRuntime(script); err != nil {
+			return false
 		}
-		_ = sqlxdb.ExecBackup(script)
+		w.applied = script
 	}
+	if err := subtractJournal(rows); err != nil {
+		return false
+	}
+	w.applied = ""
+	_ = enqueue(script)
+	return true
 }
 
-// RestoreRuntime opens the runtime database so sqlx can restore it from the backup.
-func RestoreRuntime() {
-	defer clearPid("usage-restore.pid")
-	_ = sqlxdb.TouchRuntime()
+// toBackup sends the queued statements to the backup. A failed send goes
+// back on the queue for the next worker.
+func toBackup() (bool, error) {
+	script, err := takeQueue()
+	if err != nil || strings.TrimSpace(script) == "" {
+		return false, err
+	}
+	if err := sqlxdb.ExecBackup(script); err != nil {
+		_ = enqueue(script)
+		return false, err
+	}
+	return true, nil
+}
+
+// stamp identifies one version of the journal file.
+type stamp struct {
+	size  int64
+	mtime int64
+}
+
+func journalStamp() stamp {
+	path, err := journalPath()
+	if err != nil {
+		return stamp{}
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return stamp{}
+	}
+	return stamp{size: info.Size(), mtime: info.ModTime().UnixNano()}
 }
 
 func enqueue(script string) error {
@@ -157,20 +261,37 @@ func lockFile(path string) (*os.File, error) {
 	return file, nil
 }
 
-func spawnWorker(arg, pidName string) {
-	pidPath, err := pidPath(pidName)
-	if err != nil || procAlive(pidPath) {
-		return
-	}
-	_ = os.Remove(pidPath)
-	pidFile, err := os.OpenFile(pidPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+// tryLock takes a worker lock in the state directory without waiting.
+// Closing the file releases it.
+func tryLock(name string) (*os.File, bool) {
+	dir, err := stateDir()
 	if err != nil {
+		return nil, false
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, false
+	}
+	file, err := os.OpenFile(filepath.Join(dir, name), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, false
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = file.Close()
+		return nil, false
+	}
+	return file, true
+}
+
+// spawnWorker starts arg as a detached process unless a worker already holds
+// lockName.
+func spawnWorker(arg, lockName string) {
+	lock, ok := tryLock(lockName)
+	if !ok {
 		return
 	}
+	_ = lock.Close()
 	exe, err := os.Executable()
 	if err != nil {
-		_ = pidFile.Close()
-		_ = os.Remove(pidPath)
 		return
 	}
 	cmd := exec.Command(exe, arg)
@@ -181,46 +302,7 @@ func spawnWorker(arg, pidName string) {
 		cmd.Stdin = null
 	}
 	if err := cmd.Start(); err != nil {
-		_ = pidFile.Close()
-		_ = os.Remove(pidPath)
 		return
 	}
-	_, _ = pidFile.WriteString(strconv.Itoa(cmd.Process.Pid) + "\n")
-	_ = pidFile.Close()
 	_ = cmd.Process.Release()
-}
-
-func pidPath(name string) (string, error) {
-	dir, err := stateDir()
-	if err != nil {
-		return "", err
-	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, name), nil
-}
-
-func clearPid(name string) {
-	path, err := pidPath(name)
-	if err != nil {
-		return
-	}
-	_ = os.Remove(path)
-}
-
-func procAlive(path string) bool {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil || pid <= 0 {
-		return false
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	return proc.Signal(syscall.Signal(0)) == nil
 }

@@ -45,7 +45,7 @@ rgw-ast [--root <path>] read <file> --lines START-END [--number] [--strict-lines
 rgw-ast [--root <path>] create <file> --expect-absent (--from-file f|--stdin) [--parents]
 rgw-ast [--root <path>] append <file> --expect-hash <sha> (--from-file f|--stdin)
 rgw-ast [--root <path>] patch <file> --expect-hash <sha> [--symbol Name | --all] \
-  (--old/--new | --old-file/--new-file | --ops-file ops.json)
+  (--old|--old-file) (--new|--new-file|--stdin) | --ops-file ops.json
 rgw-ast [--root <path>] apply --from-file <manifest.json|diff> [--dry-run] [--no-format]
 rgw-ast [--root <path>] delete <file> --expect-hash <sha> [--prune-empty]
 rgw-ast [--root <path>] move <src> <dst> --expect-hash <sha> [--parents]
@@ -72,9 +72,21 @@ rgw-ast [--root <path>] cut [--json] [path]
   enforced.
 - An absolute path outside the current root uses its own repository's root,
   as the hook does.
-- The PreToolUse hook recomputes enforcement with a fresh measure. `read
-  --lines`, `patch`, `delete`, and `move` do not walk the tree to remeasure;
-  whole-file `read` decides enforcement from the cached measure.
+- The PreToolUse hook decides enforcement from the cached measure. The cache
+  fingerprint covers dirty and untracked paths and their content, HEAD, the
+  root ignore files, and policy, so a tree that grows past the threshold
+  misses it. A host Write of a missing path is allowed before any measure.
+  `read --lines`, `patch`, `delete`, and `move` do not walk the tree to
+  remeasure; whole-file `read` decides enforcement from the cached measure.
+- Relative file paths resolve from the git root, not the current directory.
+  When the same relative path also exists under the current directory, the
+  command fails and names both files. `apply` takes the same absolute paths
+  as `patch`.
+- `patch` takes the new text from `--new`, `--new-file`, or `--stdin` and
+  writes bytes exactly. The hook denies in-place `gofmt -w` and `go fmt` on
+  enforced files; `apply` formats.
+- `exec` checks `generators.allow` before it measures. Ignored dependency and
+  build trees such as `node_modules/` are not listed or hashed.
 - Delete removes one verified regular file only. It rejects stale hashes,
   directories, symlinks, special files, and outside-root paths; `--prune-empty`
   removes only empty ancestors and never the workspace root.

@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -100,5 +101,88 @@ func TestAmbiguousTraceJSON(t *testing.T) {
 	}
 	if res.Assessment == nil || res.Assessment.Conclusion != "ambiguous" || len(res.Candidates) != 2 {
 		t.Fatalf("assessment %+v", res.Assessment)
+	}
+}
+
+func TestExecRefusesBeforeMeasuring(t *testing.T) {
+	r, _, errB, ws := frictionRunner(t, 1)
+	mustWrite(t, filepath.Join(ws, "a.go"), "package a\n")
+	cfg, _, err := r.load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := r.Run([]string{"exec", "--", "rm", "-rf", "a.go"}); code != 1 || !strings.Contains(errB.String(), "generators.allow") {
+		t.Fatalf("exec %d %q", code, errB.String())
+	}
+	if matches, _ := filepath.Glob(filepath.Join(cfg.Cache.Dir, "measure", "*.json")); len(matches) != 0 {
+		t.Fatalf("a refused exec measured the tree: %v", matches)
+	}
+}
+
+func TestPatchNewTextFromStdin(t *testing.T) {
+	r, _, errB, ws := frictionRunner(t, 1)
+	path := filepath.Join(ws, "a.txt")
+	mustWrite(t, path, "one\ntwo\n")
+	sum, _ := files.HashFile(path)
+	r.In = strings.NewReader("TWO\n")
+	if code := r.Run([]string{"patch", "a.txt", "--expect-hash", sum, "--old", "two\n", "--stdin"}); code != 0 {
+		t.Fatalf("patch --stdin %d %q", code, errB.String())
+	}
+	if got, _ := os.ReadFile(path); string(got) != "one\nTWO\n" {
+		t.Fatalf("patched %q", got)
+	}
+	sum, _ = files.HashFile(path)
+	errB.Reset()
+	if code := r.Run([]string{"patch", "a.txt", "--expect-hash", sum, "--old", "one", "--new", "x", "--stdin"}); code != 2 || !strings.Contains(errB.String(), "--stdin is the new text") {
+		t.Fatalf("--stdin with --new %d %q", code, errB.String())
+	}
+}
+
+func TestRelativePathInBothRootAndCwdIsAnError(t *testing.T) {
+	r, out, errB, ws := frictionRunner(t, 1)
+	if err := exec.Command("git", "-C", ws, "init", "-q").Run(); err != nil {
+		t.Skip("git unavailable")
+	}
+	mustWrite(t, filepath.Join(ws, "internal", "version", "v.go"), "package version\n")
+	mustWrite(t, filepath.Join(ws, "ast", "internal", "version", "v.go"), "package version\n// ast\n")
+	mustWrite(t, filepath.Join(ws, "only.go"), "package root\n")
+	r.Cwd = filepath.Join(ws, "ast")
+	if code := r.Run([]string{"hash", "internal/version/v.go"}); code != 1 ||
+		!strings.Contains(errB.String(), filepath.Join(ws, "internal", "version", "v.go")) ||
+		!strings.Contains(errB.String(), filepath.Join(ws, "ast", "internal", "version", "v.go")) {
+		t.Fatalf("ambiguous hash %d %q", code, errB.String())
+	}
+	sum, _ := files.HashFile(filepath.Join(ws, "internal", "version", "v.go"))
+	errB.Reset()
+	if code := r.Run([]string{"patch", "internal/version/v.go", "--expect-hash", sum, "--old", "version", "--new", "v"}); code != 1 || !strings.Contains(errB.String(), "ambiguous") {
+		t.Fatalf("ambiguous patch %d %q", code, errB.String())
+	}
+	out.Reset()
+	if code := r.Run([]string{"hash", "only.go"}); code != 0 || !strings.Contains(out.String(), "only.go") {
+		t.Fatalf("root-relative hash from a subdirectory %d %q %q", code, out.String(), errB.String())
+	}
+	out.Reset()
+	if code := r.Run([]string{"hash", filepath.Join(ws, "ast", "internal", "version", "v.go")}); code != 0 {
+		t.Fatalf("absolute hash %d %q", code, errB.String())
+	}
+}
+
+func TestApplyAcceptsAbsolutePathsLikePatch(t *testing.T) {
+	r, out, errB, _ := frictionRunner(t, 1)
+	other := t.TempDir()
+	if err := exec.Command("git", "-C", other, "init", "-q").Run(); err != nil {
+		t.Skip("git unavailable")
+	}
+	target := filepath.Join(other, "f.txt")
+	mustWrite(t, target, "hi\n")
+	sum, _ := files.HashFile(target)
+	body, _ := json.Marshal(map[string]any{"files": []map[string]string{{"path": target, "expect_hash": sum, "old": "hi", "new": "yo"}}})
+	manifest := filepath.Join(t.TempDir(), "m.json")
+	mustWrite(t, manifest, string(body))
+	if code := r.Run([]string{"apply", "--from-file", manifest}); code != 0 {
+		t.Fatalf("apply absolute %d %q %q", code, out.String(), errB.String())
+	}
+	if got, _ := os.ReadFile(target); string(got) != "yo\n" {
+		t.Fatalf("applied %q", got)
 	}
 }

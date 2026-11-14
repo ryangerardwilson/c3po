@@ -6,14 +6,18 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
 )
 
-func TestRuntimeIncrementDoesNotWaitOnTheBackup(t *testing.T) {
-	state := t.TempDir()
+// fakeSQLX installs a sqlx that logs each SQLX_COMMIT and sleeps delay
+// seconds, plus a runtime copy, and returns the log path.
+func fakeSQLX(t *testing.T, delay string) string {
+	t.Helper()
 	runtime := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "sqlx.log")
 	bin := filepath.Join(t.TempDir(), "sqlx")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$SQLX_COMMIT\" >> \"" + logPath + "\"\nexit 0\n"
+	script := "#!/bin/sh\nprintf '%s\\n' \"$SQLX_COMMIT\" >> \"" + logPath + "\"\nsleep " + delay + "\nexit 0\n"
 	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -24,6 +28,15 @@ func TestRuntimeIncrementDoesNotWaitOnTheBackup(t *testing.T) {
 	t.Setenv("SQLX_ENGINE", "postgres")
 	t.Setenv("SQLX_RUNTIME", runtime)
 	t.Setenv("SQLX_BIN", bin)
+	oldIdle, oldPoll := workerIdle, workerPoll
+	workerIdle, workerPoll = 300*time.Millisecond, 10*time.Millisecond
+	t.Cleanup(func() { workerIdle, workerPoll = oldIdle, oldPoll })
+	return logPath
+}
+
+func TestRuntimeIncrementOnlyAppendsTheJournal(t *testing.T) {
+	state := t.TempDir()
+	logPath := fakeSQLX(t, "0")
 	t.Setenv("XDG_STATE_HOME", state)
 	t.Setenv("C3PO_ACTOR", "agent")
 	oldNow := Now
@@ -41,18 +54,65 @@ func TestRuntimeIncrementDoesNotWaitOnTheBackup(t *testing.T) {
 
 	Note(0, []string{"c3po", "version"})
 
-	log, err := os.ReadFile(logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.TrimSpace(string(log)) != "local" {
-		t.Fatalf("sqlx commit %q", log)
+	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
+		t.Fatalf("the command ran sqlx: %v", err)
 	}
 	if backed != 1 {
 		t.Fatalf("backup wakes %d", backed)
 	}
-	if _, err := os.Stat(filepath.Join(state, "c3po", "usage.json")); !os.IsNotExist(err) {
-		t.Fatalf("journal %v", err)
+	rows, err := localRows()
+	if err != nil || len(rows) != 1 || rows[0].Feature != "version" || rows[0].N != 1 {
+		t.Fatalf("journal %#v %v", rows, err)
+	}
+
+	FlushBackup()
+
+	log, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(log)) != "local\nremote" {
+		t.Fatalf("worker sqlx commits %q", log)
+	}
+	if rows, err := localRows(); err != nil || len(rows) != 0 {
+		t.Fatalf("journal after the worker %#v %v", rows, err)
+	}
+	if script, err := takeQueue(); err != nil || script != "" {
+		t.Fatalf("backup queue after the worker %q %v", script, err)
+	}
+}
+
+func TestOneWorkerDrainsIncrementsThatArriveWhileItWorks(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	logPath := fakeSQLX(t, "0.2")
+	t.Setenv("C3PO_ACTOR", "agent")
+	oldBackup := wakeBackup
+	wakeBackup = func() {}
+	t.Cleanup(func() { wakeBackup = oldBackup })
+
+	Note(0, []string{"c3po", "version"})
+	done := make(chan struct{})
+	go func() {
+		FlushBackup()
+		close(done)
+	}()
+	time.Sleep(100 * time.Millisecond) // the worker is inside its first sqlx call
+	if lock, ok := tryLock(backupLock); ok {
+		_ = lock.Close()
+		t.Fatal("the worker does not hold its lock")
+	}
+	Note(0, []string{"c3po", "help"})
+	<-done
+
+	log, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(log), "local"); n != 2 {
+		t.Fatalf("runtime writes %d: %q", n, log)
+	}
+	if rows, err := localRows(); err != nil || len(rows) != 0 {
+		t.Fatalf("journal after the worker %#v %v", rows, err)
 	}
 }
 
@@ -94,5 +154,33 @@ func TestMissingRuntimeCopyStaysLocal(t *testing.T) {
 	}
 	if !strings.Contains(text, "ast hash") || !strings.Contains(text, "2026-11-14") {
 		t.Fatalf("report\n%s", text)
+	}
+}
+
+func TestFailedJournalRemovalDoesNotReapply(t *testing.T) {
+	logPath := fakeSQLX(t, "0")
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("C3PO_ACTOR", "agent")
+	oldBackup := wakeBackup
+	wakeBackup = func() {}
+	oldSub := subtractJournal
+	subtractJournal = func([]sqlxdb.UsageRow) error { return os.ErrPermission }
+	t.Cleanup(func() {
+		wakeBackup = oldBackup
+		subtractJournal = oldSub
+	})
+
+	Note(0, []string{"c3po", "version"})
+	FlushBackup()
+
+	log, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(log), "local"); n != 1 {
+		t.Fatalf("runtime writes %d: %q", n, log)
+	}
+	if rows, err := localRows(); err != nil || len(rows) != 1 || rows[0].N != 1 {
+		t.Fatalf("journal %#v %v", rows, err)
 	}
 }

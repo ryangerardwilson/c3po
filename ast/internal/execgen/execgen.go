@@ -36,15 +36,26 @@ type Report struct {
 	AuditNotes       []string `json:"audit_notes,omitempty"`
 }
 
-// Run executes argv under root after verifying allowlist; returns report.
-func Run(root string, cfg config.Config, argv []string, enforced bool) (Report, error) {
-	rep := Report{Root: root, Command: argv, Enforced: enforced}
+// Check returns the generators.allow pattern that admits argv, or an error
+// when none does. It reads nothing but cfg, so a caller can refuse a command
+// before it measures or snapshots the tree.
+func Check(cfg config.Config, argv []string) (string, error) {
 	if len(argv) == 0 {
-		return rep, fmt.Errorf("exec requires a command after --")
+		return "", fmt.Errorf("exec requires a command after --")
 	}
 	ok, by := Allowed(cfg, argv)
 	if !ok {
-		return rep, fmt.Errorf("command not in generators.allow (structural prefix from argv[0]): %q", strings.Join(argv, " "))
+		return "", fmt.Errorf("command not in generators.allow (structural prefix from argv[0]): %q", strings.Join(argv, " "))
+	}
+	return by, nil
+}
+
+// Run executes argv under root after verifying allowlist; returns report.
+func Run(root string, cfg config.Config, argv []string, enforced bool) (Report, error) {
+	rep := Report{Root: root, Command: argv, Enforced: enforced}
+	by, err := Check(cfg, argv)
+	if err != nil {
+		return rep, err
 	}
 	rep.AllowedBy = by
 
@@ -103,9 +114,12 @@ func Run(root string, cfg config.Config, argv []string, enforced bool) (Report, 
 	}
 
 	rep.Changes = delta(root, before, after, beforeHash)
-	rep.IgnoredObserved = ignoredDelta(beforeIgnored, afterIgnored)
+	rep.IgnoredObserved = ignoredDelta(root, beforeIgnored, afterIgnored)
 	if len(rep.IgnoredObserved) > 0 {
-		rep.AuditNotes = append(rep.AuditNotes, "ignored paths reported as before/after content deltas (not hash-guarded by default)")
+		rep.AuditNotes = append(rep.AuditNotes, "ignored paths reported by before/after stat identity, hashed after the run (not hash-guarded by default)")
+	}
+	if trees := ignoredTrees(beforeIgnored, afterIgnored); len(trees) > 0 {
+		rep.AuditNotes = append(rep.AuditNotes, "ignored trees reported only when created or removed, contents not hashed: "+strings.Join(trees, " "))
 	}
 
 	return rep, nil
@@ -183,31 +197,109 @@ func delta(root string, before, after map[string]entry, beforeHash map[string]st
 	return out
 }
 
-func ignoredSnapshot(root string) (map[string]entry, error) {
-	cmd := exec.Command("git", "-C", root, "status", "--porcelain=v1", "--ignored", "-uall")
+// ignoredEntry is the stat identity of one ignored file. Ignored files are
+// not hashed before the run; one whose identity changed is hashed after it.
+// tree marks an ignored dependency or build tree (node_modules, dist, .venv,
+// ...) or a nested repository, whose contents are neither listed nor hashed.
+type ignoredEntry struct {
+	size  int64
+	mtime int64
+	mode  os.FileMode
+	tree  bool
+}
+
+// ignoredSnapshot lists ignored paths with git's collapsed view, so a wholly
+// ignored directory is one line rather than every file below it.
+func ignoredSnapshot(root string) (map[string]ignoredEntry, error) {
+	cmd := exec.Command("git", "-C", root, "status", "--porcelain=v1", "--ignored", "-unormal")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
 	}
-	all := snapFromPorcelain(root, string(out))
-	ignored := make(map[string]entry)
-	for path, e := range all {
-		if strings.Contains(e.Status, "!") {
-			ignored[path] = e
+	snap := make(map[string]ignoredEntry)
+	for path, st := range measure.ParsePorcelainPaths(string(out)) {
+		if st != "!!" {
+			continue
 		}
+		if tree, ok := ignoredTree(path); ok {
+			snap[tree] = ignoredEntry{tree: true}
+			continue
+		}
+		if strings.HasSuffix(path, "/") {
+			walkIgnoredDir(root, strings.TrimSuffix(path, "/"), snap)
+			continue
+		}
+		addIgnoredFile(snap, root, path)
 	}
-	return ignored, nil
+	return snap, nil
 }
 
-func ignoredDelta(before, after map[string]entry) []Change {
+// ignoredTree returns the "dir/" prefix of rel that measure never descends
+// into (node_modules, vendor, dist, .venv, ...), if any.
+func ignoredTree(rel string) (string, bool) {
+	parts := strings.Split(strings.TrimSuffix(rel, "/"), "/")
+	for i, part := range parts {
+		if measure.SkipDirName(part) && (i < len(parts)-1 || strings.HasSuffix(rel, "/")) {
+			return strings.Join(parts[:i+1], "/") + "/", true
+		}
+	}
+	return "", false
+}
+
+// walkIgnoredDir records the files under one collapsed ignored directory by
+// stat. Dependency trees and nested repositories are recorded whole.
+func walkIgnoredDir(root, rel string, snap map[string]ignoredEntry) {
+	_ = filepath.WalkDir(filepath.Join(root, rel), func(abs string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		r, err := filepath.Rel(root, abs)
+		if err != nil {
+			return nil
+		}
+		r = filepath.ToSlash(r)
+		if d.IsDir() {
+			if r == rel {
+				return nil
+			}
+			if _, err := os.Stat(filepath.Join(abs, ".git")); err == nil || measure.SkipDirName(d.Name()) {
+				snap[r+"/"] = ignoredEntry{tree: true}
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		addIgnoredFile(snap, root, r)
+		return nil
+	})
+}
+
+func addIgnoredFile(snap map[string]ignoredEntry, root, rel string) {
+	info, err := os.Lstat(filepath.Join(root, rel))
+	if err != nil {
+		return
+	}
+	snap[rel] = ignoredEntry{size: info.Size(), mtime: info.ModTime().UnixNano(), mode: info.Mode()}
+}
+
+// ignoredDelta reports ignored paths the generator created, changed, or
+// removed. A file is hashed only when it is new or its stat identity changed.
+func ignoredDelta(root string, before, after map[string]ignoredEntry) []Change {
 	var changes []Change
+	hash := func(path string, e ignoredEntry) string {
+		if e.tree {
+			return ""
+		}
+		h, _ := files.HashFile(filepath.Join(root, path))
+		return h
+	}
 	for path, ae := range after {
 		be, existed := before[path]
 		switch {
 		case !existed:
-			changes = append(changes, Change{Path: path, Status: "created_ignored", Hash: ae.Hash})
-		case be.Hash != "" && ae.Hash != "" && be.Hash != ae.Hash:
-			changes = append(changes, Change{Path: path, Status: "modified_ignored", Hash: ae.Hash})
+			changes = append(changes, Change{Path: path, Status: "created_ignored", Hash: hash(path, ae)})
+		case ae.tree || be.tree:
+		case be != ae:
+			changes = append(changes, Change{Path: path, Status: "modified_ignored", Hash: hash(path, ae)})
 		}
 	}
 	for path := range before {
@@ -217,4 +309,20 @@ func ignoredDelta(before, after map[string]entry) []Change {
 	}
 	sort.Slice(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
 	return changes
+}
+
+// ignoredTrees lists the ignored trees whose contents were not audited.
+func ignoredTrees(snaps ...map[string]ignoredEntry) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, snap := range snaps {
+		for path, e := range snap {
+			if e.tree && !seen[path] {
+				seen[path] = true
+				out = append(out, path)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }

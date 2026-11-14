@@ -36,7 +36,9 @@ The hook SHALL allow:
 - shell commands with no write target, including `c3po ast` and `rgw-ast` invocations
 - all tools when no target is enforced
 - a `Write` (or `write_file`, `create`) whose target path does not exist,
-  because it is equivalent to `c3po ast create --expect-absent --parents`
+  because it is equivalent to `c3po ast create --expect-absent --parents`.
+  The hook SHALL decide this before it measures, so such a create SHALL NOT
+  measure the tree
 
 Decision JSON SHALL include `permissionDecision` of `allow` or `deny` and a
 `permissionDecisionReason` string when denied. Exit code SHALL be 0 even when
@@ -104,6 +106,9 @@ Write targets SHALL be:
 - file operands of `chmod`, `chown`, and `chgrp`
 - file operands of `sed`, `perl`, and `ruby` run with in-place editing
 - `of=` of `dd`
+- file operands of `gofmt` run with `-w` (alone or with `-s`, `-l`), and the
+  package directories of `go fmt` (not `go fmt -n`): an in-place formatter
+  changes the hash the last patch printed
 - search roots of `find` with `-delete`, or of a writing `-exec` command
 - the working tree for `git apply`, `git am`, `git checkout --`,
   `git restore`, `git rm`, `git mv`, and `git clean`, honouring `git -C`
@@ -241,8 +246,36 @@ A deny reason for a file tool SHALL name the exact `c3po ast` command that
 performs the same change with the target's path relative to its worktree:
 `c3po ast patch <path> --expect-hash <sha> …` with the file's current SHA-256
 for an existing file, `c3po ast create <path> --expect-absent --parents --stdin`
-for a missing one. A shell deny for `git mv` or `mv` SHALL name
-`c3po ast move`.
+for a missing one. The patch reason SHALL also name `--old-file`,
+`--new-file`, and `--stdin`. A shell deny for `git mv` or `mv` SHALL name
+`c3po ast move`. A shell deny for an in-place formatter SHALL name
+`c3po ast apply`, which formats and prints the new hash.
+
+When a command is judged a write only because an unquoted heredoc body runs
+`$(...)` or backquotes, the reason SHALL say to quote the heredoc delimiter
+(`<<'EOF'`). When that command is already `c3po ast` or `rgw-ast` (for
+example `c3po ast patch … --stdin` or `c3po ast exec`), the reason SHALL ask
+only for the quoted delimiter and SHALL NOT tell the agent to switch to a
+c3po ast command.
+
+#### Scenario: Edit deny names every text source
+- **GIVEN** enforcement is active
+- **WHEN** stdin is an `Edit` of `a.go`
+- **THEN** the deny reason SHALL contain `--old-file`, `--new-file`, and `--stdin`
+
+#### Scenario: gofmt -w is denied
+- **GIVEN** enforcement is active
+- **WHEN** stdin includes `gofmt -w -s a.go`
+- **THEN** stdout JSON SHALL have `permissionDecision` equal to `deny`
+- **AND** the reason SHALL contain `c3po ast apply`
+
+#### Scenario: Unquoted heredoc into c3po ast patch
+- **GIVEN** enforcement is active
+- **WHEN** stdin includes `c3po ast patch a.go --expect-hash H --old a --stdin`
+  fed by an unquoted heredoc whose body contains `$(date)`
+- **THEN** stdout JSON SHALL have `permissionDecision` equal to `deny`
+- **AND** the reason SHALL say to quote the delimiter
+- **AND** the reason SHALL NOT say to use c3po ast patch, create, move, or delete
 
 #### Scenario: Edit deny carries the hash
 - **GIVEN** enforcement is active and `a.go` has SHA-256 H

@@ -43,7 +43,12 @@ use the cached path rather than forcing a full recount on every invocation.
 Whole-file `read` SHALL decide enforcement from the cached measure. `read
 --lines`, `patch`, `delete`, and `move` SHALL NOT measure: `patch` requires
 `--expect-hash` whether or not enforcement is active. The PreToolUse hook SHALL
-recompute enforcement with a fresh measure.
+decide enforcement from the same cache. The fingerprint SHALL change whenever an
+input to the count changes: the path or content of a dirty or untracked file,
+HEAD, the root ignore files, or policy. When the root is not a git worktree the
+fingerprint SHALL cover the size and mtime of every file under the root. Dirty
+paths SHALL be hashed in a fixed order, so an unchanged tree keeps its
+fingerprint and a tree that grew past `threshold_loc` is recounted.
 
 #### Scenario: Exclude node_modules
 - **GIVEN** source files exist under `node_modules/`
@@ -79,6 +84,13 @@ recompute enforcement with a fresh measure.
 - **THEN** the tool SHALL NOT walk the tree to recount loc
 - **AND** a whole-file `rgw-ast read` SHALL use the cached measure rather than a
   forced recount
+
+#### Scenario: Hook reuses the cache until the tree changes
+- **GIVEN** the hook measured a repository below `threshold_loc` and cached it
+- **WHEN** a second judged write arrives within 60 seconds and no file changed
+- **THEN** the hook SHALL decide from the cached loc without a recount
+- **WHEN** an untracked file then takes the repository past `threshold_loc`
+- **THEN** the fingerprint SHALL miss and the hook SHALL enforce
 
 ### Requirement: Enforcement decision
 Enforcement SHALL be derived only from global config and measured LOC:

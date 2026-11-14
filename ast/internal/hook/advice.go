@@ -54,6 +54,10 @@ func (j *judge) read(input map[string]any, cwd string) (Decision, error) {
 		repo, filepath.Base(target), n, max, max, j.pathArg(repo, target, cwd), start, end)), nil
 }
 
+// patchSources names every way to hand c3po ast patch its text.
+const patchSources = "The old text may come from --old-file <f> instead of --old; the new text from --new-file <f> or --stdin" +
+	" (feed a quoted heredoc, <<'EOF', so the shell leaves its body alone) instead of --new; --all replaces every occurrence."
+
 // fileDenyReason names the c3po ast command that makes the same change.
 func (j *judge) fileDenyReason(repo, target, tool, cwd string) string {
 	p := j.pathArg(repo, target, cwd)
@@ -73,8 +77,8 @@ func (j *judge) fileDenyReason(repo, target, tool, cwd string) string {
 	case "delete", "deletefile":
 		return head + "Run: c3po ast delete " + p + " --expect-hash " + sum
 	}
-	return head + "Run: c3po ast patch " + p + " --expect-hash " + sum + " --old <text> --new <text>" +
-		" (or --old-file/--new-file; --all for every occurrence). Several files at once: c3po ast apply --from-file <manifest.json|git diff>."
+	return head + "Run: c3po ast patch " + p + " --expect-hash " + sum + " --old <text> --new <text>. " + patchSources +
+		" Several files at once: c3po ast apply --from-file <manifest.json|git diff>."
 }
 
 // pathArg is how an c3po ast command started from cwd should name target:
@@ -88,6 +92,13 @@ func (j *judge) pathArg(repo, target, cwd string) string {
 	rel, err := filepath.Rel(repo, target)
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return target
+	}
+	// c3po ast refuses a relative path that names a file both at the root
+	// and under cwd, so such a target is given absolute.
+	if other := filepath.Join(cwd, rel); other != target {
+		if _, err := os.Lstat(other); err == nil {
+			return target
+		}
 	}
 	return filepath.ToSlash(rel)
 }

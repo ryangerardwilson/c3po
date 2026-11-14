@@ -71,6 +71,16 @@ func TestHookReducesAgentFriction(t *testing.T) {
 		{"git mv names move", sh("git mv a.go b.go"), "deny", "c3po ast move"},
 		{"mv names move", sh("mv a.go b.go"), "deny", "c3po ast move"},
 		{"rm names delete", sh("rm a.go"), "deny", "c3po ast delete"},
+		{"edit names --stdin", Request{ToolName: "Edit", ToolInput: map[string]any{"file_path": "@a.go"}}, "deny", "--new-file <f> or --stdin"},
+		{"edit names --old-file", Request{ToolName: "Edit", ToolInput: map[string]any{"file_path": "@a.go"}}, "deny", "--old-file <f>"},
+		{"gofmt -w", sh("gofmt -w a.go"), "deny", "c3po ast apply"},
+		{"gofmt -w -s", sh("gofmt -w -s a.go"), "deny", "c3po ast apply"},
+		{"gofmt -s -w", sh("gofmt -s -w a.go"), "deny", "hash your last c3po ast patch printed"},
+		{"go fmt", sh("go fmt ./..."), "deny", "c3po ast apply"},
+		{"gofmt -l", sh("gofmt -l a.go"), "allow", ""},
+		{"gofmt -d", sh("gofmt -d -s a.go"), "allow", ""},
+		{"go fmt -n", sh("go fmt -n ./..."), "allow", ""},
+		{"quoted heredoc into patch", sh("c3po ast patch a.go --expect-hash x --old a --stdin <<'EOF'\n$(date)\nEOF"), "allow", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -79,5 +89,24 @@ func TestHookReducesAgentFriction(t *testing.T) {
 				t.Fatalf("got %s %q, want %s containing %q", got, reason, c.want, c.reason)
 			}
 		})
+	}
+}
+
+func TestUnquotedHeredocIntoAstAsksForQuoting(t *testing.T) {
+	for _, cmd := range []string{
+		"c3po ast patch a.go --expect-hash x --old a --stdin <<EOF\n$(date)\nEOF",
+		"rgw-ast exec -- sh -c x <<EOF\n`date`\nEOF",
+	} {
+		got, reason := decideReason(t, Request{ToolName: "Bash", ToolInput: map[string]any{"command": cmd}})
+		if got != "deny" || !strings.Contains(reason, "Quote the delimiter (<<'EOF')") {
+			t.Fatalf("%q: %s %q", cmd, got, reason)
+		}
+		if strings.Contains(reason, "use c3po ast patch/create") || strings.Contains(reason, "or c3po ast exec --") {
+			t.Fatalf("%q: told to switch to the command it runs: %q", cmd, reason)
+		}
+	}
+	got, reason := decideReason(t, Request{ToolName: "Bash", ToolInput: map[string]any{"command": "cat <<EOF\n$(date)\nEOF"}})
+	if got != "deny" || !strings.Contains(reason, "quote the delimiter") {
+		t.Fatalf("plain heredoc: %s %q", got, reason)
 	}
 }

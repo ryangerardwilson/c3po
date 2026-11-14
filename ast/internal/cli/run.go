@@ -92,7 +92,7 @@ func (r Runner) Run(args []string) int {
 		err, ok = r.dispatchChange(cmd, rest)
 	}
 	if !ok {
-		return r.usage(fmt.Sprintf("unknown command %q; see rgw-ast help", cmd))
+		return r.usage(fmt.Sprintf("unknown command %q; see c3po ast help", cmd))
 	}
 	return r.exit(err)
 }
@@ -323,6 +323,39 @@ func (r Runner) workspaceFor(path string) (cfg config.Config, cfgPath, wsRoot st
 	}
 	wsRoot, err = root.Resolve(dir)
 	return
+}
+
+// resolve is files.ResolvePath for a path a command names: a relative path
+// resolves from the workspace root, not the process directory. When the
+// process directory is below the root and the same relative path exists
+// under it as well, the command fails and names both files rather than
+// change the one the caller may not mean.
+func (r Runner) resolve(wsRoot, path string) (string, error) {
+	abs, err := files.ResolvePath(wsRoot, path)
+	if err != nil || filepath.IsAbs(path) {
+		return abs, err
+	}
+	cwd := r.Cwd
+	if cwd == "" {
+		if cwd, err = os.Getwd(); err != nil {
+			return abs, nil
+		}
+	}
+	rootAbs, _ := filepath.Abs(wsRoot)
+	cwd, _ = filepath.Abs(cwd)
+	if rel, err := filepath.Rel(rootAbs, cwd); err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, "../") {
+		return abs, nil
+	}
+	other := filepath.Join(cwd, path)
+	if other == abs || !exists(abs) || !exists(other) {
+		return abs, nil
+	}
+	return "", fmt.Errorf("%s is ambiguous: relative paths resolve from the git root, so it names %s, but %s also exists under the current directory; pass an absolute path", path, abs, other)
+}
+
+func exists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
 }
 
 func (r Runner) measureRoot(cfg config.Config, wsRoot string) (measure.Result, error) {
@@ -628,7 +661,7 @@ func (r Runner) cmdSearch(args []string) error {
 	}
 	query := strings.Join(queryParts, " ")
 	if strings.HasPrefix(query, "-") {
-		return usageError{"query looks like a flag; see rgw-ast search --help"}
+		return usageError{"query looks like a flag; see c3po ast search --help"}
 	}
 	cfg, _, wsRoot, err := r.workspace()
 	if err != nil {
@@ -653,7 +686,7 @@ func (r Runner) cmdSearch(args []string) error {
 		if res.Total > 0 {
 			_, _ = fmt.Fprintf(r.Err, "no hits at --offset %d (%d total)\n", res.Offset, res.Total)
 		} else {
-			_, _ = fmt.Fprintf(r.Err, "no hits (check include globs, --path, nested-git skips; try rgw-ast explain <path>)\n")
+			_, _ = fmt.Fprintf(r.Err, "no hits (check include globs, --path, nested-git skips; try c3po ast explain <path>)\n")
 		}
 	}
 	return nil
@@ -681,7 +714,7 @@ func parseSearchArgs(args []string) (opts intel.SearchOpts, query []string, err 
 		case a == "-i" || a == "--ignore-case":
 			opts.IgnoreCase = true
 		case a == "--help" || a == "-h":
-			return opts, nil, usageError{"use: rgw-ast search --help"}
+			return opts, nil, usageError{"use: c3po ast search --help"}
 		case strings.HasPrefix(a, "-"):
 			return opts, nil, usageError{fmt.Sprintf("unknown search flag %q", a)}
 		default:
@@ -732,7 +765,7 @@ func (r Runner) cmdHash(args []string) error {
 		if err != nil {
 			return err
 		}
-		abs, err := files.ResolvePath(wsRoot, p)
+		abs, err := r.resolve(wsRoot, p)
 		if err != nil {
 			return err
 		}
@@ -758,7 +791,7 @@ func (r Runner) cmdRead(args []string) error {
 	if err != nil {
 		return err
 	}
-	abs, err := files.ResolvePath(wsRoot, path)
+	abs, err := r.resolve(wsRoot, path)
 	if err != nil {
 		return err
 	}
@@ -778,7 +811,7 @@ func (r Runner) cmdRead(args []string) error {
 			}
 			if !bin {
 				n, _ := files.LineCount(abs)
-				return fmt.Errorf("whole-file read denied while enforced (%s has %d lines); use rgw-ast read %s --lines 1-%d, or map/show/search", rel, n, path, min(n, cfg.Enforcement.MaxReadLines))
+				return fmt.Errorf("whole-file read denied while enforced (%s has %d lines); use c3po ast read %s --lines 1-%d, or map/show/search", rel, n, path, min(n, cfg.Enforcement.MaxReadLines))
 			}
 		}
 		data, err := os.ReadFile(abs)
@@ -821,7 +854,7 @@ func (r Runner) cmdCreate(args []string) error {
 	if err != nil {
 		return err
 	}
-	abs, err := files.ResolvePath(wsRoot, path)
+	abs, err := r.resolve(wsRoot, path)
 	if err != nil {
 		return err
 	}
@@ -857,7 +890,7 @@ func (r Runner) cmdAppend(args []string) error {
 	if err != nil {
 		return err
 	}
-	abs, err := files.ResolvePath(wsRoot, path)
+	abs, err := r.resolve(wsRoot, path)
 	if err != nil {
 		return err
 	}
@@ -888,6 +921,10 @@ func (r Runner) cmdPatch(args []string) error {
 	if err != nil {
 		return usageError{err.Error()}
 	}
+	args, stdin, err := stripBoolFlag(args, "--stdin")
+	if err != nil {
+		return usageError{err.Error()}
+	}
 	path, expectHash, old, newText, oldFile, newFile, opsFile, err := parsePatchArgs(args)
 	if err != nil {
 		return err
@@ -902,35 +939,15 @@ func (r Runner) cmdPatch(args []string) error {
 	if err != nil {
 		return err
 	}
-	abs, err := files.ResolvePath(wsRoot, path)
+	abs, err := r.resolve(wsRoot, path)
 	if err != nil {
 		return err
 	}
-	var ops []files.Op
-	switch {
-	case opsFile != "":
-		ops, err = files.ParseOpsFile(opsFile)
-		if err != nil {
-			return err
-		}
-	case oldFile != "" || newFile != "":
-		if oldFile == "" || newFile == "" {
-			return usageError{"both --old-file and --new-file are required together"}
-		}
-		ob, err := files.ReadAllFile(oldFile)
-		if err != nil {
-			return err
-		}
-		nb, err := files.ReadAllFile(newFile)
-		if err != nil {
-			return err
-		}
-		ops = []files.Op{{Old: string(ob), New: string(nb), All: all}}
-	default:
-		if old == "" {
-			return usageError{"--old or --old-file or --ops-file is required"}
-		}
-		ops = []files.Op{{Old: old, New: newText, All: all}}
+	ops, err := r.patchOps(patchSource{
+		old: old, new: newText, oldFile: oldFile, newFile: newFile, opsFile: opsFile, stdin: stdin, all: all,
+	})
+	if err != nil {
+		return err
 	}
 	if symbol != "" {
 		results, err := files.ApplyAllOpts(wsRoot, []files.FileChange{{
@@ -942,6 +959,72 @@ func (r Runner) cmdPatch(args []string) error {
 		return r.notedSymbol(results)
 	}
 	return r.plainPatch(cfg.MaxCC, wsRoot, abs, expectHash, ops)
+}
+
+// patchSource is where a patch's old and new text come from.
+type patchSource struct {
+	old, new, oldFile, newFile, opsFile string
+	stdin, all                          bool
+}
+
+// patchOps reads the replacement ops a patch names. The bytes are used as
+// given: a heredoc's trailing newline is part of the text.
+func (r Runner) patchOps(src patchSource) ([]files.Op, error) {
+	switch {
+	case src.opsFile != "":
+		if src.stdin {
+			return nil, usageError{"--stdin cannot be combined with --ops-file"}
+		}
+		return files.ParseOpsFile(src.opsFile)
+	case src.stdin:
+		return r.stdinOp(src)
+	case src.oldFile != "" || src.newFile != "":
+		if src.oldFile == "" || src.newFile == "" {
+			return nil, usageError{"both --old-file and --new-file are required together, or --old-file with --stdin"}
+		}
+		ob, err := files.ReadAllFile(src.oldFile)
+		if err != nil {
+			return nil, err
+		}
+		nb, err := files.ReadAllFile(src.newFile)
+		if err != nil {
+			return nil, err
+		}
+		return []files.Op{{Old: string(ob), New: string(nb), All: src.all}}, nil
+	default:
+		if src.old == "" {
+			return nil, usageError{"--old or --old-file or --ops-file is required"}
+		}
+		return []files.Op{{Old: src.old, New: src.new, All: src.all}}, nil
+	}
+}
+
+// stdinOp is one op whose new text is stdin and whose old text is --old or
+// --old-file.
+func (r Runner) stdinOp(src patchSource) ([]files.Op, error) {
+	if src.new != "" || src.newFile != "" {
+		return nil, usageError{"--stdin is the new text; drop --new and --new-file"}
+	}
+	if (src.old == "") == (src.oldFile == "") {
+		return nil, usageError{"--stdin needs exactly one of --old or --old-file for the text it replaces"}
+	}
+	old := src.old
+	if src.oldFile != "" {
+		ob, err := files.ReadAllFile(src.oldFile)
+		if err != nil {
+			return nil, err
+		}
+		old = string(ob)
+	}
+	in := r.In
+	if in == nil {
+		in = os.Stdin
+	}
+	nb, err := files.ReadStdin(in)
+	if err != nil {
+		return nil, err
+	}
+	return []files.Op{{Old: old, New: string(nb), All: src.all}}, nil
 }
 
 // plainPatch writes a patch without --symbol and prints the cc lines of a
@@ -997,7 +1080,7 @@ func (r Runner) cmdApply(args []string) error {
 	if err != nil {
 		return err
 	}
-	cfg, _, wsRoot, err := r.workspace()
+	cfg, wsRoot, err := r.applyWorkspace(changes)
 	if err != nil {
 		return err
 	}
@@ -1031,6 +1114,31 @@ func (r Runner) cmdApply(args []string) error {
 		_, _ = fmt.Fprintln(r.Out)
 	}
 	return nil
+}
+
+// applyWorkspace picks the root an apply works in. An absolute first path
+// resolves its own repository as patch does, so a path a hook reason prints
+// works with both. Every path is then checked as patch checks its one path.
+func (r Runner) applyWorkspace(changes []files.FileChange) (config.Config, string, error) {
+	first := ""
+	if len(changes) > 0 {
+		first = changes[0].Path
+	}
+	cfg, _, wsRoot, err := r.workspaceFor(first)
+	if err != nil {
+		return cfg, "", err
+	}
+	for i, ch := range changes {
+		for _, p := range []string{ch.Path, ch.To} {
+			if p == "" {
+				continue
+			}
+			if _, err := r.resolve(wsRoot, p); err != nil {
+				return cfg, "", fmt.Errorf("change %d: %w", i, err)
+			}
+		}
+	}
+	return cfg, wsRoot, nil
 }
 
 func arrowTo(to string) string {
@@ -1080,7 +1188,7 @@ func (r Runner) cmdDelete(args []string) error {
 	if err != nil {
 		return err
 	}
-	abs, err := files.ResolvePath(wsRoot, path)
+	abs, err := r.resolve(wsRoot, path)
 	if err != nil {
 		return err
 	}
@@ -1115,6 +1223,11 @@ func (r Runner) cmdMove(args []string) error {
 	_, _, wsRoot, err := r.workspaceFor(args[0])
 	if err != nil {
 		return err
+	}
+	for _, p := range args {
+		if _, err := r.resolve(wsRoot, p); err != nil {
+			return err
+		}
 	}
 	h, viaGit, err := files.MoveExact(wsRoot, args[0], args[1], expectHash, parents)
 	if err != nil {
@@ -1186,6 +1299,10 @@ func (r Runner) cmdExec(args []string) error {
 	}
 	cfg, _, wsRoot, err := r.workspace()
 	if err != nil {
+		return err
+	}
+	// A command outside generators.allow fails before the tree is measured.
+	if _, err := execgen.Check(cfg, cmdArgs); err != nil {
 		return err
 	}
 	m, err := r.measureFresh(cfg, wsRoot)

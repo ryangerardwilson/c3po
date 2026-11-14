@@ -132,8 +132,9 @@ undirected import graph, or report whether `path`'s package dir is one
 
 ### Requirement: Absolute paths choose their root
 When `--root` is not given and a file verb (`hash`, `read`, `create`,
-`append`, `patch`, `delete`, `move`, `map`, `explain`) receives an absolute
-path outside the root resolved from the current directory, the verb SHALL
+`append`, `patch`, `apply`, `delete`, `move`, `map`, `explain`) receives an
+absolute path outside the root resolved from the current directory (for
+`apply`, its first path), the verb SHALL
 use the workspace root resolved from that path (its nearest git worktree, or
 its directory). With `--root`, a path outside that root SHALL still fail.
 
@@ -141,4 +142,9 @@ its directory). With `--root`, a path outside that root SHALL still fail.
 - **GIVEN** the current directory is repository A
 - **WHEN** the user runs `rgw-ast read /abs/path/in/B/f.go --lines 1-5`
 - **THEN** the read SHALL succeed using repository B's enforcement
+
+#### Scenario: Apply takes the absolute path a patch takes
+- **GIVEN** the current directory is repository A
+- **WHEN** `rgw-ast apply` runs a manifest whose path is `/abs/path/in/B/f.txt`
+- **THEN** the edit SHALL apply in repository B
 
