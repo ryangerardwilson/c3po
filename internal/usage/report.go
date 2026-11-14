@@ -31,8 +31,15 @@ func Report(prefix string) (string, error) {
 		return Text(nil, prefix), nil
 	}
 	rows, err := sqlxdb.ListUsage()
-	if err != nil {
+	local, localErr := localRows()
+	if err != nil && localErr != nil {
 		return "", err
+	}
+	if err != nil {
+		rows = nil
+	}
+	if localErr == nil {
+		rows = append(rows, local...)
 	}
 	return Text(rows, prefix), nil
 }

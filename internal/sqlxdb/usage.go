@@ -1,8 +1,8 @@
 package sqlxdb
 
 import (
+	"errors"
 	"os"
-	"strconv"
 )
 
 // UsageRow is one daily counter: one feature, one actor, one UTC day.
@@ -31,27 +31,26 @@ func RecordUsage(feature, actor, day string, okAdd int, last int64) error {
 	if okAdd != 0 {
 		okAdd = 1
 	}
+	if RuntimeMode() {
+		return errRuntimeOnly
+	}
 	db, err := open()
 	if err != nil {
 		return err
 	}
-	okText := strconv.Itoa(okAdd)
-	lastText := strconv.FormatInt(last, 10)
-	sql := "BEGIN IMMEDIATE;\n" +
-		"UPDATE usage SET n = n + 1, ok = ok + " + okText +
-		", last = CASE WHEN last > " + lastText + " THEN last ELSE " + lastText +
-		" END WHERE feature = " + quote(feature) + " AND actor = " + quote(actor) +
-		" AND day = " + quote(day) + ";\n" +
-		"INSERT INTO usage(feature, actor, day, n, ok, last) SELECT " +
-		quote(feature) + ", " + quote(actor) + ", " + quote(day) + ", 1, " + okText + ", " + lastText +
-		" WHERE changes() = 0;\n" +
-		"COMMIT;\n"
-	return execSQL(db, sql)
+	return execSQL(db, WrapUsage(UsageBody(feature, actor, day, 1, okAdd, last)))
 }
+
+// errRuntimeOnly tells the caller to write the runtime sqlite itself.
+// RecordUsage stays on the sqlite engine used by tests and SQLX_ROOT.
+var errRuntimeOnly = errors.New("usage belongs on the runtime copy")
 
 // ListUsage returns every stored daily counter. C3PO_SQLX=off returns no rows.
 func ListUsage() ([]UsageRow, error) {
 	if os.Getenv("C3PO_SQLX") == "off" {
+		return nil, nil
+	}
+	if RuntimeMode() && !RuntimeReady() {
 		return nil, nil
 	}
 	db, err := open()

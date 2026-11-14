@@ -13,6 +13,8 @@ var Now = time.Now
 
 // Note records one finished invocation. A failure is ignored so the command's
 // exit code and stderr stay what the command itself produced.
+// On the production path the increment is written to the runtime sqlite and
+// the command does not wait for the Postgres backup.
 // A test that does not set SQLX_ROOT records nothing, so go test does not
 // write the login-home database. C3PO_SQLX=off records nothing.
 func Note(code int, argv []string) {
@@ -28,6 +30,10 @@ func Note(code int, argv []string) {
 		okAdd = 1
 	}
 	when := Now().UTC()
+	if sqlxdb.RuntimeMode() {
+		_ = rememberRuntime(feature, Actor(), when.Format("2006-01-02"), okAdd, when.Unix())
+		return
+	}
 	_ = sqlxdb.RecordUsage(feature, Actor(), when.Format("2006-01-02"), okAdd, when.Unix())
 }
 

@@ -55,6 +55,16 @@ var screens = map[string]runFunc{
 
 // Main runs c3po from process arguments.
 func Main(args []string) int {
+	if len(args) >= 2 {
+		switch args[1] {
+		case "__usage-backup":
+			usage.FlushBackup()
+			return 0
+		case "__usage-restore":
+			usage.RestoreRuntime()
+			return 0
+		}
+	}
 	return Run(args, os.Stdout, os.Stderr)
 }
 

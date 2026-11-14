@@ -425,6 +425,10 @@ func queryJSON(dbPath, sql string, dest any) error {
 
 func execSQL(dbPath, sql string) error {
 	_ = dbPath
+	return execSQLEnv(nil, sql)
+}
+
+func execSQLEnv(env []string, sql string) error {
 	file, err := os.CreateTemp("", DatabaseName+"-sql-*")
 	if err != nil {
 		return err
@@ -438,7 +442,7 @@ func execSQL(dbPath, sql string) error {
 	if err := file.Close(); err != nil {
 		return err
 	}
-	_, err = sqlxCall(DatabaseName, "exec", "--file", sqlPath)
+	_, err = sqlxCallEnv(env, DatabaseName, "exec", "--file", sqlPath)
 	return err
 }
 
@@ -454,7 +458,14 @@ func sqlxBin() string {
 }
 
 func sqlxCall(args ...string) (string, error) {
+	return sqlxCallEnv(nil, args...)
+}
+
+func sqlxCallEnv(extra []string, args ...string) (string, error) {
 	cmd := exec.Command(sqlxBin(), args...)
+	if len(extra) > 0 {
+		cmd.Env = append(os.Environ(), extra...)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
