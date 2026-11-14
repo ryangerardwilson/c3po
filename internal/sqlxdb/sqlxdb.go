@@ -1,14 +1,11 @@
-// Package sqlxdb stores every durable c3po record in the sqlx database c3po.
+// Package sqlxdb stores durable c3po records in the app's own sqlite file.
+// nebula s3 backs that file up. nebula sql is not used.
 // Operator config, credential files, signatures, and caches stay on disk.
 package sqlxdb
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
-	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strings"
@@ -150,11 +147,7 @@ func open() (string, error) {
 }
 
 func databaseFile() (string, error) {
-	root, err := sqlxRoot()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(root, "data", DatabaseName+".sqlite"), nil
+	return dbFile(DatabaseName), nil
 }
 
 func sqlxRoot() (string, error) {
@@ -180,11 +173,7 @@ func loginHome() (string, error) {
 }
 
 func ensure(dbPath string) error {
-	_ = dbPath
-	if _, err := sqlxCall("create", "database", DatabaseName); err != nil {
-		return err
-	}
-	return sqlxMigrate(ormText())
+	return prepareAppDB(dbPath, DatabaseName, ormText())
 }
 
 func ormText() string {
@@ -270,8 +259,11 @@ func allowImport(dbPath string) bool {
 	if err != nil {
 		return false
 	}
-	want := filepath.Join(home, ".sqlx", "data", DatabaseName+".sqlite")
-	return filepath.Clean(dbPath) == filepath.Clean(want)
+	legacy := filepath.Join(home, ".sqlx", "data", DatabaseName+".sqlite")
+	if filepath.Clean(dbPath) == filepath.Clean(legacy) {
+		return true
+	}
+	return filepath.Clean(dbPath) == filepath.Clean(dbFile(DatabaseName))
 }
 
 func importDir(dbPath, dir, app, kind string) error {
@@ -408,94 +400,13 @@ func quote(value string) string {
 }
 
 func queryJSON(dbPath, sql string, dest any) error {
-	_ = dbPath
-	raw, err := sqlxCall(DatabaseName, "query", "--json", sql)
-	if err != nil {
-		return err
-	}
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil
-	}
-	if err := json.Unmarshal([]byte(raw), dest); err != nil {
-		return fmt.Errorf("sqlite json: %w", err)
-	}
-	return nil
+	return sqliteQueryJSON(dbPath, sql, dest)
 }
 
 func execSQL(dbPath, sql string) error {
-	_ = dbPath
-	return execSQLEnv(nil, sql)
-}
-
-func execSQLEnv(env []string, sql string) error {
-	file, err := os.CreateTemp("", DatabaseName+"-sql-*")
-	if err != nil {
+	if err := sqliteExec(dbPath, sql); err != nil {
 		return err
 	}
-	sqlPath := file.Name()
-	defer os.Remove(sqlPath)
-	if _, err := file.WriteString(sql); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	_, err = sqlxCallEnv(env, DatabaseName, "exec", "--file", sqlPath)
-	return err
-}
-
-func sqlxBin() string {
-	if bin := os.Getenv("SQLX_BIN"); bin != "" {
-		return bin
-	}
-	path, err := exec.LookPath("sql")
-	if err != nil {
-		return "sql"
-	}
-	return path
-}
-
-func sqlxCall(args ...string) (string, error) {
-	return sqlxCallEnv(nil, args...)
-}
-
-func sqlxCallEnv(extra []string, args ...string) (string, error) {
-	cmd := exec.Command(sqlxBin(), args...)
-	if len(extra) > 0 {
-		cmd.Env = append(os.Environ(), extra...)
-	}
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = strings.TrimSpace(stdout.String())
-		}
-		if msg == "" {
-			msg = err.Error()
-		}
-		return stdout.String(), fmt.Errorf("%s", msg)
-	}
-	return stdout.String(), nil
-}
-
-func sqlxMigrate(body string) error {
-	file, err := os.CreateTemp("", DatabaseName+"-orm-*")
-	if err != nil {
-		return err
-	}
-	name := file.Name()
-	defer os.Remove(name)
-	if _, err := file.WriteString(body); err != nil {
-		_ = file.Close()
-		return err
-	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	_, err = sqlxCall(DatabaseName, "migrate", name)
-	return err
+	publishObject(dbPath, DatabaseName)
+	return nil
 }

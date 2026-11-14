@@ -14,8 +14,8 @@ var Now = time.Now
 // Note records one finished invocation. A failure is ignored so the command's
 // exit code and stderr stay what the command itself produced.
 // On the production path the increment is only appended to the local
-// journal; a detached worker writes the runtime sqlite and then the Postgres
-// backup, so the command neither runs sqlx nor dials Postgres.
+// journal; a detached worker writes the app sqlite and then publishes that
+// file with nebula s3. The command does not call nebula sql.
 // A test that does not set SQLX_ROOT records nothing, so go test does not
 // write the login-home database. C3PO_SQLX=off records nothing.
 func Note(code int, argv []string) {

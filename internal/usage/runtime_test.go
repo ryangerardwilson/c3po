@@ -2,6 +2,7 @@ package usage
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,30 +11,35 @@ import (
 	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
 )
 
-// fakeSQLX installs a sqlx that logs each SQLX_COMMIT and sleeps delay
-// seconds, plus a runtime copy, and returns the log path.
+// fakeSQLX installs a nebula that logs each s3 put and sleeps delay seconds.
+// The runtime file is a real sqlite database, because the app writes it.
 func fakeSQLX(t *testing.T, delay string) string {
 	t.Helper()
 	runtime := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "sqlx.log")
-	bin := filepath.Join(t.TempDir(), "sqlx")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$SQLX_COMMIT\" >> \"" + logPath + "\"\nsleep " + delay + "\nexit 0\n"
-	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
+	db := filepath.Join(runtime, "c3po.sqlite")
+	schema := `CREATE TABLE usage (
+  id INTEGER PRIMARY KEY,
+  feature TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  day TEXT NOT NULL,
+  n INTEGER NOT NULL,
+  ok INTEGER NOT NULL,
+  last INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX usage_feature_actor_day ON usage(feature, actor, day);`
+	if out, err := exec.Command("/usr/bin/sqlite3", db, schema).CombinedOutput(); err != nil {
+		t.Fatalf("schema: %v %s", err, out)
 	}
 	nebula := filepath.Join(t.TempDir(), "nebula")
-	put := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"" + logPath + "\"\nexit 0\n"
+	put := "#!/bin/sh\nprintf '%s\n' \"$*\" >> \"" + logPath + "\"\nsleep " + delay + "\nexit 0\n"
 	if err := os.WriteFile(nebula, []byte(put), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("NEBULA_BIN", nebula)
-	if err := os.WriteFile(filepath.Join(runtime, "c3po.sqlite"), []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	t.Setenv("SQLX_ROOT", t.TempDir())
 	t.Setenv("SQLX_ENGINE", "postgres")
 	t.Setenv("SQLX_RUNTIME", runtime)
-	t.Setenv("SQLX_BIN", bin)
 	oldIdle, oldPoll := workerIdle, workerPoll
 	workerIdle, workerPoll = 300*time.Millisecond, 10*time.Millisecond
 	t.Cleanup(func() { workerIdle, workerPoll = oldIdle, oldPoll })
@@ -78,7 +84,7 @@ func TestRuntimeIncrementOnlyAppendsTheJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(log)
-	if strings.Count(text, "local") != 1 || strings.Contains(text, "remote") || !strings.Contains(text, "s3 put") || !strings.Contains(text, "s3://sqlx/c3po.sqlite") {
+	if strings.Count(text, "s3 put") != 1 || strings.Contains(text, "remote") || !strings.Contains(text, "s3://backups/c3po.sqlite") {
 		t.Fatalf("worker backup %q", log)
 	}
 	if rows, err := localRows(); err != nil || len(rows) != 0 {
@@ -103,7 +109,7 @@ func TestOneWorkerDrainsIncrementsThatArriveWhileItWorks(t *testing.T) {
 		FlushBackup()
 		close(done)
 	}()
-	time.Sleep(100 * time.Millisecond) // the worker is inside its first sqlx call
+	time.Sleep(100 * time.Millisecond) // the worker is inside its first backup
 	if lock, ok := tryLock(backupLock); ok {
 		_ = lock.Close()
 		t.Fatal("the worker does not hold its lock")
@@ -115,8 +121,8 @@ func TestOneWorkerDrainsIncrementsThatArriveWhileItWorks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := strings.Count(string(log), "local"); n != 2 {
-		t.Fatalf("runtime writes %d: %q", n, log)
+	if n := strings.Count(string(log), "s3 put"); n != 2 {
+		t.Fatalf("backups %d: %q", n, log)
 	}
 	if rows, err := localRows(); err != nil || len(rows) != 0 {
 		t.Fatalf("journal after the worker %#v %v", rows, err)
@@ -180,12 +186,13 @@ func TestFailedJournalRemovalDoesNotReapply(t *testing.T) {
 	Note(0, []string{"c3po", "version"})
 	FlushBackup()
 
-	log, err := os.ReadFile(logPath)
+	_ = logPath
+	out, err := exec.Command("/usr/bin/sqlite3", filepath.Join(os.Getenv("SQLX_RUNTIME"), "c3po.sqlite"), "select count(*) from usage").CombinedOutput()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("usage rows: %v %s", err, out)
 	}
-	if n := strings.Count(string(log), "local"); n != 1 {
-		t.Fatalf("runtime writes %d: %q", n, log)
+	if strings.TrimSpace(string(out)) != "1" {
+		t.Fatalf("usage rows %q", out)
 	}
 	if rows, err := localRows(); err != nil || len(rows) != 1 || rows[0].N != 1 {
 		t.Fatalf("journal %#v %v", rows, err)

@@ -10,9 +10,9 @@ import (
 	"strings"
 )
 
-// RuntimeMode reports whether this process is on the production path:
-// the runtime sqlite is the source of truth and s3 is the backup.
-// SQLX_ROOT and SQLX_ENGINE=sqlite stay on the local tree used by tests.
+// RuntimeMode reports whether this process keeps the in-memory sqlite
+// and publishes it with s3. SQLX_ROOT and SQLX_ENGINE=sqlite stay on the
+// local tree used by tests.
 func RuntimeMode() bool {
 	switch os.Getenv("SQLX_ENGINE") {
 	case "sqlite":
@@ -24,16 +24,12 @@ func RuntimeMode() bool {
 	}
 }
 
-// RuntimeDB is the sqlite file sql serves while the machine is up.
+// RuntimeDB is the sqlite file this app serves while the machine is up.
 func RuntimeDB() string {
-	name := DatabaseName + ".sqlite"
 	if v := os.Getenv("SQLX_RUNTIME"); v != "" {
-		return filepath.Join(v, name)
+		return filepath.Join(v, DatabaseName+".sqlite")
 	}
-	if v := os.Getenv("XDG_RUNTIME_DIR"); v != "" {
-		return filepath.Join(v, "sqlx", name)
-	}
-	return filepath.Join("/dev/shm", fmt.Sprintf("sqlx-%d", os.Getuid()), name)
+	return dbFile(DatabaseName)
 }
 
 // RuntimeReady reports whether that file is present. A missing file must not
@@ -67,9 +63,9 @@ func WrapUsage(body string) string {
 	return "BEGIN IMMEDIATE;\n" + body + "COMMIT;\n"
 }
 
-// ExecRuntime applies sql to the runtime sqlite and does not open the backup.
+// ExecRuntime applies sql to the app sqlite and does not publish the backup.
 func ExecRuntime(sql string) error {
-	return execSQLEnv([]string{"SQLX_COMMIT=local"}, sql)
+	return sqliteExec(RuntimeDB(), sql)
 }
 
 // ExecBackup publishes the runtime sqlite. The worker already wrote it.
@@ -83,7 +79,7 @@ func ExecBackup() error {
 			bin = found
 		}
 	}
-	object := "s3://sqlx/" + DatabaseName + ".sqlite"
+	object := "s3://backups/" + DatabaseName + ".sqlite"
 	cmd := exec.Command(bin, "s3", "put", RuntimeDB(), object)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -97,8 +93,7 @@ func ExecBackup() error {
 	return nil
 }
 
-// TouchRuntime opens the runtime database so a missing copy can be restored.
+// TouchRuntime opens the app sqlite and restores it from s3 when it is missing.
 func TouchRuntime() error {
-	_, err := sqlxCall(DatabaseName, "query", "SELECT 1")
-	return err
+	return prepareAppDB(RuntimeDB(), DatabaseName, ormText())
 }
