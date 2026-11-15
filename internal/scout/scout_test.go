@@ -82,7 +82,11 @@ func TestPortedScoutHelpMatchesHelpFlag(t *testing.T) {
 		if !bytes.Equal(scoutOut, helpOut) {
 			t.Fatalf("%s help differs\n%s\n---\n%s", name, scoutOut, helpOut)
 		}
-		if !bytes.Contains(scoutOut, []byte("c3po "+name)) {
+		needle := "c3po " + name
+		if name == "tunnel" {
+			needle = "nebula tunnel"
+		}
+		if !bytes.Contains(scoutOut, []byte(needle)) {
 			t.Fatalf("%s help does not name its command\n%s", name, scoutOut)
 		}
 		out, code := call("c3po", "help", "-f", name, "extra")
@@ -173,7 +177,7 @@ func TestScreensAreOnlyUnderTUI(t *testing.T) {
 		}
 	}
 	out, code := call("c3po", "tunnel", "open")
-	if code != 2 || bytes.Contains(out, []byte("c3po tunnel open")) || !bytes.Contains(out, []byte("c3po tui tunnel")) {
+	if code != 2 || bytes.Contains(out, []byte("c3po tunnel open")) || !bytes.Contains(out, []byte("nebula tunnel screen")) {
 		t.Fatalf("tunnel open %d\n%s", code, out)
 	}
 	out, code = call("c3po", "tui")

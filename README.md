@@ -1,6 +1,6 @@
 # c3po
 
-c3po is one CLI. The apps are `ast`, `deport`, `gcal`, `gdrive`, `gmail`, `looptab`, `pass`, `slack`, `tunnel`, and `tui`. Terminal screens are only `c3po tui cyclotree`, `c3po tui l`, `c3po tui o`, `c3po tui tunnel`, `c3po tui gdrive`, `c3po tui pass`, `c3po tui deport`, `c3po tui xl`, and `c3po tui looptab`. The neuro-linguistic programming trainer is the crusade mode `crusade -m nlp`.
+c3po is one CLI. The apps are `ast`, `deport`, `gcal`, `gdrive`, `gmail`, `looptab`, `pass`, `slack`, `tunnel`, and `tui`. Terminal screens are only `c3po tui cyclotree`, `c3po tui l`, `c3po tui o`, `c3po tui tunnel`, `c3po tui gdrive`, `c3po tui pass`, `c3po tui deport`, `c3po tui xl`, and `c3po tui looptab`. The neuro-linguistic programming trainer is the crusade mode `crusade -m nlp`. `c3po tunnel` and `c3po tui tunnel` run `nebula tunnel`.
 
 ```sh
 c3po ast [args...]
