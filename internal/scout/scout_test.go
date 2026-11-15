@@ -86,6 +86,9 @@ func TestPortedScoutHelpMatchesHelpFlag(t *testing.T) {
 		if name == "tunnel" {
 			needle = "nebula tunnel"
 		}
+		if name == "pass" {
+			needle = "nebula crypt"
+		}
 		if !bytes.Contains(scoutOut, []byte(needle)) {
 			t.Fatalf("%s help does not name its command\n%s", name, scoutOut)
 		}

@@ -2,13 +2,13 @@ package pass
 
 import (
 	"bytes"
+	"fmt"
+	"io"
 	"strings"
 	"testing"
-
-	"github.com/ryangerardwilson/c3po/internal/version"
 )
 
-// isolate keeps the real op and token file out of reach.
+// isolate keeps the real nebula binary out of reach.
 func isolate(t *testing.T) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
@@ -18,76 +18,48 @@ func isolate(t *testing.T) {
 	t.Setenv("OP_SERVICE_ACCOUNT_TOKEN_FILE", "")
 }
 
-func TestHelpDescribesVaultSearch(t *testing.T) {
+func TestRunNeedsNebula(t *testing.T) {
 	isolate(t)
-	for _, args := range [][]string{nil, {"help"}, {"-h"}, {"--help"}} {
-		var out, errOut bytes.Buffer
-		if rc := Run(args, &out, &errOut); rc != 0 || out.String() != Help || errOut.Len() != 0 {
-			t.Fatalf("%v rc = %d", args, rc)
-		}
-	}
-	for _, needle := range []string{
-		"c3po pass <vault> <search>", "c3po pass <vault> -l", "c3po pass wiom -l",
-		"c3po pass version", "wl-copy", "c3po pass <vault> --create", "c3po pass <vault> --edit",
-		"c3po pass <vault> --delete", "c3po pass <vault> --show", "--template",
-		"~/.config/c3po/pass/service-account-token",
-	} {
-		if !strings.Contains(Help, needle) {
-			t.Fatalf("help missing %q", needle)
-		}
-	}
-	for _, retired := range []string{"pass open", "pass remember csv", "password sheet", "pass copy password", "pass upgrade"} {
-		if strings.Contains(Help, retired) {
-			t.Fatalf("help still offers %q", retired)
-		}
+	var errOut bytes.Buffer
+	if rc := Run([]string{"Root", "github"}, &bytes.Buffer{}, &errOut); rc != 1 || !strings.Contains(errOut.String(), "nebula is not installed") {
+		t.Fatalf("rc = %d stderr = %q", rc, errOut.String())
 	}
 }
 
-func TestVersionIsTheC3poVersion(t *testing.T) {
-	isolate(t)
+func TestForwardsCryptArgs(t *testing.T) {
+	prevLook, prevRun := lookNebula, runCommand
+	t.Cleanup(func() { lookNebula, runCommand = prevLook, prevRun })
+	var got []string
+	lookNebula = func(string) (string, error) { return "/bin/nebula", nil }
+	runCommand = func(path string, args []string, stdout, _ io.Writer) int {
+		got = append([]string{path}, args...)
+		fmt.Fprintln(stdout, "0.1.0")
+		return 0
+	}
 	var out bytes.Buffer
-	if rc := Run([]string{"version"}, &out, &bytes.Buffer{}); rc != 0 || out.String() != version.String()+"\n" {
-		t.Fatalf("rc = %d version = %q", rc, out.String())
+	if rc := Run([]string{"version"}, &out, &bytes.Buffer{}); rc != 0 || out.String() != "0.1.0\n" {
+		t.Fatalf("rc = %d out = %q", rc, out.String())
 	}
-}
-
-func TestAVaultNamedHelpIsTheHelpWord(t *testing.T) {
-	isolate(t)
-	var out, errOut bytes.Buffer
-	rc := Run([]string{"help", "github"}, &out, &errOut)
-	if rc != 1 || errOut.String() != "Use help by itself.\n" || out.Len() != 0 {
-		t.Fatalf("rc = %d stderr = %q", rc, errOut.String())
-	}
-}
-
-func TestOneArgumentIsUsage(t *testing.T) {
-	isolate(t)
-	var errOut bytes.Buffer
-	if rc := Run([]string{"Root"}, &bytes.Buffer{}, &errOut); rc != 1 || !strings.Contains(errOut.String(), "Use: c3po pass <vault> <search>") {
-		t.Fatalf("rc = %d stderr = %q", rc, errOut.String())
-	}
-}
-
-func TestMissingTokenStopsBeforeOp(t *testing.T) {
-	isolate(t)
-	var errOut bytes.Buffer
-	if rc := Run([]string{"Root", "github"}, &bytes.Buffer{}, &errOut); rc != 1 || errOut.String() != "1Password service account token is missing.\n" {
-		t.Fatalf("rc = %d stderr = %q", rc, errOut.String())
+	if strings.Join(got, " ") != "/bin/nebula crypt version" {
+		t.Fatalf("%v", got)
 	}
 }
 
 func TestScreenHelpDescribesCopy(t *testing.T) {
-	for _, needle := range []string{"vault", "item", "enter copies the selected item", "secret is not printed", "dd deletes the selected item", "c3po pass"} {
+	for _, needle := range []string{"c3po tui pass", "vault", "item", "enter copies the selected item", "secret is not printed", "dd deletes the selected item", "nebula crypt"} {
 		if !strings.Contains(ScreenHelp, needle) {
 			t.Fatalf("screen help missing %q", needle)
 		}
 	}
+	if strings.Contains(ScreenHelp, "c3po pass") {
+		t.Fatal(ScreenHelp)
+	}
 }
 
-func TestScreenNeedsAToken(t *testing.T) {
+func TestScreenNeedsNebula(t *testing.T) {
 	isolate(t)
 	var errOut bytes.Buffer
-	if rc := Screen(&bytes.Buffer{}, &errOut); rc != 1 || !strings.Contains(errOut.String(), "token is missing") {
+	if rc := Screen(&bytes.Buffer{}, &errOut); rc != 1 || !strings.Contains(errOut.String(), "nebula is not installed") {
 		t.Fatalf("rc = %d stderr = %q", rc, errOut.String())
 	}
 }

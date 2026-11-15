@@ -3,14 +3,35 @@ package tui
 
 import (
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 
 	"github.com/ryangerardwilson/c3po/internal/tuisession"
-	"github.com/ryangerardwilson/c3po/pass/internal/op"
-	"github.com/ryangerardwilson/c3po/pass/internal/vault"
 )
+
+// Vault is one 1Password vault named by nebula crypt.
+type Vault struct {
+	ID   string
+	Name string
+}
+
+// Item is one 1Password item. It does not carry a concealed value.
+type Item struct {
+	ID       string
+	VaultID  string
+	Title    string
+	Category string
+	Username string
+}
+
+// Source lists vaults and items. Copy and Delete go through nebula crypt,
+// so this process does not read the secret.
+type Source interface {
+	Vaults() ([]Vault, error)
+	Items(vault string) ([]Item, error)
+	Copy(vault, id string) error
+	Delete(vault, id string) error
+}
 
 const (
 	styleTitle  = "\x1b[1m"
@@ -18,19 +39,6 @@ const (
 	styleMuted  = "\x1b[90m"
 	styleReset  = "\x1b[0m"
 )
-
-// Source lists vaults and items and reads one secret.
-type Source interface {
-	Vaults() ([]op.Vault, error)
-	List(vault string) ([]op.Item, error)
-	Read(vaultID, id, category string) (string, error)
-	Delete(vault, id string) error
-}
-
-// Copier receives a secret. The screen does not print that secret.
-type Copier interface {
-	Copy(text string, stderr io.Writer) error
-}
 
 type screen interface {
 	size() (width, height int)
@@ -49,7 +57,6 @@ type row struct {
 
 type model struct {
 	src       Source
-	clip      Copier
 	vaultName string
 	rows      []row
 	cursor    int
@@ -63,18 +70,18 @@ type model struct {
 }
 
 // Run opens the vault list. q leaves it.
-func Run(src Source, clip Copier) error {
-	return RunSession(src, clip, nil)
+func Run(src Source) error {
+	return RunSession(src, nil)
 }
 
 // RunSession opens the vault list and restores a saved row when sess is set.
-func RunSession(src Source, clip Copier, sess *tuisession.Session) error {
+func RunSession(src Source, sess *tuisession.Session) error {
 	term, err := openTerminal()
 	if err != nil {
 		return err
 	}
 	defer term.close()
-	m := &model{src: src, clip: clip, session: sess}
+	m := &model{src: src, session: sess}
 	m.loadVaults()
 	if body, ok := sess.Restored(); ok && body.Path != "" {
 		m.loadItems(body.Path)
@@ -192,7 +199,7 @@ func (m *model) loadVaults() {
 func (m *model) loadItems(name string) {
 	m.vaultName = name
 	m.cursor = 0
-	items, err := m.src.List(name)
+	items, err := m.src.Items(name)
 	if err != nil {
 		m.rows = nil
 		m.fail(err)
@@ -233,15 +240,9 @@ func (m *model) restoreSession() {
 	}
 }
 
-// copy reads one secret and puts it on the clipboard. The secret is not
-// stored on the model, so the frame cannot print it.
+// copy asks nebula crypt to copy one item. The secret is not returned.
 func (m *model) copy(row row) {
-	secret, err := m.src.Read(row.vaultID, row.id, row.category)
-	if err != nil {
-		m.fail(err)
-		return
-	}
-	if err := m.clip.Copy(secret, io.Discard); err != nil {
+	if err := m.src.Copy(m.vaultName, row.id); err != nil {
 		m.fail(err)
 		return
 	}
@@ -332,7 +333,7 @@ func (m *model) window() (int, int) {
 	return start, start + rows
 }
 
-func vaultRows(vaults []op.Vault) []row {
+func vaultRows(vaults []Vault) []row {
 	rows := make([]row, 0, len(vaults))
 	for _, item := range vaults {
 		name := strings.TrimSpace(item.Name)
@@ -347,7 +348,7 @@ func vaultRows(vaults []op.Vault) []row {
 	return rows
 }
 
-func itemRows(items []op.Item) []row {
+func itemRows(items []Item) []row {
 	rows := make([]row, 0, len(items))
 	seen := map[string]bool{}
 	for _, item := range items {
@@ -357,15 +358,15 @@ func itemRows(items []op.Item) []row {
 		if item.ID != "" {
 			seen[item.ID] = true
 		}
-		detail := ""
-		if names := vault.Usernames(item); len(names) > 0 {
-			detail = names[0]
+		name := strings.TrimSpace(item.Title)
+		if name == "" {
+			name = "(untitled)"
 		}
 		rows = append(rows, row{
 			id:       item.ID,
-			vaultID:  item.Vault.ID,
-			name:     vault.DisplayTitle(item),
-			detail:   detail,
+			vaultID:  item.VaultID,
+			name:     name,
+			detail:   item.Username,
 			category: item.Category,
 		})
 	}

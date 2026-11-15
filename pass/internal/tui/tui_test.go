@@ -1,11 +1,8 @@
 package tui
 
 import (
-	"io"
 	"strings"
 	"testing"
-
-	"github.com/ryangerardwilson/c3po/pass/internal/op"
 )
 
 type deletedCall struct {
@@ -13,22 +10,26 @@ type deletedCall struct {
 	id    string
 }
 
+type copyCall struct {
+	vault string
+	id    string
+}
+
 type fakeSource struct {
-	vaults    []op.Vault
-	items     []op.Item
-	secret    string
-	reads     int
+	vaults    []Vault
+	items     []Item
+	copies    []copyCall
 	deleted   []deletedCall
 	deleteErr error
 }
 
-func (f *fakeSource) Vaults() ([]op.Vault, error) { return f.vaults, nil }
+func (f *fakeSource) Vaults() ([]Vault, error) { return f.vaults, nil }
 
-func (f *fakeSource) List(string) ([]op.Item, error) { return f.items, nil }
+func (f *fakeSource) Items(string) ([]Item, error) { return f.items, nil }
 
-func (f *fakeSource) Read(string, string, string) (string, error) {
-	f.reads++
-	return f.secret, nil
+func (f *fakeSource) Copy(vault, id string) error {
+	f.copies = append(f.copies, copyCall{vault: vault, id: id})
+	return nil
 }
 
 func (f *fakeSource) Delete(vault, id string) error {
@@ -36,7 +37,7 @@ func (f *fakeSource) Delete(vault, id string) error {
 	if f.deleteErr != nil {
 		return f.deleteErr
 	}
-	kept := make([]op.Item, 0, len(f.items))
+	kept := make([]Item, 0, len(f.items))
 	for _, item := range f.items {
 		if item.ID != id {
 			kept = append(kept, item)
@@ -46,39 +47,27 @@ func (f *fakeSource) Delete(vault, id string) error {
 	return nil
 }
 
-type fakeClip struct{ text string }
-
-func (f *fakeClip) Copy(text string, _ io.Writer) error {
-	f.text = text
-	return nil
-}
-
-func sample() (*model, *fakeSource, *fakeClip) {
-	item := op.Item{ID: "item-1", Title: "GH_EXAMPLE", Category: "LOGIN"}
-	item.Vault.ID = "vault-1"
-	item.AdditionalInformation = "ada"
-	item.Fields = []op.Field{{Label: "password", Value: "secret-value"}}
+func sample() (*model, *fakeSource) {
+	item := Item{ID: "item-1", VaultID: "vault-1", Title: "GH_EXAMPLE", Category: "LOGIN", Username: "ada"}
 	src := &fakeSource{
-		vaults: []op.Vault{{ID: "vault-1", Name: "Root"}},
-		items:  []op.Item{item},
-		secret: "secret-value",
+		vaults: []Vault{{ID: "vault-1", Name: "Root"}},
+		items:  []Item{item},
 	}
-	clip := &fakeClip{}
-	m := &model{src: src, clip: clip, width: 80, height: 24}
+	m := &model{src: src, width: 80, height: 24}
 	m.loadVaults()
-	return m, src, clip
+	return m, src
 }
 
 func TestEnterOpensAVaultThenCopiesTheItem(t *testing.T) {
-	m, src, clip := sample()
-	if m.handleKey("enter") || m.vaultName != "Root" || src.reads != 0 {
-		t.Fatalf("vault %q reads %d", m.vaultName, src.reads)
+	m, src := sample()
+	if m.handleKey("enter") || m.vaultName != "Root" || len(src.copies) != 0 {
+		t.Fatalf("vault %q copies %d", m.vaultName, len(src.copies))
 	}
-	if m.handleKey("l") || src.reads != 0 || clip.text != "" {
+	if m.handleKey("l") || len(src.copies) != 0 {
 		t.Fatal("l copied an item")
 	}
-	if m.handleKey("enter") || clip.text != "secret-value" || m.status != "copied GH_EXAMPLE" {
-		t.Fatalf("%q copied %d bytes", m.status, len(clip.text))
+	if m.handleKey("enter") || len(src.copies) != 1 || src.copies[0].vault != "Root" || src.copies[0].id != "item-1" || m.status != "copied GH_EXAMPLE" {
+		t.Fatalf("%q %#v", m.status, src.copies)
 	}
 	if strings.Contains(m.view(), "secret-value") {
 		t.Fatal("frame printed the secret")
@@ -86,7 +75,7 @@ func TestEnterOpensAVaultThenCopiesTheItem(t *testing.T) {
 }
 
 func TestFrameShowsTheUsernameAndHidesThePasswordField(t *testing.T) {
-	m, _, _ := sample()
+	m, _ := sample()
 	m.handleKey("enter")
 	frame := m.view()
 	if !strings.Contains(frame, "GH_EXAMPLE") || !strings.Contains(frame, "ada") || strings.Contains(frame, "secret-value") {
@@ -95,7 +84,7 @@ func TestFrameShowsTheUsernameAndHidesThePasswordField(t *testing.T) {
 }
 
 func TestHReturnsToTheVaultList(t *testing.T) {
-	m, _, _ := sample()
+	m, _ := sample()
 	m.handleKey("enter")
 	if m.handleKey("h") || m.vaultName != "" || len(m.rows) != 1 || !m.rows[0].vault {
 		t.Fatalf("%q %#v", m.vaultName, m.rows)
@@ -103,7 +92,7 @@ func TestHReturnsToTheVaultList(t *testing.T) {
 }
 
 func TestShortcutsStayBehindQuestionMark(t *testing.T) {
-	m, _, _ := sample()
+	m, _ := sample()
 	if strings.Contains(m.view(), "j/k move") || !strings.Contains(m.view(), "Root") {
 		t.Fatalf("list\n%s", m.view())
 	}
@@ -122,18 +111,16 @@ func TestShortcutsStayBehindQuestionMark(t *testing.T) {
 }
 
 func TestCopiedItemStaysOnScreenWhileJKMoves(t *testing.T) {
-	items := make([]op.Item, 40)
+	items := make([]Item, 40)
 	for i := range items {
 		title := itemTitle(i)
-		items[i] = op.Item{ID: "id-" + title[:7], Title: title, Category: "LOGIN"}
-		items[i].Vault.ID = "vault-1"
+		items[i] = Item{ID: "id-" + title[:7], VaultID: "vault-1", Title: title, Category: "LOGIN"}
 	}
 	src := &fakeSource{
-		vaults: []op.Vault{{ID: "vault-1", Name: "Wiom"}},
+		vaults: []Vault{{ID: "vault-1", Name: "Wiom"}},
 		items:  items,
-		secret: "secret-value",
 	}
-	m := &model{src: src, clip: &fakeClip{}, width: 84, height: 37}
+	m := &model{src: src, width: 84, height: 37}
 	m.loadVaults()
 	if m.handleKey("enter") || m.vaultName != "Wiom" {
 		t.Fatalf("vault %q", m.vaultName)

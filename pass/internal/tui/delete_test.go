@@ -4,20 +4,15 @@ import (
 	"errors"
 	"strings"
 	"testing"
-
-	"github.com/ryangerardwilson/c3po/pass/internal/op"
 )
 
-func loginItem(id, title string) op.Item {
-	item := op.Item{ID: id, Title: title, Category: "LOGIN"}
-	item.Vault.ID = "vault-1"
-	item.Fields = []op.Field{{Label: "password", Value: "secret-value"}}
-	return item
+func loginItem(id, title string) Item {
+	return Item{ID: id, VaultID: "vault-1", Title: title, Category: "LOGIN", Username: "ada"}
 }
 
-func openVault(items ...op.Item) (*model, *fakeSource) {
-	src := &fakeSource{items: items, secret: "secret-value"}
-	m := &model{src: src, clip: &fakeClip{}, width: 80, height: 24}
+func openVault(items ...Item) (*model, *fakeSource) {
+	src := &fakeSource{items: items}
+	m := &model{src: src, width: 80, height: 24}
 	m.loadItems("Root")
 	return m, src
 }
@@ -62,7 +57,7 @@ func TestQAfterDQuitsWithoutDeleting(t *testing.T) {
 }
 
 func TestDDLeavesAVault(t *testing.T) {
-	m, _, _ := sample()
+	m, _ := sample()
 	src := m.src.(*fakeSource)
 	if m.handleKey("d") || m.handleKey("d") || m.status != "dd deletes an item" || len(src.deleted) != 0 || !m.rows[0].vault {
 		t.Fatalf("%q %#v", m.status, src.deleted)
@@ -78,7 +73,7 @@ func TestDDOnAnEmptyItemList(t *testing.T) {
 
 func TestDDOnAnEmptyVaultList(t *testing.T) {
 	src := &fakeSource{}
-	m := &model{src: src, clip: &fakeClip{}, width: 80, height: 24}
+	m := &model{src: src, width: 80, height: 24}
 	m.loadVaults()
 	if m.handleKey("d") || m.handleKey("d") || m.status != "no vaults" || len(src.deleted) != 0 {
 		t.Fatalf("%q %#v", m.status, src.deleted)
