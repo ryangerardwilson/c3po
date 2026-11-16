@@ -186,32 +186,29 @@ func TestPatchCCNonGoHasNoCCLine(t *testing.T) {
 	}
 }
 
-func TestPatchCCUnparsedGoIsWritten(t *testing.T) {
+func TestPatchCCUnparsedGoIsRefused(t *testing.T) {
 	w := newCCWS(t)
-	h := w.write("pkg/f.go", "package p\n\nfunc F( {\n")
+	old := "package p\n\nfunc F( {\n"
+	h := w.write("pkg/f.go", old)
 	code, out, errS := w.run("patch", "pkg/f.go", "--expect-hash", h, "--old", "F(", "--new", "G(")
-	if code != 0 {
+	if code != ExitFail || out != "refused  pkg/f.go  unparsed\n" || strings.Contains(errS, "Error") {
 		t.Fatalf("code %d out=%q err=%q", code, out, errS)
 	}
-	lines := outLines(out)
-	if len(lines) != 2 || !okLine.MatchString(lines[0]) || lines[1] != "cc  pkg/f.go  unparsed" {
-		t.Fatalf("out %q", out)
-	}
-	if !strings.Contains(w.read("pkg/f.go"), "func G(") {
-		t.Fatal("file not written")
+	if w.read("pkg/f.go") != old {
+		t.Fatal("unparsed patch was written")
 	}
 }
 
-func TestPatchCCDuplicateNameIsUnparsed(t *testing.T) {
+func TestPatchCCDuplicateNameIsRefused(t *testing.T) {
 	w := newCCWS(t)
 	old := "package p\n\nfunc init() {}\n\nfunc init() {}\n"
 	h := w.write("pkg/f.go", old)
-	code, out, _ := w.run("patch", "pkg/f.go", "--expect-hash", h, "--old", "package p\n", "--new", "package p\n\n"+ccFunc("H", 40))
-	if code != 0 {
-		t.Fatalf("code %d out=%q", code, out)
+	code, out, errS := w.run("patch", "pkg/f.go", "--expect-hash", h, "--old", "package p\n", "--new", "package p\n\n"+ccFunc("H", 40))
+	if code != ExitFail || out != "refused  pkg/f.go  unparsed\n" || strings.Contains(errS, "Error") {
+		t.Fatalf("code %d out=%q err=%q", code, out, errS)
 	}
-	if lines := outLines(out); len(lines) != 2 || lines[1] != "cc  pkg/f.go  unparsed" {
-		t.Fatalf("out %q", out)
+	if w.read("pkg/f.go") != old {
+		t.Fatal("duplicate-name patch was written")
 	}
 }
 
@@ -286,8 +283,9 @@ func TestCreateCCNewHighIsRefused(t *testing.T) {
 func TestCreateCCWritesWithoutCCLine(t *testing.T) {
 	cases := map[string]string{
 		"pkg/f.go":  "package p\n\n" + ccFunc("A", 29),
-		"pkg/u.go":  "package p\n\nfunc F( {\n" + ccFunc("B", 40),
-		"pkg/f.py":  "def g(x):\n" + strings.Repeat("    if x:\n        pass\n", 40),
+		"pkg/f.py":  "def g(x):\n    return x\n",
+		"pkg/f.ts":  "export function g(x: number): number { return x }\n",
+		"pkg/f.js":  "function g(x) {\n" + strings.Repeat("  if (x) return 1\n", 40) + "  return 0\n}\n",
 		"pkg/f.txt": strings.Repeat("if x\n", 40),
 	}
 	for rel, content := range cases {
@@ -347,13 +345,14 @@ func TestApplyCCWritesWithoutCCLine(t *testing.T) {
 	g := "\n" + ccFunc("G", 40)
 	oldGone := "package p\n\n" + ccFunc("A", 2) + g
 	hGone := w.write("pkg/gone.go", oldGone)
-	hBad := w.write("pkg/bad.go", "package p\n\nfunc F( {\n")
 	hPy := w.write("pkg/f.py", "x = 1\n")
-	pyNew := "def g(x):\n" + strings.Repeat("    if x:\n        pass\n", 40)
+	pyNew := "def g(x):\n    return x\n"
+	hTs := w.write("pkg/f.ts", "export const n = 1\n")
+	tsNew := "export function g(x: number): number { return x }\n"
 	m := manifest(t,
 		map[string]string{"path": "pkg/high.go", "expect_hash": hHigh, "old": oldHigh, "new": "package p\n\n" + ccFunc("F", 33)},
 		map[string]string{"path": "pkg/gone.go", "expect_hash": hGone, "old": g, "new": ""},
-		map[string]string{"path": "pkg/bad.go", "expect_hash": hBad, "old": "package p\n", "new": "package p\n\n" + ccFunc("H", 40)},
+		map[string]string{"path": "pkg/f.ts", "expect_hash": hTs, "old": "export const n = 1\n", "new": tsNew},
 		map[string]string{"path": "pkg/f.py", "expect_hash": hPy, "old": "x = 1\n", "new": pyNew},
 	)
 	code, out, errS := w.run("apply", "--from-file", m)
@@ -369,11 +368,107 @@ func TestApplyCCWritesWithoutCCLine(t *testing.T) {
 			t.Fatalf("out %q", out)
 		}
 	}
-	if w.read("pkg/high.go") != "package p\n\n"+ccFunc("F", 33) || strings.Contains(w.read("pkg/gone.go"), "func G") || w.read("pkg/f.py") != pyNew {
+	if w.read("pkg/high.go") != "package p\n\n"+ccFunc("F", 33) || strings.Contains(w.read("pkg/gone.go"), "func G") || w.read("pkg/f.py") != pyNew || w.read("pkg/f.ts") != tsNew {
 		t.Fatal("apply did not write")
 	}
-	if !strings.Contains(w.read("pkg/bad.go"), "func H") {
-		t.Fatal("unparsed Go not written")
+}
+
+func TestCreateCCPythonAndTypeScriptOverLineAreRefused(t *testing.T) {
+	py := "def assign(x):\n" + strings.Repeat("    if x:\n        return 1\n", 32) + "    return 0\n"
+	ts := "export function assign(x: number): number {\n" + strings.Repeat("  if (x === 1) { return 1 }\n", 32) + "  return 0\n}\n"
+	for _, c := range []struct{ rel, body, name string }{
+		{"pkg/n.py", py, "assign"},
+		{"pkg/n.ts", ts, "assign"},
+		{"pkg/n.tsx", strings.Replace(ts, "export function assign", "export function assign", 1), "assign"},
+	} {
+		w := newCCWS(t)
+		code, out, errS := w.run("create", c.rel, "--expect-absent", "--parents", "--from-file", fromFile(t, c.body))
+		if code != ExitFail || !strings.Contains(out, "refused  "+c.rel+":"+c.name) || !strings.Contains(out, "crosses 30") || strings.Contains(errS, "Error") {
+			t.Fatalf("%s: code %d out=%q err=%q", c.rel, code, out, errS)
+		}
+		if _, err := os.Stat(filepath.Join(w.ws, "pkg")); !os.IsNotExist(err) {
+			t.Fatalf("%s created pkg: %v", c.rel, err)
+		}
+	}
+}
+
+func TestCreateCCUnparsedGoIsRefused(t *testing.T) {
+	w := newCCWS(t)
+	src := fromFile(t, "package p\n\nfunc F( {\n"+ccFunc("B", 40))
+	code, out, errS := w.run("create", "pkg/u.go", "--expect-absent", "--parents", "--from-file", src)
+	if code != ExitFail || out != "refused  pkg/u.go  unparsed\n" || strings.Contains(errS, "Error") {
+		t.Fatalf("code %d out=%q err=%q", code, out, errS)
+	}
+	if _, err := os.Stat(filepath.Join(w.ws, "pkg")); !os.IsNotExist(err) {
+		t.Fatalf("unparsed create made pkg: %v", err)
+	}
+}
+
+func TestAppendCCOverLineIsRefused(t *testing.T) {
+	w := newCCWS(t)
+	old := "package p\n\n" + ccFunc("A", 2)
+	h := w.write("pkg/f.go", old)
+	code, out, errS := w.run("append", "pkg/f.go", "--expect-hash", h, "--from-file", fromFile(t, "\n"+ccFunc("B", 31)))
+	if code != ExitFail || !strings.Contains(out, "refused  pkg/f.go:B") || !strings.Contains(out, "crosses 30") || strings.Contains(errS, "Error") {
+		t.Fatalf("code %d out=%q err=%q", code, out, errS)
+	}
+	if w.read("pkg/f.go") != old {
+		t.Fatal("refused append was written")
+	}
+}
+
+func TestAppendCCPythonOverLineIsRefused(t *testing.T) {
+	w := newCCWS(t)
+	old := "x = 1\n"
+	h := w.write("pkg/f.py", old)
+	body := "\ndef assign(x):\n" + strings.Repeat("    if x:\n        return 1\n", 32) + "    return 0\n"
+	code, out, errS := w.run("append", "pkg/f.py", "--expect-hash", h, "--from-file", fromFile(t, body))
+	if code != ExitFail || !strings.Contains(out, "refused  pkg/f.py:assign") || !strings.Contains(out, "crosses 30") || strings.Contains(errS, "Error") {
+		t.Fatalf("code %d out=%q err=%q", code, out, errS)
+	}
+	if w.read("pkg/f.py") != old {
+		t.Fatal("refused append was written")
+	}
+}
+
+func TestAppendCCUnderLineIsWritten(t *testing.T) {
+	w := newCCWS(t)
+	old := "package p\n\n" + ccFunc("A", 2)
+	h := w.write("pkg/f.go", old)
+	extra := "\n" + ccFunc("B", 3)
+	code, out, errS := w.run("append", "pkg/f.go", "--expect-hash", h, "--from-file", fromFile(t, extra))
+	if code != 0 || strings.Contains(out, "refused") || strings.Contains(out, "cc  ") {
+		t.Fatalf("code %d out=%q err=%q", code, out, errS)
+	}
+	if !strings.Contains(w.read("pkg/f.go"), "func B") {
+		t.Fatal("append was not written")
+	}
+}
+
+func TestAppendCCHashMismatchHasNoRefusedLine(t *testing.T) {
+	w := newCCWS(t)
+	old := "package p\n\n" + ccFunc("A", 2)
+	w.write("pkg/f.go", old)
+	bad := strings.Repeat("0", 64)
+	code, out, errS := w.run("append", "pkg/f.go", "--expect-hash", bad, "--from-file", fromFile(t, ccFunc("B", 40)))
+	if code != ExitFail || strings.Contains(out, "refused") || !strings.Contains(errS, "hash mismatch") {
+		t.Fatalf("code %d out=%q err=%q", code, out, errS)
+	}
+	if w.read("pkg/f.go") != old {
+		t.Fatal("file written on mismatch")
+	}
+}
+
+func TestPatchCCPythonAlreadyHighMayRise(t *testing.T) {
+	w := newCCWS(t)
+	old := "def assign(x):\n" + strings.Repeat("    if x:\n        return 1\n", 32) + "    return 0\n"
+	h := w.write("pkg/f.py", old)
+	code, out, errS := w.run("patch", "pkg/f.py", "--expect-hash", h, "--old", "return 0\n", "--new", "return 0\n\n")
+	if code != 0 {
+		t.Fatalf("code %d out=%q err=%q", code, out, errS)
+	}
+	if strings.Contains(out, "refused") || w.read("pkg/f.py") == old {
+		t.Fatalf("out %q", out)
 	}
 }
 

@@ -3,12 +3,11 @@ schema: spec-driven
 context: |
   c3po is one CLI. Each app is a top-level command,
   c3po <name>. The apps are ast, deport, gcal, gdrive,
-  gmail, idealake, looptab, pass, slack, tunnel, and tui. c3po idealake
-  stores ideas by topic. c3po looptab
-  registers jobs files and edits them in vim. A terminal screen is only
-  c3po tui cyclotree, c3po tui l, c3po tui o,
-  c3po tui tunnel, c3po tui gdrive, c3po tui pass, c3po tui deport, c3po tui xl,
-  c3po tui looptab, or c3po tui nlp.
+  gmail, idealake, looptab, pass, slack, and tunnel. There is no c3po tui
+  command. c3po idealake stores ideas by topic. c3po looptab
+  registers jobs files and edits them in vim. Screens run in r2d2:
+  web, cyclotree, l, o, tunnel, gdrive, pass, deport, xl, and looptab.
+  The trainer is crusade -m nlp.
   ast is the AST-aware agent boundary.
   Product truth lives in this repository.
 

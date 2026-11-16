@@ -886,7 +886,7 @@ func (r Runner) cmdAppend(args []string) error {
 	if hash == "" {
 		return usageError{"--expect-hash is required"}
 	}
-	_, _, wsRoot, err := r.workspaceFor(path)
+	cfg, _, wsRoot, err := r.workspaceFor(path)
 	if err != nil {
 		return err
 	}
@@ -901,6 +901,9 @@ func (r Runner) cmdAppend(args []string) error {
 		content, err = files.ReadAllFile(fromFile)
 	}
 	if err != nil {
+		return err
+	}
+	if err := refuseAppend(wsRoot, abs, hash, ccMax(cfg.MaxCC), content); err != nil {
 		return err
 	}
 	h, err := files.AppendExact(abs, hash, content)

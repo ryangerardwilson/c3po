@@ -75,7 +75,9 @@ rgw-ast [--root <path>] cut [--json] [path]
 - The PreToolUse hook decides enforcement from the cached measure. The cache
   fingerprint covers dirty and untracked paths and their content, HEAD, the
   root ignore files, and policy, so a tree that grows past the threshold
-  misses it. A host Write of a missing path is allowed before any measure.
+  misses it. A host Write of a missing path with no body is allowed before
+  any measure. A Write of a new `.go`, `.ts`, `.tsx`, or `.py` file is scored
+  when the body is present.
   `read --lines`, `patch`, `delete`, and `move` do not walk the tree to
   remeasure; whole-file `read` decides enforcement from the cached measure.
 - Relative file paths resolve from the git root, not the current directory.
@@ -101,14 +103,14 @@ rgw-ast [--root <path>] cut [--json] [path]
   characters; use `--path` / `--glob` to scope.
 - A non-unique `patch` match fails and lists every matching line; `--all`
   replaces every occurrence. A stale hash says how to recover.
-- A plain Go `patch` prints a `cc` line per function declaration whose
-  cyclomatic number changed. It refuses, writes nothing, and exits 1 when a
-  function rises from below `max_cc` (default 30) to `max_cc` or above, or a
-  new one is at `max_cc` or above. `patch --symbol`, `create`, and each Go
-  file in `apply` refuse the same way on the bytes they would write (a refused
-  `apply` writes nothing), and print no `cc` line on success. Functions
-  already at or above `max_cc` stay editable. A Go file that does not parse is
-  written.
+- A plain patch of a Go, TypeScript, or Python file prints a `cc` line per
+  function whose cyclomatic number changed. It refuses, writes nothing, and
+  exits 1 when a function rises from below `max_cc` (default 30) to `max_cc`
+  or above, or a new one is at `max_cc` or above. `patch --symbol`, `create`,
+  `append`, and each scored file in `apply` refuse the same way (a refused
+  `apply` writes nothing) and print no `cc` line on success. A function
+  already at or above `max_cc` stays editable. Unparsed Go is refused and not
+  written. JavaScript and Rust are not scored.
 - `gap` lists every scored function (Go, Python, Rust, TypeScript,
   JavaScript, as cyclotree scores them) at or above `max_cc`, walking the
   same scope as `map`: highest first, then path and name. It exits 0;
@@ -143,7 +145,9 @@ rgw-ast [--root <path>] cut [--json] [path]
   quotes, heredocs, substitutions, `cd`, and `sh -c` in view, so `2>&1`,
   `/dev/null`, stdin heredocs, and read-only pipelines around `c3po ast` or `rgw-ast` pass,
   while any write into an enforced tree is denied. In an enforced tree a host
-  `Write` of a missing file is allowed (it is a create); a host `Read` needs a
+  `Write` of a new `.go`, `.ts`, `.tsx`, or `.py` file is denied when the body
+  holds a function at `max_cc` or above, and a `Write` with no body stays
+  allowed. A host `Read` needs a
   `limit` of at most `max_read_lines` unless the file is that short; inline
   interpreter code (`python -c`, `node -e`, `perl -e`, …) with file-writing
   calls is a write; a command matching `generators.allow` must run through

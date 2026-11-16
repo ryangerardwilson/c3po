@@ -188,12 +188,12 @@ To format, use apply: the hook denies gofmt -w on an enforced file because it ch
 A text that occurs more than once fails and lists every matching line; --all replaces every occurrence.
 --ops-file is a JSON array of {"old","new","all"} applied in order, one write.
 Each success prints the new hash: pass it as --expect-hash to the next patch of that file.
-A Go file is scored before the write, with or without --symbol, on the bytes that would be written: each function declaration, named Type.Method or Name as cyclotree names it, gets the cyclomatic number cyclotree reports.
+A Go, TypeScript, or Python file is scored before the write, with or without --symbol, on the bytes that would be written. A Go function declaration is named Type.Method or Name as cyclotree names it. TypeScript and Python use the function name cyclotree reports. The number is the cyclomatic number cyclotree reports. Function literals in Go are not scored.
 Without --symbol, after the ok line, one line per declaration whose score changed, sorted by name: "cc  <path>:<Name>  <old> -> <new>", "new -> <score>", or "<score> -> gone".
-When the old or new file does not parse, or two declarations share a name, the file is written; without --symbol the line is "cc  <path>  unparsed".
+When the old or new Go file does not parse, or two scored functions share a name, nothing is written. Stdout is "refused  <path>  unparsed" and the process exits 1.
 A declaration that rises from below max_cc (config, default 30) to max_cc or above, or a new one at max_cc or above, is refused: nothing is written, no ok line, one "refused  <path>:<Name>  cc <old> -> <new> crosses <max_cc>" line each on stdout, exit 1.
-A declaration already at or above max_cc may rise further. A removal is never refused. Other files are not scored.
-create and apply refuse the same way. c3po ast gap lists the functions already at or above max_cc.
+A function already at or above max_cc may rise further. A removal is never refused. JavaScript, Rust, and other files are not scored.
+create, apply, and append refuse the same way. c3po ast gap lists the functions already at or above max_cc.
 With --symbol the old text must occur once inside that function, method, or JSX component, and the checkout formatter runs on that file only (gofmt, ruff when declared, biome when biome.json exists, prettier or dprint when that Markdown tool is declared).
 A formatter wrapping change does not reject the edit. A missing formatter keeps the edit.
 Hash mismatch or a missing symbol exits 1 with no cc line; a mismatch prints the file's current hash. Missing flags exit 2.
@@ -209,7 +209,7 @@ One transaction for edit, create, delete, and move. Every hash and match is chec
 Go, Python, TypeScript, and declared-Markdown files are formatted unless --no-format. Output names the formatter, or "none".
 --dry-run prints the planned op and the final unified diff and writes nothing.
 Paths resolve as patch resolves them: relative from the git root, absolute from their own repository (the first path picks it), so a path a hook reason prints works in both.
-Each Go edit or create is scored after formatting as patch scores it (c3po ast help patch). One crossing max_cc refuses the whole transaction: nothing is written, one refused line per declaration sorted by path then name, exit 1. --dry-run prints the same refused lines.
+Each Go, TypeScript, or Python edit or create is scored after formatting as patch scores it (c3po ast help patch). One crossing max_cc refuses the whole transaction: nothing is written, one refused line per declaration sorted by path then name, exit 1. --dry-run prints the same refused lines.
 
 JSON manifest: {"files":[{"path","expect_hash","op":"edit|create|delete|move","old","new","symbol","diff","to"}]}
 op defaults to edit. create uses expect_hash "absent" or an empty hash. delete takes only the hash. move takes "to" and the hash.
@@ -306,7 +306,7 @@ Example: c3po ast read internal/cli/help.go --lines 1-40
 	"create": `c3po ast create <file> --expect-absent (--from-file <f>|--stdin) [--parents]
 
 Create one file that must not already exist. --parents creates ancestor directories.
-A Go file with a function declaration at or above max_cc is refused: nothing is written, one "refused  <path>:<Name>  cc new -> <score> crosses <max_cc>" line each, exit 1. A Go file that does not parse is written.
+A Go, TypeScript, or Python file with a function at or above max_cc is refused: nothing is written, one "refused  <path>:<Name>  cc new -> <score> crosses <max_cc>" line each, exit 1. A Go file that does not parse is refused: "refused  <path>  unparsed".
 Exit 1 when the path exists or the parent is missing. Exit 2 on bad flags.
 For several files, use apply.
 
@@ -315,7 +315,8 @@ Example: c3po ast create notes.md --expect-absent --from-file /tmp/notes.md
 	"append": `c3po ast append <file> --expect-hash <sha> (--from-file <f>|--stdin)
 
 Append bytes after the hash matches. The hash is of the file before the append.
-Exit 1 on a hash mismatch. Exit 2 on bad flags.
+A Go, TypeScript, or Python append that adds a function at or above max_cc, or raises one to that line, is refused and nothing is written. A Go file that does not parse is refused.
+Exit 1 on a hash mismatch or a refused score. Exit 2 on bad flags.
 
 Example: c3po ast append log.txt --expect-hash <sha> --from-file /tmp/more.txt
 `,

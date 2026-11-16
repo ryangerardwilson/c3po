@@ -171,46 +171,17 @@ Go, Python, TypeScript, and declared-Markdown files SHALL be formatted unless
 - **THEN** `b.go` SHALL exist with the same content and `a.go` SHALL not
 
 ### Requirement: Cyclomatic gate and cc lines on plain Go patch
-A `rgw-ast patch` without `--symbol` SHALL, after the hash matches and the
-replacements are applied in memory and before the file is written, score
-every Go function declaration in the old and the new bytes when the file
-name ends in `.go`. `patch --symbol`, `create`, and `apply` SHALL be gated by
-the same refusal rule as specified in "Cyclomatic gate on symbol patch,
-create, and apply". `append` SHALL NOT be gated.
+A plain patch SHALL, after the hash matches and the replacements are applied in memory and before the file is written, score every function in the old and the new bytes when the file name ends in `.go`, `.ts`, `.tsx`, or `.py`. `patch --symbol`, `create`, `apply`, and `append` SHALL be gated by the same refusal rule. A `move` or `delete` SHALL NOT be scored. JavaScript, Rust, and any other extension SHALL NOT be scored.
 
-A declaration SHALL be named as cyclotree names it: the receiver type with a
-leading pointer star removed, `.`, and the function name; a function with no
-receiver is its name. Function literals SHALL NOT be scored on their own and
-SHALL NOT add their body to the enclosing declaration. The score SHALL be the
-cyclomatic number cyclotree reports for that declaration, from one shared
-counter.
+A Go declaration SHALL be named as cyclotree names it: the receiver type with a leading pointer star removed, `.`, and the function name; a function with no receiver is its name. Go function literals SHALL NOT be scored on their own and SHALL NOT add their body to the enclosing declaration. TypeScript and Python functions SHALL use the name cyclotree reports. The score SHALL be the cyclomatic number cyclotree reports.
 
-The old and the new bytes are a clean parse when go/parser accepts them and
-no two declarations share a name. When either is not a clean parse, the file
-SHALL be written and stdout SHALL be the ok line followed by
-`cc  <relpath>  unparsed`, where `<relpath>` is the slash path the ok line
-prints.
+Go bytes are a clean parse when go/parser accepts them and no two scored functions share a name. When either side is not a clean parse, nothing SHALL be written, stdout SHALL be exactly `refused  <relpath>  unparsed`, stderr SHALL NOT hold an `Error:` line, and the process SHALL exit 1.
 
-When both are clean, a declaration is changed when its score changed, it
-exists only in the new bytes, or it exists only in the old bytes. The patch
-SHALL be refused when any declaration moves from below `max_cc` to `max_cc`
-or above; a declaration only in the new bytes counts as below before the
-edit. A declaration already at or above `max_cc` MAY rise. A removal SHALL
-NOT refuse.
+When both sides are clean, the patch SHALL be refused when any function moves from below `max_cc` to `max_cc` or above, or a function only in the new bytes is at `max_cc` or above. A function already at or above `max_cc` MAY rise. A removal SHALL NOT refuse.
 
-When not refused, the file SHALL be written and stdout SHALL be the ok line
-`ok  <hash>  <relpath>` followed by one line per changed declaration sorted
-by name: `cc  <relpath>:<Name>  <old> -> <new>`,
-`cc  <relpath>:<Name>  new -> <score>`, or `cc  <relpath>:<Name>  <score> -> gone`.
+When not refused, a plain patch SHALL be written and stdout SHALL be the ok line followed by one cc line per changed function. `create`, `apply`, and `append` SHALL NOT print a cc line on success. When refused, nothing SHALL be written, stdout SHALL hold one `refused  <relpath>:<Name>  cc <old> -> <new> crosses <max_cc>` or `refused  <relpath>:<Name>  cc new -> <score> crosses <max_cc>` line per refusing function, sorted by path and then by name, and the process SHALL exit 1 with no `Error:` line.
 
-When refused, nothing SHALL be written, no ok line and no cc line SHALL be
-printed, stdout SHALL hold one line per refusing declaration sorted by name,
-`refused  <relpath>:<Name>  cc <old> -> <new> crosses <max_cc>` or
-`refused  <relpath>:<Name>  cc new -> <score> crosses <max_cc>`, stderr SHALL
-NOT hold an `Error:` line, and the process SHALL exit 1.
-
-A hash mismatch, a missing match, or a usage error SHALL behave as before and
-SHALL print no cc line.
+A hash mismatch SHALL print no cc line and no refused line.
 
 #### Scenario: Rise under max_cc is written with a cc line
 - **GIVEN** `f.go` holds function `F` with cyclomatic number 5 and `max_cc` is 30
@@ -245,15 +216,38 @@ SHALL print no cc line.
 - **AND** stdout SHALL end with `cc  f.go:G  3 -> gone`
 
 #### Scenario: Non-Go file has no cc line
-- **WHEN** a plain patch of `f.py` or `f.txt` adds many branches
+- **WHEN** a plain patch of `f.txt` adds many branches, or of `f.py` adds branches that are not inside a function
 - **THEN** the file SHALL be written
 - **AND** stdout SHALL be only the ok line
+
+#### Scenario: A text file has no cc line
+- **WHEN** a plain patch of `f.txt` adds many branches
+- **THEN** the file SHALL be written
+- **AND** stdout SHALL be only the ok line
+
+#### Scenario: A Python function over the line is refused
+- **WHEN** a create or patch adds a Python function at max_cc or above
+- **THEN** the file SHALL NOT contain that function
+- **AND** stdout SHALL name the function and say it crosses max_cc
+
+#### Scenario: A TypeScript function over the line is refused
+- **WHEN** a create or patch adds a TypeScript function at max_cc or above
+- **THEN** the file SHALL NOT contain that function
+- **AND** stdout SHALL name the function and say it crosses max_cc
 
 #### Scenario: Unparsed Go file is written
 - **GIVEN** `f.go` is rejected by go/parser
 - **WHEN** a plain patch matches and applies
-- **THEN** the file SHALL be written
-- **AND** stdout SHALL be the ok line then `cc  f.go  unparsed`
+- **THEN** the file SHALL NOT be written
+- **AND** stdout SHALL be exactly `refused  f.go  unparsed`
+- **AND** the process SHALL exit 1
+
+#### Scenario: Unparsed Go is refused
+- **GIVEN** `f.go` is rejected by go/parser
+- **WHEN** a plain patch matches and applies
+- **THEN** the file SHALL NOT be written
+- **AND** stdout SHALL be exactly `refused  f.go  unparsed`
+- **AND** the process SHALL exit 1
 
 #### Scenario: Hash mismatch prints no cc line
 - **WHEN** a plain patch of a Go file gives a stale `--expect-hash`
@@ -261,49 +255,32 @@ SHALL print no cc line.
 - **AND** stdout SHALL hold no cc or refused line
 - **AND** the process SHALL exit 1 with the hash mismatch error
 
+#### Scenario: Append over the line is refused
+- **WHEN** append adds a Go, TypeScript, or Python function at max_cc or above
+- **THEN** the file SHALL NOT change
+- **AND** stdout SHALL name the function and say it crosses max_cc
+
 ### Requirement: Cyclomatic gate on symbol patch, create, and apply
-`rgw-ast patch --symbol`, `rgw-ast create`, and `rgw-ast apply` SHALL score
-the Go function declarations of every `.go` file they would write, with the
-names and the counter of the plain patch gate, on the bytes that would be
-written: after the formatter when that path formats (`patch --symbol`, and
-`apply` unless `--no-format`), and the exact given bytes for `create`. The
-old bytes of an edit SHALL be the file before the write; a created file SHALL
-have no old declarations. A `move` or `delete` SHALL NOT be scored. Files not
-ending in `.go` SHALL NOT be scored and SHALL NOT be refused.
+`patch --symbol`, `create`, `apply`, and `append` SHALL score the functions of every `.go`, `.ts`, `.tsx`, and `.py` file they would write, with the names and the counter of the plain patch gate, on the bytes that would be written. The old bytes of an edit SHALL be the file before the write. A created file SHALL have no old functions. A `move` or `delete` SHALL NOT be scored. Files of any other extension SHALL NOT be scored and SHALL NOT be refused for cyclomatic complexity.
 
-The write SHALL be refused when any declaration moves from below `max_cc` to
-`max_cc` or above, or a declaration only in the new bytes is at `max_cc` or
-above. A declaration already at or above `max_cc` MAY rise. A removal SHALL
-NOT refuse. When the old or the new bytes are not a clean parse (go/parser
-rejects them or two declarations share a name), that file SHALL NOT refuse
-and SHALL be written.
+The write SHALL be refused when any function moves from below `max_cc` to `max_cc` or above, or a function only in the new bytes is at `max_cc` or above. A function already at or above `max_cc` MAY rise. A removal SHALL NOT refuse. When the old or the new bytes are not a clean parse, the write SHALL be refused, nothing SHALL be written, and stdout SHALL be `refused  <relpath>  unparsed`.
 
-When refused, nothing SHALL be written: no file, no created directory, and no
-other file of the same `apply` transaction. No ok line and no plan SHALL be
-printed. Stdout SHALL hold one line per refusing declaration across every
-file, sorted by path and then by name:
-`refused  <relpath>:<Name>  cc <old> -> <new> crosses <max_cc>` or
-`refused  <relpath>:<Name>  cc new -> <score> crosses <max_cc>`. Stderr SHALL
-NOT hold an `Error:` line, and the process SHALL exit 1. `apply --dry-run`
-SHALL refuse the same way and print the same lines instead of a planned diff.
+When refused, nothing SHALL be written: no file, no created directory, and no other file of the same `apply` transaction. Stdout SHALL hold one refused line per refusing function, sorted by path and then by name. Stderr SHALL NOT hold an `Error:` line, and the process SHALL exit 1. `apply --dry-run` SHALL refuse the same way.
 
-When not refused, output SHALL be as before: the ok lines with their
-formatter, and no `cc` line. A hash mismatch, an existing create path, a
-missing match, or a usage error SHALL fail as before with no refused line.
+When not refused, output SHALL be the ok line and no `cc` line. A hash mismatch SHALL fail with no refused line.
 
 #### Scenario: Symbol patch crossing max_cc is refused
 - **GIVEN** function `F` in `pkg/f.go` has cyclomatic number 29 and `max_cc` is 30
 - **WHEN** `patch pkg/f.go --symbol F` raises `F` to 30
 - **THEN** the file SHALL NOT be written
 - **AND** stdout SHALL be exactly `refused  pkg/f.go:F  cc 29 -> 30 crosses 30`
-- **AND** stderr SHALL NOT contain `Error:`
 - **AND** the process SHALL exit 1
 
 #### Scenario: Symbol patch under max_cc prints no cc line
 - **GIVEN** function `F` in `pkg/f.go` has cyclomatic number 5
 - **WHEN** `patch --symbol F` raises `F` to 6
 - **THEN** the file SHALL be written
-- **AND** stdout SHALL be only `ok  <hash>  pkg/f.go  formatter <name>`
+- **AND** stdout SHALL be only the ok line
 
 #### Scenario: Symbol patch of an already-high function may rise
 - **GIVEN** function `F` has cyclomatic number 30 and `max_cc` is 30
@@ -318,7 +295,20 @@ missing match, or a usage error SHALL fail as before with no refused line.
 - **AND** the process SHALL exit 1 with no `Error:` line
 
 #### Scenario: Create of an unparsed Go file or a non-Go file is written
-- **WHEN** `create` gives a `.go` file go/parser rejects, or a `.py` file with forty branches
+- **WHEN** `create` gives a `.go` file go/parser rejects
+- **THEN** the file SHALL NOT be written
+- **AND** stdout SHALL say unparsed
+- **WHEN** `create` gives a `.txt` file or a `.js` file with many branches
+- **THEN** the file SHALL be written
+- **AND** stdout SHALL be only the ok line
+
+#### Scenario: Create of unparsed Go is refused
+- **WHEN** `create` gives a `.go` file go/parser rejects
+- **THEN** the file SHALL NOT be written
+- **AND** stdout SHALL say unparsed
+
+#### Scenario: Create of a non-scored file is written
+- **WHEN** `create` gives a `.txt` file or a `.js` file with many branches
 - **THEN** the file SHALL be written
 - **AND** stdout SHALL be only the ok line
 
@@ -330,8 +320,12 @@ missing match, or a usage error SHALL fail as before with no refused line.
 - **AND** the process SHALL exit 1 with no `Error:` line
 
 #### Scenario: Apply writes a rise from high, a removal, a non-Go file, and an unparsed Go file
-- **GIVEN** a manifest that raises `F` from 30 to 33, removes `G` at 40, adds forty branches to a `.py` file, and edits a `.go` file go/parser rejects
+- **GIVEN** a manifest that raises `F` from 30 to 33, removes `G` at 40, edits a `.txt` file, and edits a `.go` file go/parser rejects
 - **WHEN** apply runs
-- **THEN** every file SHALL be written
+- **THEN** no file SHALL change
+- **AND** stdout SHALL be `refused  <relpath>  unparsed`
+- **AND** the process SHALL exit 1
+- **WHEN** the same manifest omits the unparsed Go file
+- **THEN** the rise, the removal, and the `.txt` file SHALL be written
 - **AND** stdout SHALL be one ok line per file and no `cc` or `refused` line
 

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/ryangerardwilson/c3po/ast/internal/ccgate"
 	"github.com/ryangerardwilson/c3po/ast/internal/config"
 	"github.com/ryangerardwilson/c3po/ast/internal/enforce"
 	"github.com/ryangerardwilson/c3po/ast/internal/measure"
@@ -46,7 +47,7 @@ var denyTools = map[string]bool{
 	"notebookedit": true, "notebook_edit": true,
 	"createorupdatefile": true, "delete_file": true, "deletefile": true,
 	"edit_file": true, "editfile": true, "write_file": true, "writefile": true,
-	"multiedit": true, "multi_edit": true,
+	"filepatch": true, "filewrite": true, "multiedit": true, "multi_edit": true,
 }
 
 // Evaluate decides allow/deny for a tool call by the enforcement of what it
@@ -73,7 +74,11 @@ func Evaluate(req Request, cfg config.Config, cwd, rootOverride string) (Decisio
 		}
 		if createTools[tool] {
 			if _, err := os.Lstat(target); os.IsNotExist(err) {
-				return allow(), nil // a create cannot clobber anything, so it is not measured
+				dec, err, stop := j.gateNewFile(target, req.ToolInput)
+				if err != nil || stop {
+					return dec, err
+				}
+				return allow(), nil // a create under max_cc is not measured
 			}
 		}
 		repo, enforced, err := j.enforced(target)
@@ -152,14 +157,31 @@ func deny(reason string) Decision {
 	}
 }
 
+// normalizeTool lowers a host tool name and drops hyphens and underscores.
+// An MCP name mcp__<server>__<tool> is judged as <tool>. The server prefix
+// is removed before underscores are stripped, so the separator survives.
 func normalizeTool(name string) string {
-	name = strings.ToLower(name)
+	name = strings.ToLower(strings.TrimSpace(name))
+	if tool, ok := mcpTool(name); ok {
+		name = tool
+	}
 	name = strings.ReplaceAll(name, "-", "")
 	name = strings.ReplaceAll(name, "_", "")
-	if i := strings.LastIndex(name, "__"); i >= 0 {
-		name = name[i+2:]
-	}
 	return name
+}
+
+// mcpTool returns the tool after a leading mcp__<server>__.
+func mcpTool(name string) (string, bool) {
+	const prefix = "mcp__"
+	if !strings.HasPrefix(name, prefix) {
+		return "", false
+	}
+	rest := name[len(prefix):]
+	i := strings.Index(rest, "__")
+	if i < 0 || i+2 >= len(rest) {
+		return "", false
+	}
+	return rest[i+2:], true
 }
 
 func isShellish(name string) bool {
@@ -269,4 +291,53 @@ func firstString(m map[string]any, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+// gateNewFile scores a host Write of a file that does not exist yet.
+// stop is true when the decision is final. A body under max_cc, or a file
+// the gate does not score, returns stop false and is not measured.
+func (j *judge) gateNewFile(target string, input map[string]any) (Decision, error, bool) {
+	if !ccgate.Gated(target) {
+		return Decision{}, nil, false
+	}
+	body, ok := writeBody(input)
+	if !ok {
+		return Decision{}, nil, false
+	}
+	max := j.cfg.MaxCC
+	if max <= 0 {
+		max = config.DefaultMaxCC
+	}
+	_, refused := ccgate.Lines(filepath.ToSlash(target), max, nil, []byte(body))
+	if len(refused) == 0 {
+		return Decision{}, nil, false
+	}
+	repo, on, err := j.enforced(target)
+	if err != nil {
+		return Decision{}, err, true
+	}
+	if !on {
+		return Decision{}, nil, false
+	}
+	return deny("enforced workspace " + repo + ": " + strings.Join(refused, "\n")), nil, true
+}
+
+// writeBody is the whole file a host Write sent. Missing means the caller
+// cannot score it. An empty string is a body.
+func writeBody(input map[string]any) (string, bool) {
+	if input == nil {
+		return "", false
+	}
+	for _, key := range []string{"content", "contents", "file_text", "text", "body"} {
+		v, ok := input[key]
+		if !ok {
+			continue
+		}
+		s, ok := v.(string)
+		if !ok {
+			return "", false
+		}
+		return s, true
+	}
+	return "", false
 }
