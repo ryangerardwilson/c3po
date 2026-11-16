@@ -4,25 +4,25 @@
 TBD - created by archiving change o-direct-path. Update Purpose after archive.
 ## Requirements
 ### Requirement: A path is given directly
-`c3po tui o <path> [<path> ...]` SHALL open those paths. One directory SHALL start the navigator at that directory. One or more files SHALL open in `$VISUAL`, `$EDITOR`, or vim when every file is text, and SHALL be handed to xdg-open otherwise, except a file whose name ends in `.xlsx`, which SHALL open in the xl screen in the foreground. The navigator SHALL open that same `.xlsx` file in the xl screen and SHALL return when the spreadsheet exits. Several targets SHALL all be files. A missing path SHALL exit 1 and SHALL say `Path not found`. The word `open` SHALL NOT be a command. `c3po tui o` with no arguments SHALL start the navigator in the working directory. `c3po tui o help` SHALL show a direct path example, SHALL say an xlsx file opens in xl, and SHALL NOT show `c3po tui o open`.
+`r2d2 o <path> [<path> ...]` SHALL open those paths. One directory SHALL start the navigator at that directory. One or more files SHALL open in `$VISUAL`, `$EDITOR`, or vim when every file is text, and SHALL be handed to xdg-open otherwise, except a file whose name ends in `.xlsx`, which SHALL open in the xl screen in the foreground. The navigator SHALL open that same `.xlsx` file in the xl screen and SHALL return when the spreadsheet exits. Several targets SHALL all be files. A missing path SHALL exit 1 and SHALL say `Path not found`. The word `open` SHALL NOT be a command. `r2d2 o` with no arguments SHALL start the navigator in the working directory. `r2d2 o help` SHALL show a direct path example, SHALL say an xlsx file opens in xl, and SHALL NOT show `r2d2 o open`.
 
 #### Scenario: A directory starts the navigator
-- **WHEN** the operator runs `c3po tui o` with one directory
+- **WHEN** the operator runs `r2d2 o` with one directory
 - **THEN** the navigator SHALL start at that directory
 
 #### Scenario: A missing path is reported
-- **WHEN** the operator runs `c3po tui o` with a path that does not exist
+- **WHEN** the operator runs `r2d2 o` with a path that does not exist
 - **THEN** the command SHALL exit 1
 - **AND** the text SHALL say `Path not found`
 
 #### Scenario: The word open is a path
-- **WHEN** the operator runs `c3po tui o open` and no path named open exists
+- **WHEN** the operator runs `r2d2 o open` and no path named open exists
 - **THEN** the command SHALL exit 1
 - **AND** the text SHALL say `Path not found`
 - **AND** the command SHALL NOT print the usage line
 
 #### Scenario: A workbook opens in xl
-- **WHEN** the operator runs `c3po tui o` with one `.xlsx` file
+- **WHEN** the operator runs `r2d2 o` with one `.xlsx` file
 - **THEN** that file SHALL open in the xl screen
 - **AND** it SHALL NOT be handed to xdg-open
 
@@ -30,9 +30,9 @@ TBD - created by archiving change o-direct-path. Update Purpose after archive.
 `reveal`, `pick`, `save`, and `config` SHALL stay commands. `help` and `version` SHALL stay standalone. A word that is not one of those commands SHALL be read as a path.
 
 #### Scenario: Reveal still takes one path
-- **WHEN** the operator runs `c3po tui o reveal` with no path
+- **WHEN** the operator runs `r2d2 o reveal` with no path
 - **THEN** the command SHALL exit 1
-- **AND** the text SHALL say `Use: c3po tui o reveal <path>`
+- **AND** the text SHALL say `Use: r2d2 o reveal <path>`
 
 ### Requirement: The screen fills the terminal
 The navigator view SHALL contain one line for every row of the terminal. The title SHALL be the first line. While the command line is closed, the status line SHALL be the last line. While the command line is open, the last line SHALL be the command line. The listing SHALL use the rows between the prompt line and the last line. A listing with fewer entries SHALL pad those rows so the last line stays at the bottom. The listing SHALL NOT show a shortcut legend.
@@ -95,7 +95,7 @@ When visual mode is off, the first `d` SHALL arm deletion and SHALL show `d`. A 
 - **AND** visual mode SHALL be off
 
 ### Requirement: Visual range
-`v` SHALL toggle visual mode. The first `v` on a row SHALL anchor the range on that row and the status SHALL be `visual 1`. Motion keys SHALL move the cursor and SHALL extend the range through every listing row between the anchor and the cursor. The range SHALL stay inside the listing and SHALL NOT wrap. Each row in the range SHALL be highlighted, and the cursor row SHALL keep its cursor marker. A second `v` SHALL leave visual mode and SHALL leave every file in place. Esc SHALL leave visual mode and SHALL leave every file in place. `h` SHALL leave visual mode. The Delete key and Backspace SHALL delete every file and directory in the range, SHALL leave visual mode, and SHALL NOT delete when visual mode is off. `x` SHALL stage the range to move, in listing order, and SHALL leave visual mode. `y` SHALL stage the range to copy, in listing order, and SHALL leave visual mode. `v`, the Delete key, or Backspace typed into the filter or a command prompt SHALL NOT enter visual mode and SHALL NOT delete a file. Backspace in the filter or a command prompt SHALL edit that text. An empty listing SHALL leave visual mode off. The shortcut list and `c3po tui o help` SHALL name `v`, Backspace, and the Delete key.
+`v` SHALL toggle visual mode. The first `v` on a row SHALL anchor the range on that row and the status SHALL be `visual 1`. Motion keys SHALL move the cursor and SHALL extend the range through every listing row between the anchor and the cursor. The range SHALL stay inside the listing and SHALL NOT wrap. Each row in the range SHALL be highlighted, and the cursor row SHALL keep its cursor marker. A second `v` SHALL leave visual mode and SHALL leave every file in place. Esc SHALL leave visual mode and SHALL leave every file in place. `h` SHALL leave visual mode. The Delete key and Backspace SHALL delete every file and directory in the range, SHALL leave visual mode, and SHALL NOT delete when visual mode is off. `x` SHALL stage the range to move, in listing order, and SHALL leave visual mode. `y` SHALL stage the range to copy, in listing order, and SHALL leave visual mode. `v`, the Delete key, or Backspace typed into the filter or a command prompt SHALL NOT enter visual mode and SHALL NOT delete a file. Backspace in the filter or a command prompt SHALL edit that text. An empty listing SHALL leave visual mode off. The shortcut list and `r2d2 o help` SHALL name `v`, Backspace, and the Delete key.
 
 #### Scenario: A range is highlighted
 - **WHEN** the operator presses `v` on the first of three files and then `j` twice
@@ -160,7 +160,7 @@ When visual mode is off, the first `d` SHALL arm deletion and SHALL show `d`. A 
 - **AND** the filter text SHALL contain `v`
 
 ### Requirement: Bang runs a shell command
-`!` SHALL open the colon command line on the last row with `!` already typed and the cursor after it. The line SHALL show `:` immediately followed by `!`, with no space between them, and SHALL NOT show a separate `!` prompt or a hint. Text typed after that SHALL sit against the bang. Enter SHALL run the text after `!` in the shell with the listed directory as its working directory, and SHALL hand the terminal to that command, unless that text is a `>` redirect of one path. A `>` redirect of one path SHALL create that file or empty it, SHALL NOT hand the terminal to a shell, and SHALL select the file. The command SHALL NOT be limited to `mv`, `rm`, `cp`, `touch`, or `mkdir`. An empty command SHALL NOT run. Esc SHALL cancel the command line without running a command. After the command exits, the listing SHALL reload and the status line SHALL be the last line again. `!` typed into the filter SHALL stay text. Editing keys SHALL be the same as on the colon line. The shortcut list and `c3po tui o help` SHALL name `!`. `c3po tui o help` SHALL say that `!>` and one path creates or empties that file.
+`!` SHALL open the colon command line on the last row with `!` already typed and the cursor after it. The line SHALL show `:` immediately followed by `!`, with no space between them, and SHALL NOT show a separate `!` prompt or a hint. Text typed after that SHALL sit against the bang. Enter SHALL run the text after `!` in the shell with the listed directory as its working directory, and SHALL hand the terminal to that command, unless that text is a `>` redirect of one path. A `>` redirect of one path SHALL create that file or empty it, SHALL NOT hand the terminal to a shell, and SHALL select the file. The command SHALL NOT be limited to `mv`, `rm`, `cp`, `touch`, or `mkdir`. An empty command SHALL NOT run. Esc SHALL cancel the command line without running a command. After the command exits, the listing SHALL reload and the status line SHALL be the last line again. `!` typed into the filter SHALL stay text. Editing keys SHALL be the same as on the colon line. The shortcut list and `r2d2 o help` SHALL name `!`. `r2d2 o help` SHALL say that `!>` and one path creates or empties that file.
 
 #### Scenario: A shell command runs in the listed directory
 - **WHEN** the operator presses `!`, types `touch made.txt`, and presses enter
@@ -191,7 +191,7 @@ When visual mode is off, the first `d` SHALL arm deletion and SHALL show `d`. A 
 - **AND** the terminal SHALL NOT be handed to a shell
 
 ### Requirement: Colon runs mv, rm, cp, touch, mkdir, or :!
-`:` SHALL open a command line on the last row. The command line SHALL show `:` immediately followed by the text being typed, with no space after `:`, and SHALL NOT show a hint or that text on the prompt line under the title. Enter SHALL run that line in the listed directory when the command is `mv`, `rm`, `cp`, `touch`, or `mkdir`. `rm` MAY take `-rf`. `cp` and `mv` SHALL require two paths. Any other command or flag SHALL be refused and SHALL NOT run, unless the trimmed line starts with `!`. A trimmed line that starts with `!` SHALL run the rest in the shell with the listed directory as its working directory, and SHALL hand the terminal to that command, unless the rest is a `>` redirect of one path. That redirect SHALL create the file or empty it, SHALL NOT hand the terminal to a shell, and SHALL select the file. `touch` of an existing file SHALL leave its text in place. Space after the bang SHALL be ignored. An empty shell command SHALL NOT run. That shell command SHALL NOT be limited to `mv`, `rm`, `cp`, `touch`, or `mkdir`. Esc SHALL cancel the command line without running a command. After a command runs, the listing SHALL reload and the status line SHALL be the last line again. `:` typed into the filter SHALL stay text. The shortcut list and `c3po tui o help` SHALL name these commands and `:!`.
+`:` SHALL open a command line on the last row. The command line SHALL show `:` immediately followed by the text being typed, with no space after `:`, and SHALL NOT show a hint or that text on the prompt line under the title. Enter SHALL run that line in the listed directory when the command is `mv`, `rm`, `cp`, `touch`, or `mkdir`. `rm` MAY take `-rf`. `cp` and `mv` SHALL require two paths. Any other command or flag SHALL be refused and SHALL NOT run, unless the trimmed line starts with `!`. A trimmed line that starts with `!` SHALL run the rest in the shell with the listed directory as its working directory, and SHALL hand the terminal to that command, unless the rest is a `>` redirect of one path. That redirect SHALL create the file or empty it, SHALL NOT hand the terminal to a shell, and SHALL select the file. `touch` of an existing file SHALL leave its text in place. Space after the bang SHALL be ignored. An empty shell command SHALL NOT run. That shell command SHALL NOT be limited to `mv`, `rm`, `cp`, `touch`, or `mkdir`. Esc SHALL cancel the command line without running a command. After a command runs, the listing SHALL reload and the status line SHALL be the last line again. `:` typed into the filter SHALL stay text. The shortcut list and `r2d2 o help` SHALL name these commands and `:!`.
 
 While the command line is open, the cursor SHALL move inside the typed text. Home and Ctrl-a SHALL move to the start. End and Ctrl-e SHALL move to the end. Left and Ctrl-b SHALL move back one character. Right and Ctrl-f SHALL move forward one character. Backspace SHALL delete the character before the cursor. Delete and Ctrl-d SHALL delete the character at the cursor. Ctrl-d at the end of the line, including an empty line, SHALL do nothing and SHALL NOT quit. Ctrl-k SHALL delete from the cursor to the end. Ctrl-u SHALL delete from the start to the cursor. A word is a run of non-whitespace characters. Ctrl-w and Alt-Backspace SHALL delete the whitespace immediately before the cursor and then the word before that. Alt-b SHALL move to the start of the word before the cursor. Alt-f SHALL move to the end of the word after the cursor. Alt-d SHALL delete through that end. An Alt chord other than these SHALL NOT insert a character. Ctrl-w while the command line is closed SHALL NOT delete a file.
 

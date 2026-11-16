@@ -62,7 +62,7 @@ func (r Runner) Run(args []string) int {
 		}
 	default:
 		if len(args) != 1 {
-			return r.fail("xl takes one file name\n\nRun: c3po tui xl help")
+			return r.fail("xl takes one file name\n\nRun: r2d2 xl help")
 		}
 		return r.open(args[0])
 	}

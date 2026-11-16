@@ -1,4 +1,4 @@
-// Package xl is the c3po tui xl spreadsheet.
+// Package xl is the r2d2 xl spreadsheet.
 package xl
 
 import (

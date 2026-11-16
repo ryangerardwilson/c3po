@@ -38,7 +38,7 @@ is left alone. Threads are signalled once, through their process.
 Each signalled process is printed as "killed <pid> <name>", then
 "<port> is free". When nothing is bound, only "<port> is free" is printed.
 
-The screen is c3po tui deport. j and k move. dd frees the selected port.
+The screen is r2d2 deport. j and k move. dd frees the selected port.
 
   c3po deport list
   c3po deport 8082
@@ -53,13 +53,13 @@ stays occupied or its process cannot be seen or signalled, 2 on bad usage
 or an internal port.
 `
 
-// ScreenHelp is the help for c3po tui deport.
-const ScreenHelp = `c3po tui deport
+// ScreenHelp is the help for r2d2 deport.
+const ScreenHelp = `r2d2 deport
 list occupied safe external ports and free one
 
-  c3po tui deport
+  r2d2 deport
     list ports 8000 through 8999 that are in use
-  c3po tui deport help
+  r2d2 deport help
     show this help
 
 j and k move. dd frees the selected port.

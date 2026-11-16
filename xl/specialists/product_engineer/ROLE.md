@@ -35,7 +35,7 @@ Normal mode is the default.
 
 ## Non-goals
 
-No charts, pivot tables, mouse editing, number formats, or deleting a sheet. No GitHub release path. The screen is `c3po tui xl`. There is no separate `xl` command.
+No charts, pivot tables, mouse editing, number formats, or deleting a sheet. No GitHub release path. The screen is `r2d2 xl`. There is no separate `xl` command.
 
 ## Identity
 

@@ -7,7 +7,7 @@ import (
 )
 
 func TestScreenHelpNamesTheC3POEntry(t *testing.T) {
-	if !strings.Contains(ScreenHelp, "c3po tui tunnel") || strings.Contains(ScreenHelp, "c3po tunnel open") {
+	if !strings.Contains(ScreenHelp, "r2d2 tunnel") || strings.Contains(ScreenHelp, "c3po tunnel open") {
 		t.Fatal(ScreenHelp)
 	}
 }

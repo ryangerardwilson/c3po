@@ -12,11 +12,11 @@ import (
 	"github.com/ryangerardwilson/c3po/internal/tuisession"
 )
 
-const helpText = `c3po tui cyclotree shows calls from one function, or from the application entrypoint.
+const helpText = `r2d2 cyclotree shows calls from one function, or from the application entrypoint.
 
 Usage:
-  c3po tui cyclotree [symbol] [dir]
-  c3po tui cyclotree help
+  r2d2 cyclotree [symbol] [dir]
+  r2d2 cyclotree help
 
 With no symbol, the tree starts at the program entrypoint and includes
 every call reached from it. A Go entrypoint is func main in package main.

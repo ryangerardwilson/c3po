@@ -1,42 +1,42 @@
 package o
 
-// Help is the full help for c3po tui o, shown by c3po help -f tui o.
-const Help = `c3po tui o is a Vim-inspired terminal file navigator.
+// Help is the full help for r2d2 o, shown by c3po help -f tui o.
+const Help = `r2d2 o is a Vim-inspired terminal file navigator.
 
 global actions:
-  c3po tui o help
+  r2d2 o help
     show this help
-  c3po tui o version
+  r2d2 o version
     print the installed c3po version
 
 features:
   launch the file navigator from the current directory
-  # c3po tui o
-  c3po tui o
+  # r2d2 o
+  r2d2 o
 
   start from a directory or open one or more files
   # <path> [<path> ...]
-  c3po tui o ~/Downloads
-  c3po tui o ~/notes/todo.txt
-  c3po tui o a.txt b.txt
+  r2d2 o ~/Downloads
+  r2d2 o ~/notes/todo.txt
+  r2d2 o a.txt b.txt
 
   reveal a path in its parent directory
   # reveal <path>
-  c3po tui o reveal ~/Downloads/file.txt
+  r2d2 o reveal ~/Downloads/file.txt
 
   choose files or directories for another app
   # pick from <dir> [files <exts>|directories] [multiple]
-  c3po tui o pick from ~/src files py,md
-  c3po tui o pick from ~/Downloads directories
-  c3po tui o pick from ~/Pictures files jpg,png multiple
+  r2d2 o pick from ~/src files py,md
+  r2d2 o pick from ~/Downloads directories
+  r2d2 o pick from ~/Pictures files jpg,png multiple
 
   choose a save destination
   # save from <dir> [extension <ext>]
-  c3po tui o save from ~/Downloads extension txt
+  r2d2 o save from ~/Downloads extension txt
 
   edit the user config in $VISUAL, $EDITOR, or vim
   # config
-  c3po tui o config
+  r2d2 o config
 
 A directory starts the navigator at that directory. Files open in
 $VISUAL, $EDITOR, or vim when every one is a text file, and each goes
@@ -107,4 +107,4 @@ A path and config exit with the editor's status.
 `
 
 // Usage is printed after a malformed command.
-const Usage = "Use: c3po tui o | c3po tui o <path> [<path> ...] | c3po tui o reveal <path> | c3po tui o pick from <dir> [files <exts>|directories] [multiple] | c3po tui o save from <dir> [extension <ext>] | c3po tui o config"
+const Usage = "Use: r2d2 o | r2d2 o <path> [<path> ...] | r2d2 o reveal <path> | r2d2 o pick from <dir> [files <exts>|directories] [multiple] | r2d2 o save from <dir> [extension <ext>] | r2d2 o config"

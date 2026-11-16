@@ -6,7 +6,7 @@ Keeps shortcut text off every interactive c3po screen until the operator presses
 ### Requirement: Shortcuts appear only while question mark is open
 An interactive screen SHALL NOT paint shortcut text on its listing. Shortcut text SHALL appear only after the operator presses `?`, and `?` SHALL toggle that list. While the list is open, a key that would move, open, copy, delete, add, or remove SHALL NOT do so, and Esc SHALL close the list. On the navigator, deport, Drive browse, the Drive preset list, pass, the tunnel route list, and the looptab job list, `q` SHALL still leave the screen. On the spreadsheet, `q` while the list is open SHALL close the list, and the sheet SHALL leave only through `:q!`. On cyclotree, `q` SHALL leave the screen. On nlp, only `?` opens or closes the shortcut list, and `q` on that list SHALL NOT leave the screen.
 
-The navigator, deport, Drive browse, the Drive preset list, pass, the tunnel route list, the looptab job list, the spreadsheet, cyclotree, and nlp SHALL follow this. `c3po tui l` SHALL NOT paint a shortcut line. The cyclotree call chain and the focused path SHALL stay at the bottom of that screen. The spreadsheet statistics line SHALL stay. A command prompt, a filter prompt, a route name field, a route port field, a route form's save line, and a removal confirmation SHALL stay.
+The navigator, deport, Drive browse, the Drive preset list, pass, the tunnel route list, the looptab job list, the spreadsheet, cyclotree, and nlp SHALL follow this. `r2d2 l` SHALL NOT paint a shortcut line. The cyclotree call chain and the focused path SHALL stay at the bottom of that screen. The spreadsheet statistics line SHALL stay. A command prompt, a filter prompt, a route name field, a route port field, a route form's save line, and a removal confirmation SHALL stay.
 
 #### Scenario: The navigator hides the legend
 - **WHEN** the navigator is listing a directory and the operator has not pressed `?`
@@ -79,7 +79,7 @@ The navigator, deport, Drive browse, the Drive preset list, pass, the tunnel rou
 - **AND** Esc SHALL leave that list open
 
 ### Requirement: dd deletes the selected pass item
-On `c3po tui pass`, the first `d` SHALL arm deletion and SHALL show `d`. A second `d` SHALL delete the selected item from its open vault and SHALL reload that vault. The cursor SHALL stay at the same index, clamped to the remaining rows. The status SHALL be `deleted` followed by the item title. The secret SHALL stay unread and unprinted. Esc SHALL cancel the arm and SHALL leave the screen open. Any other key SHALL clear the arm and SHALL run as that key. `?` SHALL clear the arm and SHALL open the shortcut list. While the shortcut list is open, `d` SHALL leave the item in place. A vault row SHALL stay, and the status SHALL be `dd deletes an item`. An empty item list SHALL report `no items`. An empty vault list SHALL report `no vaults`. A failed delete SHALL leave the item in place and SHALL show the failure on the status line.
+On `r2d2 pass`, the first `d` SHALL arm deletion and SHALL show `d`. A second `d` SHALL delete the selected item from its open vault and SHALL reload that vault. The cursor SHALL stay at the same index, clamped to the remaining rows. The status SHALL be `deleted` followed by the item title. The secret SHALL stay unread and unprinted. Esc SHALL cancel the arm and SHALL leave the screen open. Any other key SHALL clear the arm and SHALL run as that key. `?` SHALL clear the arm and SHALL open the shortcut list. While the shortcut list is open, `d` SHALL leave the item in place. A vault row SHALL stay, and the status SHALL be `dd deletes an item`. An empty item list SHALL report `no items`. An empty vault list SHALL report `no vaults`. A failed delete SHALL leave the item in place and SHALL show the failure on the status line.
 
 #### Scenario: dd deletes the selected item
 - **WHEN** the operator presses `dd` on an item in an open vault
@@ -129,13 +129,13 @@ Each screen `cyclotree`, `l`, `o`, `tunnel`, `gdrive`, `pass`, `deport`, `xl`, `
 #### Scenario: Resume returns to the stored place
 
 - **GIVEN** screen `o` stored a directory and a selected path
-- **WHEN** the operator runs `c3po tui o --resume <id>`
+- **WHEN** the operator runs `r2d2 o --resume <id>`
 - **THEN** the navigator SHALL open in that directory at that path
 
 #### Scenario: A pipe does not write a session
 
 - **GIVEN** stdout is not a terminal
-- **WHEN** `c3po tui l` runs with no `--resume` id
+- **WHEN** `r2d2 l` runs with no `--resume` id
 - **THEN** it MUST NOT write a TUI session
 
 #### Scenario: NLP stores the course place

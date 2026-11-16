@@ -6,7 +6,7 @@ import (
 )
 
 func TestHelpPointsAtTheScreen(t *testing.T) {
-	if !strings.Contains(Help, "c3po tui gdrive") {
+	if !strings.Contains(Help, "r2d2 gdrive") {
 		t.Fatal(Help)
 	}
 	if strings.Contains(Help, "<preset> browse") || strings.Contains(Help, "<preset> upload") {

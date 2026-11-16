@@ -1,4 +1,4 @@
-// Package o is the c3po tui o file navigator: a Vim-inspired terminal
+// Package o is the r2d2 o file navigator: a Vim-inspired terminal
 // file browser. A path is given directly. reveal, pick, save, and config
 // stay named commands.
 package o
@@ -27,9 +27,9 @@ import (
 const shellCDEnv = "O_SHELL_CD_FILE"
 
 const (
-	revealUsage = "Use: c3po tui o reveal <path>"
-	pickUsage   = "Use: c3po tui o pick from <dir> [files <exts>|directories] [multiple]"
-	saveUsage   = "Use: c3po tui o save from <dir> [extension <ext>]"
+	revealUsage = "Use: r2d2 o reveal <path>"
+	pickUsage   = "Use: r2d2 o pick from <dir> [files <exts>|directories] [multiple]"
+	saveUsage   = "Use: r2d2 o save from <dir> [extension <ext>]"
 )
 
 // runApp shows the navigator. Tests replace it so no terminal is needed.
@@ -44,7 +44,7 @@ var commands = map[string]command{
 	"config": runConfig,
 }
 
-// Run executes c3po tui o with the arguments after "o". The navigator
+// Run executes r2d2 o with the arguments after "o". The navigator
 // itself draws on the terminal; help, results, and errors use the writers.
 func Run(args []string, stdout, stderr io.Writer) int {
 	id, rest, err := tuisession.TakeResume(args)

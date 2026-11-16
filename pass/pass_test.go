@@ -46,7 +46,7 @@ func TestForwardsCryptArgs(t *testing.T) {
 }
 
 func TestScreenHelpDescribesCopy(t *testing.T) {
-	for _, needle := range []string{"c3po tui pass", "vault", "item", "enter copies the selected item", "secret is not printed", "dd deletes the selected item", "nebula crypt"} {
+	for _, needle := range []string{"r2d2 pass", "vault", "item", "enter copies the selected item", "secret is not printed", "dd deletes the selected item", "nebula crypt"} {
 		if !strings.Contains(ScreenHelp, needle) {
 			t.Fatalf("screen help missing %q", needle)
 		}

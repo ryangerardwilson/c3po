@@ -29,7 +29,7 @@ Usage:
 auth saves a Google account as the next numbered preset. register remembers
 a local directory and the Drive folder it syncs with. sync run is what the
 hourly timer runs. sync restore pulls registered folders back to disk.
-The Drive screen is c3po tui gdrive.
+The Drive screen is r2d2 gdrive.
 
   c3po gdrive auth ~/Documents/credentials/client_secret.json
   c3po gdrive 1 register ~/Documents as Documents
@@ -39,13 +39,13 @@ help, -h, and --help print this text. version, -v, and --version print the
 c3po version. A usage error exits 2.
 `
 
-// ScreenHelp is the help for c3po tui gdrive.
-const ScreenHelp = `c3po tui gdrive
+// ScreenHelp is the help for r2d2 gdrive.
+const ScreenHelp = `r2d2 gdrive
 browse one Google Drive preset
 
-  c3po tui gdrive
+  r2d2 gdrive
     choose a preset, then browse its Drive
-  c3po tui gdrive help
+  r2d2 gdrive help
     show this help
 
 j and k move. enter selects a preset. q quits.

@@ -5,13 +5,13 @@ import (
 	"testing"
 )
 
-var portedScouts = []string{"deport", "gcal", "gdrive", "gmail", "idealake", "looptab", "pass", "slack", "tunnel", "tui"}
+var portedScouts = []string{"deport", "gcal", "gdrive", "gmail", "idealake", "looptab", "pass", "slack", "tunnel"}
 
 var retiredScouts = []string{"complexity", "hide", "visualize", "vibetree", "iha", "cx", "sluser"}
 
 func TestScoutListsTools(t *testing.T) {
 	out, code := call("c3po")
-	names := []string{"\n  ast", "\n  tui"}
+	names := []string{"\n  ast"}
 	for _, name := range portedScouts {
 		names = append(names, "\n  "+name+" ")
 	}
@@ -25,17 +25,10 @@ func TestScoutListsTools(t *testing.T) {
 			t.Fatalf("old name still listed %q\n%s", gone, out)
 		}
 	}
-	for _, gone := range []string{"\n  cyclotree", "\n  l ", "\n  o ", "\n  xl ", "\n  nlp "} {
+	for _, gone := range []string{"\n  cyclotree", "\n  l ", "\n  o ", "\n  xl ", "\n  nlp ", "\n  tui "} {
 		if bytes.Contains(out, []byte(gone)) {
 			t.Fatalf("screen still listed as an app %q\n%s", gone, out)
 		}
-	}
-}
-
-func TestScoutCyclotreeHelp(t *testing.T) {
-	out, code := call("c3po", "tui", "cyclotree", "help")
-	if code != 0 || !bytes.Contains(out, []byte("j and k")) || !bytes.Contains(out, []byte("h moves")) {
-		t.Fatalf("code %d\n%s", code, out)
 	}
 }
 
@@ -106,27 +99,33 @@ func TestHelpListsPortedScouts(t *testing.T) {
 			t.Fatalf("help %d missing %s\n%s", code, name, out)
 		}
 	}
+	if bytes.Contains(out, []byte("c3po tui")) || bytes.Contains(out, []byte("\n  tui")) {
+		t.Fatalf("tui still listed\n%s", out)
+	}
 }
 
 func TestUnknownScout(t *testing.T) {
 	out, code := call("c3po", "nope")
-	if code != 2 || !bytes.Contains(out, []byte("unknown command")) || !bytes.Contains(out, []byte("\n  tui")) {
+	if code != 2 || !bytes.Contains(out, []byte("unknown command")) || !bytes.Contains(out, []byte("\n  tunnel")) {
 		t.Fatalf("code %d\n%s", code, out)
+	}
+	if bytes.Contains(out, []byte("\n  tui")) {
+		t.Fatalf("tui still listed\n%s", out)
 	}
 }
 
 func TestHelpFlagSelectsAFeature(t *testing.T) {
 	out, code := call("c3po", "help")
-	for _, want := range []string{"c3po help -f", "\n  ast", "\n  tui"} {
+	for _, want := range []string{"c3po help -f", "\n  ast", "\n  tunnel"} {
 		if code != 0 || !bytes.Contains(out, []byte(want)) {
 			t.Fatalf("index %d missing %q\n%s", code, want, out)
 		}
 	}
-	if bytes.Contains(out, []byte("\n  vibetree")) {
-		t.Fatalf("vibetree still listed\n%s", out)
+	if bytes.Contains(out, []byte("\n  vibetree")) || bytes.Contains(out, []byte("\n  tui")) {
+		t.Fatalf("retired name still listed\n%s", out)
 	}
 	out, code = call("c3po", "help", "-f", "tui", "cyclotree")
-	if code != 0 || !bytes.Contains(out, []byte("j and k")) || !bytes.Contains(out, []byte("h moves")) {
+	if code != 2 || !bytes.Contains(out, []byte("unknown category")) {
 		t.Fatalf("cyclotree %d\n%s", code, out)
 	}
 	for _, name := range retiredScouts {
@@ -152,7 +151,7 @@ func TestHelpFlagSelectsAFeature(t *testing.T) {
 		t.Fatalf("feature %d\n%s", code, out)
 	}
 	out, code = call("c3po", "help", "-f", "tui", "nope")
-	if code != 2 || !bytes.Contains(out, []byte("unknown feature")) {
+	if code != 2 || !bytes.Contains(out, []byte("unknown category")) {
 		t.Fatalf("extra %d\n%s", code, out)
 	}
 	out, code = call("c3po", "help", "-f")
@@ -168,8 +167,8 @@ func TestVersion(t *testing.T) {
 	}
 }
 
-func TestScreensAreOnlyUnderTUI(t *testing.T) {
-	for _, name := range []string{"cyclotree", "l", "o", "xl", "nlp"} {
+func TestScreensAreNotC3poCommands(t *testing.T) {
+	for _, name := range []string{"cyclotree", "l", "o", "xl", "nlp", "tui"} {
 		out, code := call("c3po", name, "help")
 		if code != 2 || !bytes.Contains(out, []byte("unknown command")) {
 			t.Fatalf("%s code %d\n%s", name, code, out)
@@ -183,94 +182,30 @@ func TestScreensAreOnlyUnderTUI(t *testing.T) {
 	if code != 2 || bytes.Contains(out, []byte("c3po tunnel open")) || !bytes.Contains(out, []byte("nebula tunnel screen")) {
 		t.Fatalf("tunnel open %d\n%s", code, out)
 	}
-	out, code = call("c3po", "tui")
-	for _, name := range []string{"\n  cyclotree", "\n  l ", "\n  o ", "\n  tunnel ", "\n  gdrive ", "\n  pass ", "\n  deport ", "\n  xl ", "\n  looptab "} {
-		if code != 0 || !bytes.Contains(out, []byte(name)) {
-			t.Fatalf("tui %d missing %q\n%s", code, name, out)
+	for _, args := range [][]string{
+		{"c3po", "tui"},
+		{"c3po", "tui", "nope"},
+		{"c3po", "tui", "tunnel", "help"},
+		{"c3po", "tui", "o", "--resume", "abc"},
+		{"c3po", "tui", "nlp"},
+		{"c3po", "tui", "idealake"},
+	} {
+		out, code = call(args...)
+		if code != 2 || !bytes.Contains(out, []byte("unknown command")) || bytes.Contains(out, []byte("unknown tui")) {
+			t.Fatalf("%v %d\n%s", args, code, out)
 		}
-	}
-	out, code = call("c3po", "tui", "nope")
-	if code != 2 || !bytes.Contains(out, []byte("unknown tui")) {
-		t.Fatalf("nope %d\n%s", code, out)
-	}
-	out, code = call("c3po", "tui", "tunnel", "help")
-	if code != 0 || !bytes.Contains(out, []byte("c3po tui tunnel")) || bytes.Contains(out, []byte("c3po tunnel open")) {
-		t.Fatalf("screen help %d\n%s", code, out)
-	}
-	out, code = call("c3po", "tui", "tunnel", "extra")
-	if code != 2 || !bytes.Contains(out, []byte("c3po tui tunnel")) {
-		t.Fatalf("extra %d\n%s", code, out)
 	}
 }
 
-func TestGDriveScreenHelp(t *testing.T) {
-	out, code := call("c3po", "tui", "gdrive", "help")
-	if code != 0 || !bytes.Contains(out, []byte("preset")) || !bytes.Contains(out, []byte("browse")) || !bytes.Contains(out, []byte("browser")) || !bytes.Contains(out, []byte("uploads")) || !bytes.Contains(out, []byte("dd deletes")) {
-		t.Fatalf("help %d\n%s", code, out)
-	}
-	out, code = call("c3po", "help", "-f", "tui", "gdrive")
-	direct, directCode := call("c3po", "tui", "gdrive", "help")
-	if code != 0 || directCode != 0 || !bytes.Equal(out, direct) {
-		t.Fatalf("flag %d %d\n%s", code, directCode, out)
-	}
-	out, code = call("c3po", "gdrive", "1", "browse")
+func TestGDriveBrowseIsNotACommand(t *testing.T) {
+	out, code := call("c3po", "gdrive", "1", "browse")
 	if code != 2 || !bytes.Contains(out, []byte("unknown command")) {
 		t.Fatalf("browse %d\n%s", code, out)
 	}
 }
 
-func TestPassScreenHelp(t *testing.T) {
-	out, code := call("c3po", "tui", "pass", "help")
-	if code != 0 || !bytes.Contains(out, []byte("vault")) || !bytes.Contains(out, []byte("item")) || !bytes.Contains(out, []byte("enter copies the selected item")) || !bytes.Contains(out, []byte("secret is not printed")) || !bytes.Contains(out, []byte("dd deletes the selected item")) {
-		t.Fatalf("help %d\n%s", code, out)
-	}
-	out, code = call("c3po", "help", "-f", "tui", "pass")
-	direct, directCode := call("c3po", "tui", "pass", "help")
-	if code != 0 || directCode != 0 || !bytes.Equal(out, direct) {
-		t.Fatalf("flag %d %d\n%s", code, directCode, out)
-	}
-	out, code = call("c3po", "tui", "pass", "extra")
-	if code != 2 || !bytes.Contains(out, []byte("c3po tui pass")) {
-		t.Fatalf("extra %d\n%s", code, out)
-	}
-}
-
-func TestDeportScreenHelp(t *testing.T) {
-	out, code := call("c3po", "tui", "deport", "help")
-	for _, want := range []string{"8000 through 8999", "j and k move", "dd frees the selected port"} {
-		if code != 0 || !bytes.Contains(out, []byte(want)) {
-			t.Fatalf("help %d missing %q\n%s", code, want, out)
-		}
-	}
-	out, code = call("c3po", "help", "-f", "tui", "deport")
-	direct, directCode := call("c3po", "tui", "deport", "help")
-	if code != 0 || directCode != 0 || !bytes.Equal(out, direct) {
-		t.Fatalf("flag %d %d\n%s", code, directCode, out)
-	}
-	out, code = call("c3po", "tui", "deport", "extra")
-	if code != 2 || !bytes.Contains(out, []byte("c3po tui deport")) {
-		t.Fatalf("extra %d\n%s", code, out)
-	}
-}
-
-func TestXLScreen(t *testing.T) {
-	out, code := call("c3po", "tui", "xl", "help")
-	if code != 0 || !bytes.Contains(out, []byte("xlsx")) || !bytes.Contains(out, []byte("c3po tui xl")) {
-		t.Fatalf("help %d\n%s", code, out)
-	}
-	same, sameCode := call("c3po", "help", "-f", "tui", "xl")
-	if sameCode != 0 || !bytes.Equal(out, same) {
-		t.Fatalf("flag %d\n%s", sameCode, same)
-	}
-	out, code = call("c3po", "tui", "xl", "version")
-	if code != 0 || string(out) != "0.1.0\n" {
-		t.Fatalf("version %d\n%s", code, out)
-	}
-	out, code = call("c3po", "tui", "xl", "one.xlsx", "two.xlsx")
-	if code != 1 {
-		t.Fatalf("two paths %d\n%s", code, out)
-	}
-	out, code = call("c3po", "xl")
+func TestXLIsNotACommand(t *testing.T) {
+	out, code := call("c3po", "xl")
 	if code != 2 || !bytes.Contains(out, []byte("unknown command")) {
 		t.Fatalf("bare %d\n%s", code, out)
 	}
@@ -284,36 +219,20 @@ func TestXLScreen(t *testing.T) {
 	}
 }
 
-func TestLooptabScreen(t *testing.T) {
-	out, code := call("c3po", "tui", "looptab", "help")
-	if code != 0 || !bytes.Contains(out, []byte("enter runs the selected job now")) || !bytes.Contains(out, []byte("c3po tui looptab")) {
-		t.Fatalf("help %d\n%s", code, out)
-	}
-	same, sameCode := call("c3po", "help", "-f", "tui", "looptab")
-	if sameCode != 0 || !bytes.Equal(out, same) {
-		t.Fatalf("flag %d\n%s", sameCode, same)
-	}
-	out, code = call("c3po", "tui", "looptab", "version")
-	if code != 0 || !bytes.Contains(out, []byte("c3po 0.5.0")) {
-		t.Fatalf("version %d\n%s", code, out)
-	}
-	out, code = call("c3po", "tui", "looptab", "extra")
-	if code != 2 || !bytes.Contains(out, []byte("c3po tui looptab")) {
-		t.Fatalf("extra %d\n%s", code, out)
-	}
-	out, code = call("c3po", "looptab", "help")
+func TestLooptabCommandNamesVim(t *testing.T) {
+	out, code := call("c3po", "looptab", "help")
 	if code != 0 || !bytes.Contains(out, []byte("in vim")) {
 		t.Fatalf("command %d\n%s", code, out)
 	}
 }
 
-func TestNLPScreenIsNotC3po(t *testing.T) {
+func TestNLPIsNotC3po(t *testing.T) {
 	out, code := call("c3po", "tui", "nlp")
-	if code != 2 || !bytes.Contains(out, []byte("unknown tui")) {
+	if code != 2 || !bytes.Contains(out, []byte("unknown command")) {
 		t.Fatalf("screen %d\n%s", code, out)
 	}
 	out, code = call("c3po", "help", "-f", "tui", "nlp")
-	if code != 2 || !bytes.Contains(out, []byte("unknown feature")) {
+	if code != 2 || !bytes.Contains(out, []byte("unknown category")) {
 		t.Fatalf("help %d\n%s", code, out)
 	}
 	out, code = call("c3po", "nlp")

@@ -1,4 +1,4 @@
-// Package tree builds and renders the compact tree for c3po tui l.
+// Package tree builds and renders the compact tree for r2d2 l.
 package tree
 
 import (

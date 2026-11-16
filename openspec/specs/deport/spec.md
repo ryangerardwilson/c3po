@@ -40,7 +40,7 @@ A safe external port SHALL be an integer from 8000 through 8999 inclusive. `c3po
 - **AND** the text SHALL be `no occupied external ports`
 
 ### Requirement: The screen lists those ports and frees one
-`c3po tui deport` SHALL be the screen. It SHALL list the same occupied safe external ports. `j` SHALL move the cursor down and `k` SHALL move it up. `dd` SHALL free the selected port by the same signal sequence as `c3po deport <port>`. The first `d` SHALL arm the chord and SHALL show `d`. Esc SHALL cancel the arm. Any other key SHALL clear the arm and SHALL run as a normal motion. When the port becomes free, its row SHALL leave the list. `q` SHALL quit. Extra arguments SHALL exit 2 and SHALL print the screen help. `c3po tui deport help` SHALL name the range 8000 through 8999, SHALL say that `j` and `k` move, and SHALL say that `dd` frees the selected port.
+`r2d2 deport` SHALL be the screen. It SHALL list the same occupied safe external ports. `j` SHALL move the cursor down and `k` SHALL move it up. `dd` SHALL free the selected port by the same signal sequence as `c3po deport <port>`. The first `d` SHALL arm the chord and SHALL show `d`. Esc SHALL cancel the arm. Any other key SHALL clear the arm and SHALL run as a normal motion. When the port becomes free, its row SHALL leave the list. `q` SHALL quit. Extra arguments SHALL exit 2 and SHALL print the screen help. `r2d2 deport help` SHALL name the range 8000 through 8999, SHALL say that `j` and `k` move, and SHALL say that `dd` frees the selected port.
 
 #### Scenario: j and k move
 - **WHEN** the screen lists port 8080 and port 8082

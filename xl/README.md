@@ -71,14 +71,14 @@ The same lists can live on their own sheets. `n` adds one. On the expenses sheet
 ## Run
 
 ```sh
-c3po tui xl
-c3po tui xl budget.xlsx
-c3po tui xl open budget.xlsx
-c3po tui xl help
-c3po tui xl version
+r2d2 xl
+r2d2 xl budget.xlsx
+r2d2 xl open budget.xlsx
+r2d2 xl help
+r2d2 xl version
 ```
 
-`c3po tui xl` in a terminal opens a blank sheet. Without a terminal it prints help. `c3po tui xl budget` and `c3po tui xl budget.xlsx` create or open `budget.xlsx`. A name that already ends in `.xlsx` is left as it is. `c3po tui xl budget.csv` still loads that csv, and the workbook file is `budget.xlsx`.
+`r2d2 xl` in a terminal opens a blank sheet. Without a terminal it prints help. `r2d2 xl budget` and `r2d2 xl budget.xlsx` create or open `budget.xlsx`. A name that already ends in `.xlsx` is left as it is. `r2d2 xl budget.csv` still loads that csv, and the workbook file is `budget.xlsx`.
 
 ## Install
 
@@ -86,5 +86,5 @@ The screen ships with c3po. `install.sh` from this checkout installs `c3po`. The
 
 ```sh
 ./install.sh
-c3po tui xl help
+r2d2 xl help
 ```

@@ -14,17 +14,6 @@ var Catalog = []string{
 	"version",
 	"usage",
 
-	"tui",
-	"tui cyclotree",
-	"tui l",
-	"tui o",
-	"tui tunnel",
-	"tui gdrive",
-	"tui pass",
-	"tui deport",
-	"tui xl",
-	"tui looptab",
-
 	"ast config",
 	"ast status",
 	"ast measure",
@@ -164,15 +153,13 @@ var Catalog = []string{
 }
 
 var (
-	known     map[string]struct{}
-	astVerb   map[string]bool
-	tuiScreen map[string]bool
+	known   map[string]struct{}
+	astVerb map[string]bool
 )
 
 func init() {
 	known = make(map[string]struct{}, len(Catalog))
 	astVerb = make(map[string]bool)
-	tuiScreen = make(map[string]bool)
 	for _, name := range Catalog {
 		if _, dup := known[name]; dup {
 			panic("duplicate usage feature " + name)
@@ -180,9 +167,6 @@ func init() {
 		known[name] = struct{}{}
 		if rest, ok := strings.CutPrefix(name, "ast "); ok && !strings.Contains(rest, " ") {
 			astVerb[rest] = true
-		}
-		if rest, ok := strings.CutPrefix(name, "tui "); ok && !strings.Contains(rest, " ") {
-			tuiScreen[rest] = true
 		}
 	}
 }

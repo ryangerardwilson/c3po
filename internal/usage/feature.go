@@ -37,8 +37,6 @@ func c3poFeature(args []string) string {
 	switch args[0] {
 	case "ast":
 		return astFeature(args[1:])
-	case "tui":
-		return tuiFeature(args[1:])
 	case "deport":
 		return deportFeature(args[1:])
 	case "gcal":
@@ -85,26 +83,6 @@ func astFeature(args []string) string {
 		return "help"
 	}
 	return "ast " + cmd
-}
-
-func tuiFeature(args []string) string {
-	if len(args) == 0 {
-		return "tui"
-	}
-	if len(args) == 1 && helpWord(args[0]) {
-		return "help"
-	}
-	if !tuiScreen[args[0]] {
-		return "unknown"
-	}
-	rest := dropResume(args[1:])
-	if len(rest) > 0 && helpWord(rest[0]) {
-		return "help"
-	}
-	if len(rest) > 0 && (topVersion(rest[0]) || rest[0] == "-v") {
-		return "version"
-	}
-	return "tui " + args[0]
 }
 
 func deportFeature(args []string) string {
@@ -439,21 +417,4 @@ func dropRoot(args []string) ([]string, bool) {
 		rest = append(rest, arg)
 	}
 	return rest, true
-}
-
-func dropResume(args []string) []string {
-	var rest []string
-	for i := 0; i < len(args); i++ {
-		if args[i] == "--resume" {
-			if i+1 < len(args) {
-				i++
-			}
-			continue
-		}
-		if strings.HasPrefix(args[i], "--resume=") {
-			continue
-		}
-		rest = append(rest, args[i])
-	}
-	return rest
 }

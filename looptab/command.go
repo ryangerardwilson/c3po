@@ -32,7 +32,7 @@ register jobs files and edit them in vim
     print the c3po version
 
 A jobs file is a crontab-like looptab document. Registrations are stored in
-the sqlx database c3po. c3po tui looptab runs one job now.
+the sqlx database c3po. r2d2 looptab runs one job now.
 `
 
 const jobsTemplate = `# Schedules: now, hourly, hourly at <minute>, daily <time>, weekdays <time>

@@ -1,5 +1,5 @@
 // Package pass is the c3po entry for nebula crypt.
-// c3po pass runs that feature. c3po tui pass is the item screen and
+// c3po pass runs that feature. r2d2 pass is the item screen and
 // reaches 1Password through nebula crypt.
 package pass
 
@@ -14,13 +14,13 @@ import (
 	"github.com/ryangerardwilson/c3po/pass/internal/tui"
 )
 
-// ScreenHelp is the help for c3po tui pass.
-const ScreenHelp = `c3po tui pass
+// ScreenHelp is the help for r2d2 pass.
+const ScreenHelp = `r2d2 pass
 browse 1Password vaults and copy one item
 
-  c3po tui pass
+  r2d2 pass
     list vaults, open one, and copy an item
-  c3po tui pass help
+  r2d2 pass help
     show this help
 
 j and k move. l opens a vault. h goes back.

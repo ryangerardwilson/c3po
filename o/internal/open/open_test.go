@@ -10,8 +10,13 @@ import (
 func TestWorkbookCommandIsTheXLScreen(t *testing.T) {
 	cmd := WorkbookCommand("/tmp/budget.xlsx")
 	args := cmd.Args
-	if len(args) < 4 || args[len(args)-3] != "tui" || args[len(args)-2] != "xl" || args[len(args)-1] != "/tmp/budget.xlsx" {
+	if len(args) < 3 || args[len(args)-2] != "xl" || args[len(args)-1] != "/tmp/budget.xlsx" {
 		t.Fatalf("args %q", args)
+	}
+	for _, arg := range args[1:] {
+		if arg == "tui" {
+			t.Fatalf("args %q", args)
+		}
 	}
 }
 

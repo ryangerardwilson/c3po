@@ -1,4 +1,4 @@
-// Package looptab is c3po looptab and the c3po tui looptab screen.
+// Package looptab is c3po looptab and the r2d2 looptab screen.
 package looptab
 
 import (
@@ -13,13 +13,13 @@ import (
 
 var errNotOnPath = errors.New("looptab is not on PATH")
 
-// ScreenHelp is the help for c3po tui looptab.
-const ScreenHelp = `c3po tui looptab
+// ScreenHelp is the help for r2d2 looptab.
+const ScreenHelp = `r2d2 looptab
 list Looptab jobs and run the selected job now
 
-  c3po tui looptab
+  r2d2 looptab
     list the jobs from looptab now
-  c3po tui looptab help
+  r2d2 looptab help
     show this help
 
 j and k move. enter runs the selected job now.
@@ -27,7 +27,7 @@ q quits. ? lists the shortcuts.
 The job runs through looptab now and that row's index.
 `
 
-// Run serves c3po tui looptab. args are the arguments after the screen name.
+// Run serves r2d2 looptab. args are the arguments after the screen name.
 func Run(args []string, stdout, stderr io.Writer) int {
 	id, rest, err := tuisession.TakeResume(args)
 	if err != nil {

@@ -92,7 +92,7 @@ func TestHelpAndRejectedArgs(t *testing.T) {
 	d := testDesk(t)
 	var out, err bytes.Buffer
 	d.stdout, d.stderr = &out, &err
-	if code := d.run([]string{"help"}); code != 0 || !strings.Contains(out.String(), "in vim") || !strings.Contains(out.String(), "c3po tui looptab") {
+	if code := d.run([]string{"help"}); code != 0 || !strings.Contains(out.String(), "in vim") || !strings.Contains(out.String(), "r2d2 looptab") {
 		t.Fatalf("help %d %s", code, out.String())
 	}
 	err.Reset()

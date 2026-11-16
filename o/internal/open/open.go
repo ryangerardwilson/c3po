@@ -66,10 +66,15 @@ var WorkbookCommand = defaultWorkbookCommand
 
 func defaultWorkbookCommand(path string) *exec.Cmd {
 	exe, err := os.Executable()
-	if err != nil || exe == "" {
-		exe = "c3po"
+	if err != nil || exe == "" || filepath.Base(exe) != "r2d2" {
+		found, lookErr := exec.LookPath("r2d2")
+		if lookErr == nil && found != "" {
+			exe = found
+		} else {
+			exe = "r2d2"
+		}
 	}
-	return exec.Command(exe, "tui", "xl", path)
+	return exec.Command(exe, "xl", path)
 }
 
 // EditorCommand is the foreground editor command for one file. The

@@ -63,7 +63,7 @@ func TestHelpGoesToStdout(t *testing.T) {
 			t.Fatalf("%s: code %d out %q err %q", arg, code, out.String(), errb.String())
 		}
 	}
-	for _, want := range []string{"c3po deport <port>", "c3po deport list", "c3po deport 8082", "c3po tui deport", "8000", "8999", "SIGTERM", "SIGKILL", "is free", "Exit 0"} {
+	for _, want := range []string{"c3po deport <port>", "c3po deport list", "c3po deport 8082", "r2d2 deport", "8000", "8999", "SIGTERM", "SIGKILL", "is free", "Exit 0"} {
 		if !strings.Contains(Help, want) {
 			t.Fatalf("help missing %q", want)
 		}
