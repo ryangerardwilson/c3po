@@ -10,22 +10,23 @@ import (
 )
 
 const (
-	maxIdea       = 300
-	maxTopic      = 80
-	searchLimit   = 20
-	embedModel    = "v1"
-	passagePrefix = "passage: "
-	queryPrefix   = "query: "
-	recordApp     = "idealake"
-	recordKind    = "idea"
+	maxIdea         = 300
+	maxTopic        = 80
+	searchLimit     = 20
+	embedModel      = "v1"
+	passagePrefix   = "passage: "
+	queryPrefix     = "query: "
+	recordApp       = "idealake"
+	recordKind      = "idea"
+	recordKindTopic = "topic"
 )
 
 // Help is the text for c3po idealake and c3po help -f idealake.
 const Help = `c3po idealake
 keep short ideas, organized by topic
 
-  c3po idealake add <topic> <idea> [<idea>...]
-    store one or more ideas in that topic
+  c3po idealake add <topic> [<idea>...]
+    store that topic, and store any ideas given with it
   c3po idealake list [topic]
     print ideas, or the ideas in one topic
   c3po idealake search <topic> <query>
@@ -43,7 +44,7 @@ keep short ideas, organized by topic
   c3po idealake version
     print the c3po version
 
-Pass each idea as its own argument. The numbers in a brainstorm are not ids.
+Pass each idea as its own argument. With no ideas, add stores the topic and nothing else. The numbers in a brainstorm are not ids.
 An idea is one line of at most 300 characters. A topic is one line of at most
 80 characters. Put --json first to print JSON for an agent.
 

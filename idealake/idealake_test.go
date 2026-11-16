@@ -89,6 +89,10 @@ func TestLongIdeaStoresNothing(t *testing.T) {
 	if code != 0 || out != "no ideas\n" {
 		t.Fatalf("list %d %q", code, out)
 	}
+	topics, _, code := call(t, "topics")
+	if code != 0 || topics != "no topics\n" {
+		t.Fatalf("topics %d %q", code, topics)
+	}
 }
 
 func TestIdeaOf300Characters(t *testing.T) {
@@ -127,9 +131,49 @@ func TestStdinIdeasAndTerminal(t *testing.T) {
 		t.Fatalf("stdin %d %s", code, out)
 	}
 	stdinTerminal = func(io.Reader) bool { return true }
-	_, errOut, code := call(t, "add", "xyz")
-	if code != 2 || !strings.Contains(errOut, "300") {
-		t.Fatalf("terminal %d %s", code, errOut)
+	out, errOut, code := call(t, "add", "xyz")
+	if code != 0 || errOut != "" || out != "2  xyz\n" {
+		t.Fatalf("terminal %d %s\n%s", code, errOut, out)
+	}
+	listed, _, code := call(t, "list", "xyz")
+	if code != 0 || strings.Count(listed, "xyz") != 2 {
+		t.Fatalf("still %d %s", code, listed)
+	}
+}
+
+func TestAddTopicWithoutIdeas(t *testing.T) {
+	isolate(t)
+	out, errOut, code := call(t, "add", "xyz")
+	if code != 0 || errOut != "" || out != "0  xyz\n" {
+		t.Fatalf("add %d %s\n%s", code, errOut, out)
+	}
+	out, _, code = call(t, "add", "xyz")
+	if code != 0 || out != "0  xyz\n" {
+		t.Fatalf("again %d %s", code, out)
+	}
+	out, _, code = call(t, "topics")
+	if code != 0 || out != "0  xyz\n" {
+		t.Fatalf("topics %q", out)
+	}
+	listed, _, code := call(t, "list", "xyz")
+	if code != 0 || listed != "no ideas\n" {
+		t.Fatalf("list %q", listed)
+	}
+	if _, _, code = call(t, "add", "book", "one"); code != 0 {
+		t.Fatal(code)
+	}
+	out, _, code = call(t, "topics")
+	if code != 0 || out != "1  book\n0  xyz\n" {
+		t.Fatalf("both %q", out)
+	}
+	jsonOut, _, code := call(t, "--json", "add", "plain")
+	if code != 0 || jsonOut != "{\"topics\":[{\"topic\":\"plain\",\"n\":0}]}\n" {
+		t.Fatalf("json %q", jsonOut)
+	}
+	stdinTerminal = func(io.Reader) bool { return true }
+	out, errOut, code = call(t, "add", "desk")
+	if code != 0 || errOut != "" || out != "0  desk\n" {
+		t.Fatalf("terminal %d %s\n%s", code, errOut, out)
 	}
 }
 
@@ -319,7 +363,7 @@ func TestSearchLimit(t *testing.T) {
 
 func TestHelpAndUnknown(t *testing.T) {
 	out, _, code := call(t, "help")
-	if code != 0 || !strings.Contains(out, "300") || !strings.Contains(out, "XAI_API_KEY") || !strings.Contains(out, "contains") {
+	if code != 0 || !strings.Contains(out, "300") || !strings.Contains(out, "XAI_API_KEY") || !strings.Contains(out, "contains") || !strings.Contains(out, "With no ideas") {
 		t.Fatalf("help %d %s", code, out)
 	}
 	same, _, code := call(t)

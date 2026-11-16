@@ -172,3 +172,52 @@ func idLess(a, b string) bool {
 	}
 	return a < b
 }
+
+type topicRecord struct {
+	Topic   string `json:"topic"`
+	Created string `json:"created"`
+}
+
+func ensureTopic(topic string) error {
+	_, ok, err := sqlxdb.Get(recordApp, recordKindTopic, topic)
+	if err != nil {
+		return fmt.Errorf("idealake: %s", err)
+	}
+	if ok {
+		return nil
+	}
+	body, err := json.Marshal(topicRecord{Topic: topic, Created: clock().UTC().Format(time.RFC3339)})
+	if err != nil {
+		return err
+	}
+	if err := sqlxdb.Put(recordApp, recordKindTopic, topic, body); err != nil {
+		return fmt.Errorf("idealake: %s", err)
+	}
+	return nil
+}
+
+func loadTopicNames() ([]string, error) {
+	rows, err := sqlxdb.List(recordApp, recordKindTopic)
+	if err != nil {
+		return nil, fmt.Errorf("idealake: %s", err)
+	}
+	names := make([]string, 0, len(rows))
+	for _, row := range rows {
+		var topic topicRecord
+		if err := json.Unmarshal(row.Body, &topic); err != nil || topic.Topic == "" {
+			return nil, fmt.Errorf("idealake: record %s", row.Key)
+		}
+		names = append(names, topic.Topic)
+	}
+	return names, nil
+}
+
+func countTopic(ideas []Idea, topic string) int {
+	n := 0
+	for _, idea := range ideas {
+		if idea.Topic == topic {
+			n++
+		}
+	}
+	return n
+}

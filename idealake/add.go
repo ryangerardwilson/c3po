@@ -35,6 +35,9 @@ func (d *desk) add(args []string) int {
 		fmt.Fprintln(d.stderr, err.Error())
 		return 1
 	}
+	if len(texts) == 0 {
+		return d.addTopic(topic, existing)
+	}
 	vectors, embedded := embedPassages(texts)
 	ideas, err := assignIDs(existing, texts, topic, vectors)
 	if err != nil {
@@ -51,21 +54,25 @@ func (d *desk) add(args []string) int {
 	return d.printIdeas(ideas)
 }
 
+func (d *desk) addTopic(topic string, existing []Idea) int {
+	if err := ensureTopic(topic); err != nil {
+		fmt.Fprintln(d.stderr, err.Error())
+		return 1
+	}
+	return d.printTopics([]topicCount{{Topic: topic, N: countTopic(existing, topic)}})
+}
+
 func (d *desk) ideaArgs(args []string) ([]string, int) {
 	if len(args) > 0 {
 		return args, 0
 	}
 	if stdinTerminal(d.stdin) {
-		return nil, d.usage()
+		return nil, 0
 	}
 	lines, err := readLines(d.stdin)
 	if err != nil {
 		fmt.Fprintf(d.stderr, "idealake: %s\n", err)
 		return nil, 1
-	}
-	if len(lines) == 0 {
-		fmt.Fprintln(d.stderr, "idealake: no idea")
-		return nil, 2
 	}
 	return lines, 0
 }

@@ -72,7 +72,12 @@ func (d *desk) topics(args []string) int {
 	if code != 0 {
 		return code
 	}
-	return d.printTopics(topicCounts(ideas))
+	names, err := loadTopicNames()
+	if err != nil {
+		fmt.Fprintln(d.stderr, err.Error())
+		return 1
+	}
+	return d.printTopics(mergeTopics(topicCounts(ideas), names))
 }
 
 func (d *desk) search(args []string) int {
@@ -158,6 +163,24 @@ func missingNote(n int) string {
 		return "idealake: 1 idea has no embedding\n"
 	}
 	return fmt.Sprintf("idealake: %d ideas have no embedding\n", n)
+}
+
+func mergeTopics(counts []topicCount, names []string) []topicCount {
+	seen := map[string]bool{}
+	for _, count := range counts {
+		seen[count.Topic] = true
+	}
+	for _, name := range names {
+		if seen[name] {
+			continue
+		}
+		counts = append(counts, topicCount{Topic: name, N: 0})
+		seen[name] = true
+	}
+	sort.Slice(counts, func(i, j int) bool {
+		return counts[i].Topic < counts[j].Topic
+	})
+	return counts
 }
 
 func topicCounts(ideas []Idea) []topicCount {
