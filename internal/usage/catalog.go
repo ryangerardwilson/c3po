@@ -108,6 +108,15 @@ var Catalog = []string{
 	"gdrive restore registrations",
 	"gdrive restore registration",
 
+	"idealake",
+	"idealake add",
+	"idealake list",
+	"idealake search",
+	"idealake contains",
+	"idealake show",
+	"idealake remove",
+	"idealake topics",
+
 	"looptab",
 	"looptab list",
 	"looptab register",

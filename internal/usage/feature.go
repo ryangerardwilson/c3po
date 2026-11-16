@@ -47,6 +47,8 @@ func c3poFeature(args []string) string {
 		return gdriveFeature(args[1:])
 	case "gmail":
 		return gmailFeature(args[1:])
+	case "idealake":
+		return idealakeFeature(args[1:])
 	case "looptab":
 		return looptabFeature(args[1:])
 	case "pass":
@@ -146,6 +148,28 @@ func looptabFeature(args []string) string {
 		return "looptab " + args[0]
 	default:
 		return "looptab"
+	}
+}
+
+func idealakeFeature(args []string) string {
+	if len(args) == 0 {
+		return "help"
+	}
+	if args[0] == "--json" {
+		args = args[1:]
+		if len(args) == 0 {
+			return "help"
+		}
+	}
+	switch args[0] {
+	case "help", "-h", "--help":
+		return "help"
+	case "version", "--version", "-v":
+		return "version"
+	case "add", "list", "search", "contains", "show", "remove", "topics":
+		return "idealake " + args[0]
+	default:
+		return "idealake"
 	}
 }
 

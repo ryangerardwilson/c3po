@@ -1,6 +1,6 @@
 # c3po
 
-c3po is one CLI. The apps are `ast`, `deport`, `gcal`, `gdrive`, `gmail`, `looptab`, `pass`, `slack`, `tunnel`, and `tui`. Terminal screens are only `c3po tui cyclotree`, `c3po tui l`, `c3po tui o`, `c3po tui tunnel`, `c3po tui gdrive`, `c3po tui pass`, `c3po tui deport`, `c3po tui xl`, and `c3po tui looptab`. The neuro-linguistic programming trainer is the crusade mode `crusade -m nlp`. `c3po pass` runs `nebula crypt`. `c3po tui pass` stays the item screen and reaches 1Password through `nebula crypt`. `c3po tunnel` and `c3po tui tunnel` run `nebula tunnel`.
+c3po is the agent CLI. Agents use those commands and do not open a screen. The apps are `ast`, `deport`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `pass`, `slack`, `tunnel`, and `tui`. `r2d2` is the terminal program. Running `r2d2` opens a screen menu. The screens are `web`, `cyclotree`, `l`, `o`, `tunnel`, `gdrive`, `pass`, `deport`, `xl`, and `looptab`. `r2d2 web` is the ryangerardwilson.com admin screen. `c3po tui` still launches the older screens for session restore. The neuro-linguistic programming trainer is the crusade mode `crusade -m nlp`. `c3po pass` runs `nebula crypt`. `c3po tui pass` stays the item screen and reaches 1Password through `nebula crypt`. `c3po tunnel` and `c3po tui tunnel` run `nebula tunnel`.
 
 ```sh
 c3po ast [args...]
@@ -8,6 +8,7 @@ c3po deport list|<port>
 c3po gcal [args...]
 c3po gdrive [args...]
 c3po gmail [args...]
+c3po idealake add|list|search|contains|show|remove|topics
 c3po looptab [args...]
 c3po pass <vault> <item> [args...]
 c3po slack [args...]
@@ -23,7 +24,7 @@ Help for every tool is `c3po help`. `c3po help -f ast` lists the ast commands, a
 
 `ast` is the AST-aware agent boundary: trace a symbol, then create, patch, and apply files by hash. `cyclotree` shows the calls of one function. With no symbol, the tree starts at the program entrypoint and includes every call reached from it. Each row is that function, its cyclomatic complexity, and how many levels of calls can be opened under it. The screen is yellow and updates as those files change. A nested row shows its file relative to the caller. The bottom shows the call chain from the root to the row under the cursor, then that row's full path. `enter` opens that file in vim at its line. `?` toggles the shortcut list. `j` and `k` move, `l` opens the calls, and `h` moves to the caller. A call back to a function already on the path is marked `cycle` and stays closed.
 
-The installed names are `c3po` and `rgw-ast`. `rgw-ast` is the same binary, for tools that still launch that command. `xl` is a screen, `c3po tui xl`, and is not a separate command. `c3po looptab` registers jobs files and edits them in vim. `c3po tui looptab` lists Looptab jobs. Enter runs the selected job once through `looptab now`. `cx` and `complexity` are not installed.
+The installed names are `c3po` and `rgw-ast`. `rgw-ast` is the same binary, for tools that still launch that command. `xl` is a screen, `c3po tui xl`, and is not a separate command. `c3po idealake` stores one-line ideas of at most 300 characters by topic. `search` ranks one topic by meaning. `contains` matches the lowercase text. `c3po looptab` registers jobs files and edits them in vim. `c3po tui looptab` lists Looptab jobs. Enter runs the selected job once through `looptab now`. `cx` and `complexity` are not installed.
 
 ## Install
 

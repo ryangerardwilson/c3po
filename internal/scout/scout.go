@@ -12,6 +12,7 @@ import (
 	"github.com/ryangerardwilson/c3po/gcal"
 	"github.com/ryangerardwilson/c3po/gdrive"
 	"github.com/ryangerardwilson/c3po/gmail"
+	"github.com/ryangerardwilson/c3po/idealake"
 	"github.com/ryangerardwilson/c3po/internal/tuisession"
 	"github.com/ryangerardwilson/c3po/internal/usage"
 	"github.com/ryangerardwilson/c3po/internal/version"
@@ -29,16 +30,17 @@ type runFunc func([]string, io.Writer, io.Writer) int
 
 // apps maps each app name to its entrypoint.
 var apps = map[string]runFunc{
-	"ast":     ast.Run,
-	"deport":  deport.Run,
-	"gcal":    gcal.Run,
-	"gdrive":  gdrive.Run,
-	"gmail":   gmail.Run,
-	"looptab": looptab.Command,
-	"pass":    pass.Run,
-	"slack":   slack.Run,
-	"tunnel":  tunnel.Run,
-	"tui":     dispatchTUI,
+	"ast":      ast.Run,
+	"deport":   deport.Run,
+	"gcal":     gcal.Run,
+	"gdrive":   gdrive.Run,
+	"gmail":    gmail.Run,
+	"idealake": idealake.Run,
+	"looptab":  looptab.Command,
+	"pass":     pass.Run,
+	"slack":    slack.Run,
+	"tunnel":   tunnel.Run,
+	"tui":      dispatchTUI,
 }
 
 var screens = map[string]runFunc{

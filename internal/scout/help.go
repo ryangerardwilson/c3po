@@ -15,6 +15,7 @@ Usage:
   c3po gcal [args...]
   c3po gdrive [args...]
   c3po gmail [args...]
+  c3po idealake [args...]
   c3po looptab [args...]
   c3po pass <vault> <item> [args...]
   c3po slack [args...]
@@ -36,6 +37,7 @@ const appText = `apps:
   gcal      Google Calendar across presets
   gdrive    local-first Google Drive sync
   gmail     Gmail send, list, spam clean, and the hourly timer
+  idealake  ideas by topic, ranked by meaning
   looptab   registered jobs files, edited in vim
   pass      1Password vaults and items
   slack     Slack messages across presets
@@ -43,7 +45,7 @@ const appText = `apps:
   tui       terminal screens
 `
 
-const tuiText = `c3po tui runs a terminal screen. This is the only way to open one.
+const tuiText = `Agents use c3po. r2d2 is the terminal program, and running it opens the screen menu. c3po tui still launches the screens below for session restore.
 
 Usage:
   c3po tui cyclotree [symbol] [dir]
