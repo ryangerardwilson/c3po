@@ -6,7 +6,7 @@ import (
 )
 
 func TestUnknownScreen(t *testing.T) {
-	for _, name := range []string{"nope", "nlp", "idealake", "tui"} {
+	for _, name := range []string{"nope", "nlp", "idealake", "clippy", "tui"} {
 		out, errb, code := run(name)
 		if code != 2 || !bytes.Contains(errb, []byte("unknown screen")) {
 			t.Fatalf("%s %d\n%s%s", name, code, out, errb)

@@ -37,6 +37,8 @@ func c3poFeature(args []string) string {
 	switch args[0] {
 	case "ast":
 		return astFeature(args[1:])
+	case "clippy":
+		return clippyFeature(args[1:])
 	case "deport":
 		return deportFeature(args[1:])
 	case "gcal":
@@ -83,6 +85,18 @@ func astFeature(args []string) string {
 		return "help"
 	}
 	return "ast " + cmd
+}
+
+func clippyFeature(args []string) string {
+	if len(args) == 1 {
+		switch args[0] {
+		case "help", "-h", "--help":
+			return "help"
+		case "version", "--version", "-v":
+			return "version"
+		}
+	}
+	return "clippy"
 }
 
 func deportFeature(args []string) string {

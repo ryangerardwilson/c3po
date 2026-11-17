@@ -2,9 +2,10 @@ schema: spec-driven
 
 context: |
   c3po is one CLI. Each app is a top-level command,
-  c3po <name>. The apps are ast, deport, gcal, gdrive,
+  c3po <name>. The apps are ast, clippy, deport, gcal, gdrive,
   gmail, idealake, looptab, pass, slack, and tunnel. There is no c3po tui
-  command. c3po idealake stores ideas by topic. c3po looptab
+  command. c3po clippy copies a multiline text to the Wayland clipboard
+  and does not print it. c3po idealake stores ideas by topic. c3po looptab
   registers jobs files and edits them in vim. Screens run in r2d2:
   web, cyclotree, l, o, tunnel, gdrive, pass, deport, xl, and looptab.
   The trainer is crusade -m nlp.

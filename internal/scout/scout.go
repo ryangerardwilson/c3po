@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/ryangerardwilson/c3po/ast"
+	"github.com/ryangerardwilson/c3po/clippy"
 	"github.com/ryangerardwilson/c3po/deport"
 	"github.com/ryangerardwilson/c3po/gcal"
 	"github.com/ryangerardwilson/c3po/gdrive"
@@ -26,6 +27,7 @@ type runFunc func([]string, io.Writer, io.Writer) int
 // apps maps each app name to its entrypoint.
 var apps = map[string]runFunc{
 	"ast":      ast.Run,
+	"clippy":   clippy.Run,
 	"deport":   deport.Run,
 	"gcal":     gcal.Run,
 	"gdrive":   gdrive.Run,

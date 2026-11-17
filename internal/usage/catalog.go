@@ -43,6 +43,8 @@ var Catalog = []string{
 	"ast neighbors",
 	"ast cut",
 
+	"clippy",
+
 	"deport",
 	"deport list",
 

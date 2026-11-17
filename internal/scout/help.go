@@ -11,6 +11,7 @@ const helpText = `c3po runs these apps.
 
 Usage:
   c3po ast [args...]
+  c3po clippy [text...]
   c3po deport list|<port>
   c3po gcal [args...]
   c3po gdrive [args...]
@@ -32,6 +33,7 @@ c3po help -f ast <feature> explains one ast command.
 
 const appText = `apps:
   ast       AST-aware edits, trace, and the agent boundary
+  clippy    copy a multiline text to the clipboard
   deport    free a safe external port
   gcal      Google Calendar across presets
   gdrive    local-first Google Drive sync
