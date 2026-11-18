@@ -48,12 +48,21 @@ func (m *model) loop(term screen) error {
 		if err != nil {
 			return err
 		}
-		if m.handleKey(key) {
+		if m.syncKey(term, key) {
 			m.noteSession()
 			return nil
 		}
 		m.noteSession()
 	}
+}
+
+func (m *model) syncKey(term screen, key string) bool {
+	if key == "s" && !m.help {
+		m.status = "syncing"
+		m.err = nil
+		term.paint(m.render())
+	}
+	return m.handleKey(key)
 }
 
 func (m *model) handleKey(key string) bool {
@@ -84,6 +93,8 @@ func (m *model) handleKey(key string) bool {
 		return m.open()
 	case "r":
 		m.mark()
+	case "s":
+		m.sync()
 	}
 	return false
 }
@@ -149,6 +160,19 @@ func (m *model) mark() {
 		return
 	}
 	m.status = "marked"
+	m.err = nil
+}
+
+func (m *model) sync() {
+	if err := syncDesk(); err != nil {
+		m.fail(err)
+		return
+	}
+	if err := m.reload(); err != nil {
+		m.fail(err)
+		return
+	}
+	m.status = ""
 	m.err = nil
 }
 

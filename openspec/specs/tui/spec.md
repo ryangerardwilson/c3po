@@ -81,7 +81,7 @@ The navigator, deport, Drive browse, the Drive preset list, pass, the tunnel rou
 #### Scenario: Slack hides the legend until question mark
 - **WHEN** the operator presses `?` on the slack desk, then `j`, then Esc
 - **THEN** the view before `?` SHALL NOT contain `j/k move`
-- **AND** the open list SHALL name workspace, open, and read
+- **AND** the open list SHALL name workspace, open, read, and sync
 - **AND** `j` SHALL leave the cursor on the same row
 - **AND** Esc SHALL show the desk again
 

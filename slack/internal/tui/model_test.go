@@ -15,6 +15,7 @@ func TestMain(m *testing.M) {
 	fetchBoard = func() (Board, error) { return Board{}, nil }
 	openDeskItem = func(string, string) error { return errors.New("open not stubbed") }
 	readDeskItem = func(string, string) error { return errors.New("read not stubbed") }
+	syncDesk = func() error { return errors.New("sync not stubbed") }
 	os.Exit(m.Run())
 }
 
@@ -60,6 +61,18 @@ func stubDesk(t *testing.T, next Board, openErr, readErr error) *deskLog {
 		fetchBoard, openDeskItem, readDeskItem = oldFetch, oldOpen, oldRead
 	})
 	return log
+}
+
+func stubSync(t *testing.T, err error) *int {
+	t.Helper()
+	n := 0
+	old := syncDesk
+	syncDesk = func() error {
+		n++
+		return err
+	}
+	t.Cleanup(func() { syncDesk = old })
+	return &n
 }
 
 func sampleBoard() Board {
@@ -130,12 +143,12 @@ func selected(frame string) string {
 func TestDeskTableShowsTheThreeSections(t *testing.T) {
 	screen := runKeys(t, newModel(sampleBoard(), nil), "q")
 	frame := screen.frames[0]
-	for _, want := range []string{"DMS  1", "TAGGED  1", "SHOULD KNOW  1", "WHEN", "WHO", "WHAT", "Ada", "need the numbers", "ops", "deploy failed"} {
+	for _, want := range []string{"DMS  1", "TAGGED  1", "SHOULD KNOW  1", "WHEN", "WHO", "WHAT", "Ada", "need the numbers", "ops", "deploy failed", "last synced at Wed, 18 Nov 2026, 6:04 AM IST"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q\n%s", want, frame)
 		}
 	}
-	if strings.Contains(frame, "production deploy failed") || strings.Contains(frame, "j/k move") || strings.Contains(frame, "xoxp-") {
+	if strings.Contains(frame, "production deploy failed") || strings.Contains(frame, "j/k move") || strings.Contains(frame, "xoxp-") || strings.Contains(frame, "watching after") {
 		t.Fatalf("frame\n%s", frame)
 	}
 	if !strings.Contains(selected(frame), "Ada") {
@@ -145,15 +158,19 @@ func TestDeskTableShowsTheThreeSections(t *testing.T) {
 
 func TestQuestionMarkBlocksOpenAndRead(t *testing.T) {
 	log := stubDesk(t, sampleBoard(), nil, nil)
-	screen := runKeys(t, newModel(sampleBoard(), nil), "?", "j", "enter", "r", "esc", "q")
-	if !strings.Contains(screen.frames[1], "workspace") || !strings.Contains(screen.frames[1], "open") || !strings.Contains(screen.frames[1], "read") {
-		t.Fatalf("help\n%s", screen.frames[1])
+	syncs := stubSync(t, nil)
+	screen := runKeys(t, newModel(sampleBoard(), nil), "?", "j", "enter", "r", "s", "esc", "q")
+	help := screen.frames[1]
+	for _, want := range []string{"workspace", "open", "read", "sync"} {
+		if !strings.Contains(help, want) {
+			t.Fatalf("help missing %q\n%s", want, help)
+		}
 	}
 	if !strings.Contains(selected(screen.frames[0]), "Ada") || !strings.Contains(selected(screen.frames[len(screen.frames)-1]), "Ada") {
 		t.Fatalf("cursor moved\n%s", selected(screen.frames[len(screen.frames)-1]))
 	}
-	if len(log.opened) != 0 || len(log.read) != 0 {
-		t.Fatalf("opened %v read %v", log.opened, log.read)
+	if len(log.opened) != 0 || len(log.read) != 0 || *syncs != 0 {
+		t.Fatalf("opened %v read %v syncs %d", log.opened, log.read, *syncs)
 	}
 }
 
@@ -211,7 +228,7 @@ func TestHLWrapsWorkspaces(t *testing.T) {
 	}
 }
 
-func TestEmptyWorkspaceNamesTheIntake(t *testing.T) {
+func TestEmptyWorkspaceSaysNoItems(t *testing.T) {
 	board := Board{
 		Since:      "Wed, 15 Nov 2023, 3:43 AM IST",
 		Workspaces: []Workspace{{Preset: "1", Name: "WIOM"}},
@@ -219,13 +236,83 @@ func TestEmptyWorkspaceNamesTheIntake(t *testing.T) {
 	log := stubDesk(t, board, nil, nil)
 	screen := runKeys(t, newModel(board, nil), "enter", "q")
 	frame := screen.frames[0]
-	for _, want := range []string{"DMS  0", "TAGGED  0", "SHOULD KNOW  0", "watching after  Wed, 15 Nov 2023, 3:43 AM IST"} {
+	for _, want := range []string{"DMS  0", "TAGGED  0", "SHOULD KNOW  0", "no items"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("missing %q\n%s", want, frame)
 		}
 	}
+	if strings.Contains(frame, "watching after") || strings.Contains(frame, "Wed, 15 Nov 2023, 3:43 AM IST") {
+		t.Fatalf("intake painted\n%s", frame)
+	}
 	if len(log.opened) != 0 {
 		t.Fatal("opened an empty desk")
+	}
+}
+
+func TestSyncReloadsTheDesk(t *testing.T) {
+	next := sampleBoard()
+	next.RefreshedAt = "2026-11-18T03:16:09Z"
+	next.Workspaces[0].DMs = append([]Item{{
+		MessageID: "D2:2",
+		Sender:    "Bea",
+		Text:      "fresh note",
+		Date:      "Wed, 18 Nov 2026, 8:40 AM IST",
+	}}, next.Workspaces[0].DMs...)
+	stubDesk(t, next, nil, nil)
+	syncs := stubSync(t, nil)
+	screen := runKeys(t, newModel(sampleBoard(), nil), "s", "q")
+	if *syncs != 1 || len(screen.frames) < 3 {
+		t.Fatalf("syncs %d frames %d", *syncs, len(screen.frames))
+	}
+	if !strings.Contains(screen.frames[1], "syncing") || !strings.Contains(screen.frames[1], "need the numbers") {
+		t.Fatalf("syncing\n%s", screen.frames[1])
+	}
+	frame := screen.frames[2]
+	if !strings.Contains(frame, "fresh note") || !strings.Contains(frame, "last synced at Wed, 18 Nov 2026, 8:46 AM IST") || strings.Contains(frame, "syncing") {
+		t.Fatalf("after\n%s", frame)
+	}
+}
+
+func TestFailedSyncKeepsTheTable(t *testing.T) {
+	syncs := stubSync(t, errors.New("slack refused"))
+	screen := runKeys(t, newModel(sampleBoard(), nil), "s", "q")
+	frame := screen.frames[2]
+	if *syncs != 1 || !strings.Contains(frame, "need the numbers") || !strings.Contains(frame, "slack refused") {
+		t.Fatalf("syncs %d\n%s", *syncs, frame)
+	}
+}
+
+func TestErrorAndLastSyncedBothShow(t *testing.T) {
+	board := sampleBoard()
+	board.RefreshedAt = "2026-11-18T03:16:09Z"
+	board.Workspaces[0].Error = "search failed"
+	screen := runKeys(t, newModel(board, nil), "q")
+	frame := screen.frames[0]
+	if !strings.Contains(frame, "last synced at Wed, 18 Nov 2026, 8:46 AM IST") || !strings.Contains(frame, "SEARCH FAILED") || !strings.Contains(frame, "need the numbers") {
+		t.Fatalf("frame\n%s", frame)
+	}
+}
+
+func TestSyncedAtUsesIST(t *testing.T) {
+	if got := syncedAt("2026-11-18T03:16:09Z"); got != "Wed, 18 Nov 2026, 8:46 AM IST" {
+		t.Fatalf("got %q", got)
+	}
+	stored := "Wed, 18 Nov 2026, 6:04 AM IST"
+	if syncedAt(stored) != stored || syncedAt("  ") != "" {
+		t.Fatalf("stored %q blank %q", syncedAt(stored), syncedAt("  "))
+	}
+}
+
+func TestRefreshAlreadyRunningIsAFailure(t *testing.T) {
+	err := syncResult("refreshed: now error: refresh already running", nil)
+	if err == nil || err.Error() != "refresh already running" {
+		t.Fatalf("err %v", err)
+	}
+	if err := syncResult("refreshed: now", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := syncResult("", errors.New("desk unavailable")); err == nil || err.Error() != "desk unavailable" {
+		t.Fatalf("err %v", err)
 	}
 }
 

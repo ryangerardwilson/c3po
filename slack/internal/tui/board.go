@@ -11,7 +11,23 @@ var (
 	fetchBoard   = runShow
 	openDeskItem = func(preset, id string) error { return runDesk("open", preset, id) }
 	readDeskItem = func(preset, id string) error { return runDesk("read", preset, id) }
+	syncDesk     = func() error { return runSync() }
 )
+
+func runSync() error {
+	text, err := deskCombined("refresh")
+	return syncResult(text, err)
+}
+
+func syncResult(text string, err error) error {
+	if err != nil {
+		return err
+	}
+	if strings.Contains(text, "refresh already running") {
+		return errors.New("refresh already running")
+	}
+	return nil
+}
 
 type rawItem struct {
 	MessageID    string `json:"message_id"`
