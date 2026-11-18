@@ -43,22 +43,22 @@ func TestThresholdConstants(t *testing.T) {
 func TestStyleUsesTextAndBinaryThresholds(t *testing.T) {
 	stats := Stats{TextFileCount: 2, MaxTextLines: 200, BinaryFileCount: 2, MaxBinarySize: 100 * 1024}
 	text := styleFor(&Node{Type: TypeFile, Lines: 200}, stats)
-	if text != "\x1b[38;2;180;180;0m" {
+	if text != "\x1b[38;2;180;180;180m" {
 		t.Fatalf("text at threshold: %q", text)
 	}
 	binary := styleFor(&Node{Type: TypeBinary, Size: 100 * 1024}, stats)
-	if binary != "\x1b[38;2;0;180;180m" {
+	if binary != "\x1b[38;2;180;180;180m" {
 		t.Fatalf("binary at threshold: %q", binary)
 	}
 	stats.MaxTextLines = 201
 	stats.MaxBinarySize = 100*1024 + 1
-	if got := styleFor(&Node{Type: TypeFile, Lines: 201}, stats); got != "\x1b[38;2;255;255;0m" {
+	if got := styleFor(&Node{Type: TypeFile, Lines: 201}, stats); got != "\x1b[38;2;255;255;255m" {
 		t.Fatalf("text over threshold: %q", got)
 	}
-	if got := styleFor(&Node{Type: TypeBinary, Size: 100*1024 + 1}, stats); got != "\x1b[38;2;0;255;255m" {
+	if got := styleFor(&Node{Type: TypeBinary, Size: 100*1024 + 1}, stats); got != "\x1b[38;2;255;255;255m" {
 		t.Fatalf("binary over threshold: %q", got)
 	}
-	if got := styleFor(&Node{Type: TypeFile, Lines: 200}, stats); got != "\x1b[38;2;70;70;0m" {
+	if got := styleFor(&Node{Type: TypeFile, Lines: 200}, stats); got != "\x1b[38;2;70;70;70m" {
 		t.Fatalf("text at threshold with larger max: %q", got)
 	}
 }

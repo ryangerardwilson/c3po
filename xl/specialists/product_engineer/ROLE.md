@@ -17,7 +17,7 @@ The xlsx is the source of truth. Cells store what was typed. A cell that starts 
 Normal mode is the default.
 
 - `hjkl` and the arrow keys move. They do not type.
-- `i` or `=` enters insert mode on the current cell. Typed text shows in the cell. The focused cell is a cyan shade with black text, and the cursor is red.
+- `i` or `=` enters insert mode on the current cell. Typed text shows in the cell. The focused cell is a light gray shade with black text, and the cursor is white on dark gray.
 - `esc` keeps the typed text and returns to normal mode on the same cell.
 - `enter` in normal mode edits the current cell. While editing, it commits and moves to the cell below in normal mode.
 - While editing, `ctrl-a` and `ctrl-e` move to the ends of the cell. `alt-f` and `alt-b` move by word. `ctrl-w` deletes the word behind the cursor.

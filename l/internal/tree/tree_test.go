@@ -176,27 +176,27 @@ func TestColorUsesTypeHuesAndRelativeIntensity(t *testing.T) {
 	huge := &Node{Name: "huge.go", Type: TypeFile, Size: 10, Lines: 20000}
 	stats := Stats{TextFileCount: 2, MinTextLines: 100, MaxTextLines: 20000}
 	line = colorize("F huge.go 10B 20000L", huge, stats, RenderConfig{Color: true})
-	if !strings.Contains(line, "\x1b[38;2;255;255;0m") {
-		t.Fatalf("expected huge file to be bright yellow, got %q", line)
+	if !strings.Contains(line, "\x1b[38;2;255;255;255m") {
+		t.Fatalf("expected huge file to be bright gray, got %q", line)
 	}
 
 	small := &Node{Name: "small.go", Type: TypeFile, Size: 10, Lines: 100}
 	line = colorize("F small.go 10B 100L", small, stats, RenderConfig{Color: true})
-	if !strings.Contains(line, "\x1b[38;2;70;70;0m") {
-		t.Fatalf("expected small file to be dark yellow, got %q", line)
+	if !strings.Contains(line, "\x1b[38;2;70;70;70m") {
+		t.Fatalf("expected small file to be dark gray, got %q", line)
 	}
 
 	bigBinary := &Node{Name: "big.bin", Type: TypeBinary, Size: 1024 * 1024}
 	binaryStats := Stats{BinaryFileCount: 2, MinBinarySize: 1024, MaxBinarySize: 1024 * 1024}
 	line = colorize("B big.bin 1.0MB", bigBinary, binaryStats, RenderConfig{Color: true})
-	if !strings.Contains(line, "\x1b[38;2;0;255;255m") {
-		t.Fatalf("expected big binary to be bright cyan, got %q", line)
+	if !strings.Contains(line, "\x1b[38;2;255;255;255m") {
+		t.Fatalf("expected big binary to be bright gray, got %q", line)
 	}
 
 	smallBinary := &Node{Name: "small.bin", Type: TypeBinary, Size: 1024}
 	line = colorize("B small.bin 1.0KB", smallBinary, binaryStats, RenderConfig{Color: true})
-	if !strings.Contains(line, "\x1b[38;2;0;70;70m") {
-		t.Fatalf("expected small binary to be dark cyan, got %q", line)
+	if !strings.Contains(line, "\x1b[38;2;70;70;70m") {
+		t.Fatalf("expected small binary to be dark gray, got %q", line)
 	}
 }
 
@@ -222,17 +222,17 @@ func TestRenderKeepsTreeGlyphsGrayWhileColoringLabels(t *testing.T) {
 	}
 	output := buf.String()
 
-	fileLine := "\x1b[38;2;128;128;128m├── \x1b[0m\x1b[38;2;255;255;0mlarge.go 1.0KB 1000L\x1b[0m"
+	fileLine := "\x1b[38;2;128;128;128m├── \x1b[0m\x1b[38;2;255;255;255mlarge.go 1.0KB 1000L\x1b[0m"
 	if !strings.Contains(output, fileLine) {
-		t.Fatalf("expected gray tree glyphs followed by yellow file label, got %q", output)
+		t.Fatalf("expected gray tree glyphs followed by a gray file label, got %q", output)
 	}
 
-	binaryLine := "\x1b[38;2;128;128;128m└── \x1b[0m\x1b[38;2;0;255;255masset.bin 1.0MB\x1b[0m"
+	binaryLine := "\x1b[38;2;128;128;128m└── \x1b[0m\x1b[38;2;255;255;255masset.bin 1.0MB\x1b[0m"
 	if !strings.Contains(output, binaryLine) {
-		t.Fatalf("expected gray tree glyphs followed by cyan binary label, got %q", output)
+		t.Fatalf("expected gray tree glyphs followed by a gray binary label, got %q", output)
 	}
 
-	if strings.Contains(output, "\x1b[38;2;255;255;0m├──") || strings.Contains(output, "\x1b[38;2;0;255;255m└──") {
+	if strings.Contains(output, "\x1b[38;2;255;255;255m├──") || strings.Contains(output, "\x1b[38;2;255;255;255m└──") {
 		t.Fatalf("expected tree glyphs not to inherit file or binary color, got %q", output)
 	}
 }
@@ -293,11 +293,11 @@ func TestTextFileColorUsesYellowIntensityRangeForDominantFileShape(t *testing.T)
 		lines int
 		code  string
 	}{
-		{name: "x", lines: 13, code: "\x1b[38;2;70;70;0m"},
-		{name: "README.md", lines: 18, code: "\x1b[38;2;70;70;0m"},
-		{name: "y", lines: 50, code: "\x1b[38;2;70;70;0m"},
-		{name: "AGENTS.md", lines: 264, code: "\x1b[38;2;83;83;0m"},
-		{name: "BIBLE.md", lines: 10125, code: "\x1b[38;2;255;255;0m"},
+		{name: "x", lines: 13, code: "\x1b[38;2;70;70;70m"},
+		{name: "README.md", lines: 18, code: "\x1b[38;2;70;70;70m"},
+		{name: "y", lines: 50, code: "\x1b[38;2;70;70;70m"},
+		{name: "AGENTS.md", lines: 264, code: "\x1b[38;2;83;83;83m"},
+		{name: "BIBLE.md", lines: 10125, code: "\x1b[38;2;255;255;255m"},
 	}
 	for _, tc := range cases {
 		node := &Node{Name: tc.name, Type: TypeFile, Lines: tc.lines}
@@ -316,10 +316,10 @@ func TestBinaryColorUsesCyanIntensityRange(t *testing.T) {
 		size int64
 		code string
 	}{
-		{name: "tiny.bin", size: 10, code: "\x1b[38;2;0;70;70m"},
-		{name: "small.bin", size: 50 * 1024, code: "\x1b[38;2;0;70;70m"},
-		{name: "middle.bin", size: 1024 * 1024, code: "\x1b[38;2;0;163;163m"},
-		{name: "huge.bin", size: 10 * 1024 * 1024, code: "\x1b[38;2;0;255;255m"},
+		{name: "tiny.bin", size: 10, code: "\x1b[38;2;70;70;70m"},
+		{name: "small.bin", size: 50 * 1024, code: "\x1b[38;2;70;70;70m"},
+		{name: "middle.bin", size: 1024 * 1024, code: "\x1b[38;2;163;163;163m"},
+		{name: "huge.bin", size: 10 * 1024 * 1024, code: "\x1b[38;2;255;255;255m"},
 	}
 	for _, tc := range cases {
 		node := &Node{Name: tc.name, Type: TypeBinary, Size: tc.size}
@@ -335,15 +335,15 @@ func TestColorUsesNeutralIntensityWhenAllEntriesOfATypeMatch(t *testing.T) {
 	node := &Node{Name: "service.go", Type: TypeFile, Lines: 100}
 
 	line := colorize("F service.go 100B 100L", node, stats, RenderConfig{Color: true})
-	if !strings.Contains(line, "\x1b[38;2;180;180;0m") {
-		t.Fatalf("expected neutral yellow for equal-sized files, got %q", line)
+	if !strings.Contains(line, "\x1b[38;2;180;180;180m") {
+		t.Fatalf("expected neutral gray for equal-sized files, got %q", line)
 	}
 
 	binaryStats := Stats{BinaryFileCount: 2, MinBinarySize: 4096, MaxBinarySize: 4096}
 	binary := &Node{Name: "asset.bin", Type: TypeBinary, Size: 4096}
 	line = colorize("B asset.bin 4.0KB", binary, binaryStats, RenderConfig{Color: true})
-	if !strings.Contains(line, "\x1b[38;2;0;180;180m") {
-		t.Fatalf("expected neutral cyan for equal-sized binaries, got %q", line)
+	if !strings.Contains(line, "\x1b[38;2;180;180;180m") {
+		t.Fatalf("expected neutral gray for equal-sized binaries, got %q", line)
 	}
 }
 
@@ -352,8 +352,8 @@ func TestSmallFilesAndBinariesDoNotVaryBySize(t *testing.T) {
 	for _, lines := range []int{1, 50, 199, 200} {
 		node := &Node{Name: "small.go", Type: TypeFile, Lines: lines}
 		line := colorize("small.go", node, textStats, RenderConfig{Color: true})
-		if !strings.Contains(line, "\x1b[38;2;70;70;0m") {
-			t.Fatalf("expected %d-line file to use stable low yellow, got %q", lines, line)
+		if !strings.Contains(line, "\x1b[38;2;70;70;70m") {
+			t.Fatalf("expected %d-line file to use stable low gray, got %q", lines, line)
 		}
 	}
 
@@ -361,8 +361,8 @@ func TestSmallFilesAndBinariesDoNotVaryBySize(t *testing.T) {
 	for _, size := range []int64{1, 1024, 99 * 1024, 100 * 1024} {
 		node := &Node{Name: "small.bin", Type: TypeBinary, Size: size}
 		line := colorize("small.bin", node, binaryStats, RenderConfig{Color: true})
-		if !strings.Contains(line, "\x1b[38;2;0;70;70m") {
-			t.Fatalf("expected %d-byte binary to use stable low cyan, got %q", size, line)
+		if !strings.Contains(line, "\x1b[38;2;70;70;70m") {
+			t.Fatalf("expected %d-byte binary to use stable low gray, got %q", size, line)
 		}
 	}
 }

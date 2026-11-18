@@ -11,18 +11,16 @@ import (
 
 const (
 	ansiReset = "\033[0m"
-	// Truecolor. The terminal theme maps the 16 ANSI colors onto white and
-	// gray, so indexed cyan and yellow never show, and the cursor disappears
-	// into the shade.
-	ansiCyan   = "\033[38;2;0;229;255m"
-	ansiRed    = "\033[38;2;255;70;70m"
-	ansiYellow = "\033[38;2;255;214;0m"
+	// Truecolor gray. The terminal theme maps the 16 ANSI colors onto white
+	// and gray, so the cursor is a darker gray than the cell shade.
 	ansiWhite  = "\033[38;2;255;255;255m"
-	// White on red. The red is not the cyan shade.
-	ansiCursor = "\033[38;2;255;255;255;48;2;255;70;70m"
-	ansiSelect = "\033[38;2;255;255;255;48;2;214;40;40m"
-	// Black on cyan.
-	ansiShade = "\033[38;2;0;0;0;48;2;0;229;255m"
+	ansiBright = "\033[38;2;229;229;229m"
+	ansiAlert  = "\033[1;38;2;255;255;255m"
+	// White on dark gray. The gray is darker than the cell shade.
+	ansiCursor = "\033[38;2;255;255;255;48;2;70;70;70m"
+	ansiSelect = "\033[38;2;255;255;255;48;2;120;120;120m"
+	// Black on light gray.
+	ansiShade = "\033[38;2;0;0;0;48;2;229;229;229m"
 )
 
 func (m *model) paint(s, code string) string {
@@ -81,9 +79,9 @@ func (m *model) titleLine() string {
 	}
 	line := ansiWhite + "xl" + ansiReset + "  " + name
 	if state != "" {
-		tone := ansiYellow
+		tone := ansiBright
 		if state == "modified" {
-			tone = ansiRed
+			tone = ansiAlert
 		}
 		line += "  " + tone + state + ansiReset
 	}
@@ -99,7 +97,7 @@ func (m *model) headerLine() string {
 		}
 		label := padCenter(sheet.ColName(c), m.colWidth(c))
 		if c == m.col {
-			label = m.paint(label, ansiYellow)
+			label = m.paint(label, ansiBright)
 		} else {
 			label = m.paint(label, "\033[2m")
 		}
@@ -120,7 +118,7 @@ func (m *model) gridLines() []string {
 		var b strings.Builder
 		gutter := padLeft(strconv.Itoa(r+1), m.gutter()-1) + " "
 		if r == m.row {
-			gutter = m.paint(gutter, ansiYellow)
+			gutter = m.paint(gutter, ansiBright)
 		}
 		b.WriteString(gutter)
 		for n, c := range cols {
@@ -153,7 +151,7 @@ func (m *model) paintCell(c, r int, selected bool) string {
 			field = padRight(content, inner)
 		}
 		if m.color && !selected && strings.HasPrefix(strings.TrimSpace(content), "#") {
-			field = ansiRed + field + ansiReset
+			field = ansiAlert + field + ansiReset
 		}
 	}
 	left, right := " ", " "
@@ -235,7 +233,7 @@ func (m *model) formulaLine() string {
 	addr := m.sheet.Name + "!" + sheet.AddrLabel(m.col, m.row)
 	line := fit(fmt.Sprintf("%-6s  %s  %s", name, addr, body), m.width)
 	if m.color && strings.Contains(line, addr) {
-		line = strings.Replace(line, addr, ansiCyan+addr+ansiReset, 1)
+		line = strings.Replace(line, addr, ansiWhite+addr+ansiReset, 1)
 	}
 	return line
 }
@@ -256,7 +254,7 @@ func (m *model) statsLine() string {
 		return ""
 	}
 	label := sheet.RangeLabel(c1, r1, c2, r2) + "  "
-	return m.paint(fit(label+m.sheet.Stats(c1, r1, c2, r2).String(), m.width), ansiYellow)
+	return m.paint(fit(label+m.sheet.Stats(c1, r1, c2, r2).String(), m.width), ansiBright)
 }
 
 func (m *model) promptLine() string {
@@ -266,9 +264,9 @@ func (m *model) promptLine() string {
 	case modeRename:
 		return fit("rename sheet: "+cursorText(m.saveBuf, m.saveCur)+"   enter rename   esc cancel", m.width)
 	case modeCommand:
-		return m.paint(fit(":"+cursorText(m.saveBuf, m.saveCur), m.width), ansiYellow)
+		return m.paint(fit(":"+cursorText(m.saveBuf, m.saveCur), m.width), ansiBright)
 	case modeSearch:
-		return m.paint(fit("/"+cursorText(m.saveBuf, m.saveCur), m.width), ansiYellow)
+		return m.paint(fit("/"+cursorText(m.saveBuf, m.saveCur), m.width), ansiBright)
 	default:
 		return ""
 	}
@@ -328,7 +326,7 @@ func (m *model) helpModal() []string {
 	}
 	inner := boxW - 4
 	boxed := make([]string, 0, len(body)+2)
-	rule := m.paint("+"+strings.Repeat("-", boxW-2)+"+", ansiCyan)
+	rule := m.paint("+"+strings.Repeat("-", boxW-2)+"+", ansiWhite)
 	boxed = append(boxed, rule)
 	for _, line := range body {
 		boxed = append(boxed, m.helpRow(padRight(fit(line, inner), inner)))
@@ -354,7 +352,7 @@ func (m *model) helpRow(inner string) string {
 	if !m.color {
 		return "| " + inner + " |"
 	}
-	return ansiCyan + "| " + ansiReset + inner + ansiCyan + " |" + ansiReset
+	return ansiWhite + "| " + ansiReset + inner + ansiWhite + " |" + ansiReset
 }
 
 func (m *model) visibleCols() []int {

@@ -178,18 +178,18 @@ func colorizeTree(line string, cfg RenderConfig) string {
 	return rgbStyle(treeIntensity, treeIntensity, treeIntensity) + line + "\x1b[0m"
 }
 
-// styleFor is white for directories, cyan for binaries scaled by size,
-// and yellow for text files scaled by line count.
+// styleFor is white for directories. Text files and binaries are gray,
+// scaled by line count and size.
 func styleFor(node *Node, stats Stats) string {
 	switch node.Type {
 	case TypeDirectory:
 		return rgbStyle(255, 255, 255)
 	case TypeBinary:
 		intensity := intensityForRange(node.Size, stats.MaxBinarySize, stats.BinaryFileCount, binaryIntensityThresholdSize)
-		return rgbStyle(0, intensity, intensity)
+		return rgbStyle(intensity, intensity, intensity)
 	case TypeFile:
 		intensity := intensityForRange(int64(node.Lines), int64(stats.MaxTextLines), stats.TextFileCount, textIntensityThresholdLines)
-		return rgbStyle(intensity, intensity, 0)
+		return rgbStyle(intensity, intensity, intensity)
 	default:
 		return ""
 	}

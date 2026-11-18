@@ -43,7 +43,7 @@ the calls of a closed row, and moves into the first call of an open row.
 h moves to the caller of the row under the cursor. c collapses that row
 and everything open under it. A call back to a function already on the
 path is marked cycle and stays closed. A row that can be opened is bright.
-A row with nothing under it is dim. The screen is yellow. While the
+A row with nothing under it is dim. The screen is white. While the
 screen is open, the tree updates as source files change. Open and closed
 rows stay as they were, and the cursor stays on the same function.
 

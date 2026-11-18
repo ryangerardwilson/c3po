@@ -577,17 +577,17 @@ func TestPreviewDepthIsCapped(t *testing.T) {
 
 func TestTextLabelStyleUsesRelativeLineIntensity(t *testing.T) {
 	neutral := textLabelStyle(fsnav.Entry{IsText: true, Lines: 200}, 200, 3)
-	if neutral.GetForeground() != style.Color("#B4B400") {
+	if neutral.GetForeground() != style.Color("#B4B4B4") {
 		t.Fatalf("neutral foreground = %#v", neutral.GetForeground())
 	}
 
 	low := textLabelStyle(fsnav.Entry{IsText: true, Lines: 200}, 10125, 5)
-	if low.GetForeground() != style.Color("#464600") {
+	if low.GetForeground() != style.Color("#464646") {
 		t.Fatalf("low foreground = %#v", low.GetForeground())
 	}
 
 	high := textLabelStyle(fsnav.Entry{IsText: true, Lines: 10125}, 10125, 5)
-	if high.GetForeground() != style.Color("#FFFF00") {
+	if high.GetForeground() != style.Color("#FFFFFF") {
 		t.Fatalf("high foreground = %#v", high.GetForeground())
 	}
 
@@ -596,6 +596,10 @@ func TestTextLabelStyleUsesRelativeLineIntensity(t *testing.T) {
 	}
 	if binary := textLabelStyle((fsnav.Entry{Lines: 0}), 10125, 5); binary.GetForeground() != (style.NoColor{}) {
 		t.Fatalf("binary foreground = %#v", binary.GetForeground())
+	}
+	smallSelected := selectedTextColor(fsnav.Entry{IsText: true, Lines: 200}, 10125, 5)
+	if smallSelected != style.Color("#B4B4B4") {
+		t.Fatalf("selected floor = %#v", smallSelected)
 	}
 }
 
@@ -634,8 +638,8 @@ func TestViewColorsRootNestedAndSelectedTextFiles(t *testing.T) {
 
 	tm.selected = len(tm.entries) - 1
 	largeEntry := tm.entries[tm.selected]
-	selected := selectedStyle.Foreground(textLabelStyle(largeEntry, maxLines, textCount).GetForeground())
-	if selected.GetForeground() != style.Color("#FFFF00") {
+	selected := selectedStyle.Foreground(selectedTextColor(largeEntry, maxLines, textCount))
+	if selected.GetForeground() != style.Color("#FFFFFF") {
 		t.Fatalf("selected foreground = %#v", selected.GetForeground())
 	}
 	if selected.GetBackground() != selectedStyle.GetBackground() {

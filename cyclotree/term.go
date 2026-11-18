@@ -13,7 +13,7 @@ func screenBytes(frame string) string {
 		lines = lines[:n-1]
 	}
 	var b strings.Builder
-	b.WriteString("\x1b[?2026h\x1b[H\x1b[38;2;220;220;0m")
+	b.WriteString("\x1b[?2026h\x1b[H\x1b[38;2;255;255;255m")
 	for i, line := range lines {
 		if i > 0 {
 			b.WriteByte('\n')

@@ -11,8 +11,8 @@ import (
 var (
 	titleStyle    = style.NewStyle().Bold(true)
 	mutedStyle    = style.NewStyle().Foreground(style.Color("241"))
-	selectedStyle = style.NewStyle().Foreground(style.Color("229")).Background(style.Color("238"))
-	statusStyle   = style.NewStyle().Foreground(style.Color("80"))
+	selectedStyle = style.NewStyle().Foreground(style.Color("255")).Background(style.Color("238"))
+	statusStyle   = style.NewStyle().Foreground(style.Color("252"))
 )
 
 // Cascade phases of one row while a listing reveals.
@@ -40,8 +40,26 @@ func textLabelStyle(entry fsnav.Entry, maxLines, textCount int) style.Style {
 		return style.NewStyle()
 	}
 	intensity := fsnav.TextIntensity(entry.Lines, maxLines, textCount)
-	color := fmt.Sprintf("#%02X%02X00", intensity, intensity)
-	return style.NewStyle().Foreground(style.Color(color))
+	return style.NewStyle().Foreground(grayColor(intensity))
+}
+
+func grayColor(intensity int) style.Color {
+	if intensity < 0 {
+		intensity = 0
+	}
+	if intensity > 255 {
+		intensity = 255
+	}
+	return style.Color(fmt.Sprintf("#%02X%02X%02X", intensity, intensity, intensity))
+}
+
+// selectedTextColor keeps a short file readable on the dark selection bar.
+func selectedTextColor(entry fsnav.Entry, maxLines, textCount int) style.Color {
+	intensity := fsnav.TextIntensity(entry.Lines, maxLines, textCount)
+	if intensity < 180 {
+		intensity = 180
+	}
+	return grayColor(intensity)
 }
 
 func (m model) View() string {
@@ -257,7 +275,7 @@ func (m model) rootRow(row fsnav.PreviewRow, phase, maxTextLines, textCount int)
 	}
 	rowStyle := selectedStyle
 	if entry.IsText {
-		rowStyle = selectedStyle.Foreground(labelStyle.GetForeground())
+		rowStyle = selectedStyle.Foreground(selectedTextColor(entry, maxTextLines, textCount))
 	}
 	return rowStyle.Render(prefix + label)
 }

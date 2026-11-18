@@ -233,8 +233,8 @@ func TestPaintKeepsTheLastLineOnScreen(t *testing.T) {
 	if strings.Contains(got, "\x1b[2J") || !strings.Contains(got, "a\x1b[K\nb\x1b[K\x1b[J") {
 		t.Fatalf("%q", got)
 	}
-	if !strings.Contains(got, "\x1b[38;2;220;220;0m") || !strings.Contains(got, "\x1b[0m") {
-		t.Fatalf("yellow %q", got)
+	if !strings.Contains(got, "\x1b[38;2;255;255;255m") || !strings.Contains(got, "\x1b[0m") {
+		t.Fatalf("white %q", got)
 	}
 }
 func cursorLine(s *screen) string {

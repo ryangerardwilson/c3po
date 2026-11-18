@@ -3,9 +3,7 @@
 ## Purpose
 
 cyclotree is a screen of the calls one function makes, or of the whole application from its entrypoint. Each row is a function, its cyclomatic complexity, and how many levels of calls can be opened under it. The operator moves through that tree with hjkl. While the screen is open, the tree updates as source files change.
-
 ## Requirements
-
 ### Requirement: Cyclotree is a screen
 `r2d2 cyclotree [symbol] [dir]` SHALL read `[dir]`, defaulting to the working directory. `[symbol]` MAY come before or after `[dir]` and MAY be omitted. `r2d2 cyclotree help` SHALL exit 0 and SHALL describe `j`, `k`, `h`, and `l`. An unknown flag or two symbols SHALL exit 2 and SHALL print the help. A path given as the directory that is not a directory SHALL exit 1. An unknown function SHALL exit 1 and SHALL name the symbol. When more than one function has the name, the command SHALL exit 1 and SHALL list each `path:line name`.
 
@@ -47,7 +45,7 @@ When no symbol is given, the command SHALL start at the program entrypoint and S
 - **AND** the text SHALL list both paths
 
 ### Requirement: The tree is calls weighted by cyclomatic complexity
-The root SHALL be the named function. Its direct resolved calls SHALL start open. Each scored row SHALL show the function name, its cyclomatic complexity, how many levels of calls can be opened under it, and `path:line`. The root path SHALL be from the directory being read. A nested row SHALL show its path relative to the caller's directory. A relative path that steps upward and is longer than the root path SHALL stay the shorter path. The bottom of the screen SHALL show the call chain from the root down to the row under the cursor, written as `Name -> Name`, and the full path of that row from the directory being read. The plain tree SHALL NOT show that chain or that path. On the screen, the text SHALL be yellow. The plain tree SHALL NOT be yellow. A level is one call that can be opened. A call back to a function already on the path SHALL NOT add a level. A row with no such call SHALL show depth 0. A call into a directory named `internal` SHALL be listed. Go, Python, TypeScript, and JavaScript calls SHALL be followed. A Rust function SHALL be accepted as a root and SHALL show its cyclomatic complexity. Its calls SHALL NOT be listed. When stdout is not a terminal, the open tree SHALL be printed and the command SHALL exit 0.
+The root SHALL be the named function. Its direct resolved calls SHALL start open. Each scored row SHALL show the function name, its cyclomatic complexity, how many levels of calls can be opened under it, and `path:line`. The root path SHALL be from the directory being read. A nested row SHALL show its path relative to the caller's directory. A relative path that steps upward and is longer than the root path SHALL stay the shorter path. The bottom of the screen SHALL show the call chain from the root down to the row under the cursor, written as `Name -> Name`, and the full path of that row from the directory being read. The plain tree SHALL NOT show that chain or that path. On the screen, the text SHALL be white. The plain tree SHALL NOT set a text color. A level is one call that can be opened. A call back to a function already on the path SHALL NOT add a level. A row with no such call SHALL show depth 0. A call into a directory named `internal` SHALL be listed. Go, Python, TypeScript, and JavaScript calls SHALL be followed. A Rust function SHALL be accepted as a root and SHALL show its cyclomatic complexity. Its calls SHALL NOT be listed. When stdout is not a terminal, the open tree SHALL be printed and the command SHALL exit 0.
 
 #### Scenario: A call into internal is listed
 - **GIVEN** `Start` calls `Work`, and `Work` is defined under `internal/`
@@ -67,6 +65,11 @@ The root SHALL be the named function. Its direct resolved calls SHALL start open
 - **WHEN** the operator runs `r2d2 cyclotree parse_line` with stdout not a terminal
 - **THEN** the text SHALL show `parse_line` and its cyclomatic complexity
 - **AND** the text SHALL contain one row
+
+#### Scenario: The screen text is white
+- **WHEN** the cyclotree screen paints a frame
+- **THEN** the text color SHALL be white
+- **AND** the plain tree SHALL NOT set a text color
 
 ### Requirement: hjkl moves through the call tree
 `j` and `k` SHALL move among the visible rows and SHALL stay inside the tree. `l` on a closed row SHALL open its calls. `l` on an open row SHALL move to its first call. `h` SHALL move to the caller of the row under the cursor. A call back to a function already on the path SHALL be marked `cycle` and SHALL stay closed. `c` SHALL close the row under the cursor and every open row under it, and the cursor SHALL stay on that row. `q` SHALL leave the screen. On the screen, a row that can be opened SHALL be bold and a row that cannot SHALL be dim. The plain tree SHALL NOT use those marks. The cursor marker SHALL occupy a fixed column. Moving the cursor SHALL NOT change the column of a function name.
@@ -138,3 +141,4 @@ The screen SHALL NOT show the shortcut list until the operator presses `?`. `?` 
 - **THEN** the row SHALL show `work.go`
 - **AND** the bottom SHALL show `main -> Start -> Hidden`
 - **AND** the bottom line SHALL show `work/work.go`
+

@@ -48,7 +48,7 @@ ctrl-n / ctrl-p   next and previous match
 
 Also `MIN`, `MAX`, and `COUNT`. `AVG` is `AVERAGE`, and an xlsx saves it as `AVERAGE`. Ranges can be rows or columns. `+` `-` `*` `/` and parentheses work. A sheet name with a space is quoted, as in `='Food costs'!A1`.
 
-While you type, the characters show in the cell. The focused cell is a cyan shade with black text, and the cursor is red.
+While you type, the characters show in the cell. The focused cell is a light gray shade with black text, and the cursor is white on dark gray.
 
 When more than one cell is selected, and every filled cell is a number, the bottom line shows `Sum`, `Average`, `Median`, `Mode`, and `n`. A label or other text hides that line. Blank cells are ignored. `Mode none` means no number repeats.
 

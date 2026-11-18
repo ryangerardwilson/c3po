@@ -10,9 +10,9 @@ import (
 
 const (
 	styleTitle  = "\x1b[1m"
-	styleActive = "\x1b[1;92m"
+	styleActive = "\x1b[1;97m"
 	styleMuted  = "\x1b[90m"
-	styleError  = "\x1b[91m"
+	styleError  = "\x1b[7m"
 	styleReset  = "\x1b[0m"
 )
 

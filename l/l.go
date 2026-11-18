@@ -1,4 +1,4 @@
-// Package l is the r2d2 l: a compact colored tree listing.
+// Package l is the r2d2 l: a compact gray tree listing.
 package l
 
 import (
@@ -38,10 +38,11 @@ after the flags. Use -- to end flags; every argument after it is a path.
 Each file shows its size and line count. Each binary shows its size.
 Directories sort before files, then names sort without regard to case.
 
-Directories render white, text files yellow, and binaries cyan. Tree
-glyphs render gray. Text-file brightness scales with line count on a log
-scale, and binary brightness scales with size the same way. Files under
-200L and binaries under 100KB share one low-intensity color. When no
+Directories render white. Text files and binaries render gray, brighter
+as they grow. Tree glyphs render gray. Text-file brightness scales with
+line count on a log scale, and binary brightness scales with size the
+same way. Files under 200L and binaries under 100KB share one low
+intensity. When no
 entry of a kind is above its threshold, that kind uses one middle
 intensity.
 

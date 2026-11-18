@@ -108,7 +108,7 @@ func TestRunCanForceColor(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "\x1b[38;2;255;255;0m") {
+	if !strings.Contains(stdout.String(), "\x1b[38;2;255;255;255m") {
 		t.Fatalf("expected forced color:\n%q", stdout.String())
 	}
 }

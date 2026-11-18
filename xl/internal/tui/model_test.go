@@ -103,7 +103,7 @@ func TestTypingCursorSitsOnTheShade(t *testing.T) {
 	if strings.Contains(view, "\033[1;7m") || !shadedCell(focus) || !strings.Contains(focus, ansiCursor) || !strings.Contains(focus, "Rent") {
 		t.Fatalf("focus style:\n%s", view)
 	}
-	if strings.Contains(view, "[Sheet1]") || !strings.Contains(view, ansiCyan+"Sheet1!A1") || !strings.Contains(view, ansiYellow) {
+	if strings.Contains(view, "[Sheet1]") || !strings.Contains(view, ansiWhite+"Sheet1!A1") || !strings.Contains(view, ansiBright) {
 		t.Fatalf("chrome color:\n%s", view)
 	}
 	m = press(m, tea.KeyMsg{Type: tea.KeyEsc}, runeKey('v'), runeKey('j'))
@@ -279,7 +279,7 @@ func rowLine(view string, n int) int {
 }
 
 func shadedCell(line string) bool {
-	if ansiShade == ansiCursor || !strings.Contains(ansiShade, "38;2;0;0;0") || !strings.Contains(ansiCursor, "38;2;255;255;255") || !strings.Contains(ansiCursor, "48;2;255;70;70") {
+	if ansiShade == ansiCursor || !strings.Contains(ansiShade, "38;2;0;0;0") || !strings.Contains(ansiCursor, "38;2;255;255;255") || !strings.Contains(ansiCursor, "48;2;70;70;70") {
 		return false
 	}
 	shadeBg := bgOf(ansiShade)

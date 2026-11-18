@@ -20,7 +20,7 @@ type NoColor struct{}
 
 func (NoColor) sequence(bool) string { return "" }
 
-// Color is an ANSI 256 index such as "241" or a hex color such as "#B4B400".
+// Color is an ANSI 256 index such as "241" or a hex color such as "#B4B4B4".
 type Color string
 
 func (c Color) sequence(fg bool) string {
