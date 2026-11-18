@@ -82,6 +82,19 @@ func TestXLHelp(t *testing.T) {
 	}
 }
 
+func TestSlackHelp(t *testing.T) {
+	out, _, code := run("slack", "help")
+	for _, want := range []string{"r2d2 slack", "h and l switch workspace", "Opening a conversation does not"} {
+		if code != 0 || !bytes.Contains(out, []byte(want)) {
+			t.Fatalf("help %d missing %q\n%s", code, want, out)
+		}
+	}
+	_, errb, code := run("slack", "extra")
+	if code != 2 || !bytes.Contains(errb, []byte("r2d2 slack")) {
+		t.Fatalf("extra %d\n%s", code, errb)
+	}
+}
+
 func TestLooptabHelp(t *testing.T) {
 	out, _, code := run("looptab", "help")
 	if code != 0 || !bytes.Contains(out, []byte("enter runs the selected job now")) || !bytes.Contains(out, []byte("r2d2 looptab")) {

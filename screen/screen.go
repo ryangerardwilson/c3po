@@ -14,6 +14,7 @@ import (
 	"github.com/ryangerardwilson/c3po/looptab"
 	"github.com/ryangerardwilson/c3po/o"
 	"github.com/ryangerardwilson/c3po/pass"
+	"github.com/ryangerardwilson/c3po/slack"
 	"github.com/ryangerardwilson/c3po/tunnel"
 	"github.com/ryangerardwilson/c3po/xl"
 )
@@ -30,6 +31,7 @@ var screens = map[string]runFunc{
 	"deport":    deportScreen,
 	"xl":        xl.Run,
 	"looptab":   looptab.Run,
+	"slack":     slack.Screen,
 }
 
 // Run opens the named screen. An unknown name exits 2.

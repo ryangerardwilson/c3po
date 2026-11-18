@@ -7,7 +7,7 @@ context: |
   command. c3po clippy copies a multiline text to the Wayland clipboard
   and does not print it. c3po idealake stores ideas by topic. c3po looptab
   registers jobs files and edits them in vim. Screens run in r2d2:
-  web, cyclotree, l, o, tunnel, gdrive, pass, deport, xl, and looptab.
+  web, cyclotree, l, o, tunnel, gdrive, pass, deport, xl, looptab, and slack.
   The trainer is crusade -m nlp.
   ast is the AST-aware agent boundary.
   Product truth lives in this repository.
