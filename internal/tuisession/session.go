@@ -198,7 +198,7 @@ func (s *Session) Close() error {
 	if s == nil {
 		return nil
 	}
-	return sqlxdb.Delete(appName, kindActive, s.id)
+	return sqlxdb.DeleteLocal(appName, kindActive, s.id)
 }
 
 func (s *Session) write() error {
@@ -211,7 +211,7 @@ func (s *Session) write() error {
 	if err != nil {
 		return err
 	}
-	if err := sqlxdb.Put(appName, kindSession, s.id, raw); err != nil {
+	if err := sqlxdb.PutLocal(appName, kindSession, s.id, raw); err != nil {
 		return err
 	}
 	return s.writeActive()
@@ -229,7 +229,7 @@ func (s *Session) writeActive() error {
 	if err != nil {
 		return err
 	}
-	return sqlxdb.Put(appName, kindActive, s.id, raw)
+	return sqlxdb.PutLocal(appName, kindActive, s.id, raw)
 }
 
 func newID() (string, error) {

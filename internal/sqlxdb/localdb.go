@@ -3,6 +3,7 @@ package sqlxdb
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -60,16 +61,8 @@ func prepareAppDB(path, name, models string) error {
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return err
 	}
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		_ = copyLegacyRuntime(path, name)
-	}
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		_ = restoreObject(path, name)
-	}
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		if err := os.WriteFile(path, nil, 0o600); err != nil {
-			return err
-		}
+	if err := loadMissing(path, name); err != nil {
+		return err
 	}
 	if err := applyModels(path, models); err != nil {
 		return err
@@ -114,6 +107,46 @@ func copyLegacyRuntime(path, name string) error {
 	return os.WriteFile(path, data, 0o600)
 }
 
+var errNotFound = errors.New("not found")
+
+var runS3 = defaultRunS3
+
+func fileMissing(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return false, nil
+	}
+	if os.IsNotExist(err) {
+		return true, nil
+	}
+	return false, err
+}
+
+func loadMissing(path, name string) error {
+	gone, err := fileMissing(path)
+	if err != nil || !gone {
+		return err
+	}
+	_ = copyLegacyRuntime(path, name)
+	gone, err = fileMissing(path)
+	if err != nil || !gone {
+		return err
+	}
+	rerr := restoreObject(path, name)
+	if rerr != nil && !errors.Is(rerr, errNotFound) {
+		_ = os.Remove(path)
+		return rerr
+	}
+	if errors.Is(rerr, errNotFound) {
+		_ = os.Remove(path)
+	}
+	gone, err = fileMissing(path)
+	if err != nil || !gone {
+		return err
+	}
+	return os.WriteFile(path, nil, 0o600)
+}
+
 func restoreObject(path, name string) error {
 	if os.Getenv("SQLX_ROOT") != "" {
 		return nil
@@ -122,29 +155,43 @@ func restoreObject(path, name string) error {
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	return exec.CommandContext(ctx, bin, args...).Run()
+	msg, err := runS3(bin, args)
+	if err == nil {
+		return nil
+	}
+	if strings.Contains(msg, "not found") || strings.Contains(err.Error(), "not found") {
+		return errNotFound
+	}
+	return fmt.Errorf("s3 get s3://backups/%s.sqlite: %s", name, s3Text(msg, err))
 }
 
 func publishObject(path, name string) {
 	if os.Getenv("SQLX_ROOT") != "" || path == "" {
 		return
 	}
-	bin, args, err := s3Args("put", path, "s3://backups/"+name+".sqlite")
-	if err != nil {
-		return
-	}
-	go runS3(bin, args)
+	_ = publishFile(path, name)
 }
 
-func runS3(bin string, args []string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+func defaultRunS3(bin string, args []string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	_ = exec.CommandContext(ctx, bin, args...).Run()
+	cmd := exec.CommandContext(ctx, bin, args...)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+func s3Text(msg string, err error) string {
+	text := strings.TrimSpace(msg)
+	if text == "" && err != nil {
+		return strings.TrimSpace(err.Error())
+	}
+	return text
 }
 
 func s3Args(action string, rest ...string) (string, []string, error) {
+	if bin := os.Getenv("NEBULA_BIN"); bin != "" {
+		return bin, append([]string{"s3", action}, rest...), nil
+	}
 	if bin, err := exec.LookPath("s3"); err == nil {
 		return bin, append([]string{action}, rest...), nil
 	}

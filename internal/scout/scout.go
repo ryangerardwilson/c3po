@@ -13,6 +13,7 @@ import (
 	"github.com/ryangerardwilson/c3po/gdrive"
 	"github.com/ryangerardwilson/c3po/gmail"
 	"github.com/ryangerardwilson/c3po/idealake"
+	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
 	"github.com/ryangerardwilson/c3po/internal/usage"
 	"github.com/ryangerardwilson/c3po/internal/version"
 	"github.com/ryangerardwilson/c3po/internal/xdg"
@@ -48,6 +49,12 @@ func Main(args []string) int {
 			return 0
 		case "__usage-restore":
 			usage.RestoreRuntime()
+			return 0
+		case "__snapshot":
+			if err := sqlxdb.Publish(); err != nil {
+				fmt.Fprintf(os.Stderr, "c3po: snapshot: %s\n", err)
+				return 1
+			}
 			return 0
 		}
 	}

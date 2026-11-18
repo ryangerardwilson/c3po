@@ -68,7 +68,11 @@ func Write(app, kind, key, path string, body []byte, mode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	return put(db, app, kind, key, body)
+	if err := put(db, app, kind, key, body); err != nil {
+		return err
+	}
+	publishAfterWrite(db, DatabaseName)
+	return nil
 }
 
 // Remove deletes a production record. A file path is removed only when it is not in sqlx.
@@ -84,7 +88,11 @@ func Remove(app, kind, key, path string) error {
 	if err != nil {
 		return err
 	}
-	return execSQL(db, "DELETE FROM record WHERE app = "+quote(app)+" AND kind = "+quote(kind)+" AND item_key = "+quote(key)+";\n")
+	if err := execSQL(db, "DELETE FROM record WHERE app = "+quote(app)+" AND kind = "+quote(kind)+" AND item_key = "+quote(key)+";\n"); err != nil {
+		return err
+	}
+	publishAfterWrite(db, DatabaseName)
+	return nil
 }
 
 // Key is the record key for a legacy JSON file path.
@@ -220,7 +228,11 @@ func importOnce(dbPath string) error {
 	if err := importFile(dbPath, routes, "tunnel", "routes", "routes"); err != nil {
 		return err
 	}
-	return execSQL(dbPath, "INSERT INTO meta(key, value) SELECT "+quote("imported_records")+", "+quote("1")+" WHERE NOT EXISTS (SELECT 1 FROM meta WHERE key = "+quote("imported_records")+");\n")
+	if err := execSQL(dbPath, "INSERT INTO meta(key, value) SELECT "+quote("imported_records")+", "+quote("1")+" WHERE NOT EXISTS (SELECT 1 FROM meta WHERE key = "+quote("imported_records")+");\n"); err != nil {
+		return err
+	}
+	publishAfterWrite(dbPath, DatabaseName)
+	return nil
 }
 
 // renameLegacyDriveState matches StateFile: preset 1 used <id>.json.
@@ -330,9 +342,22 @@ type Record struct {
 	Body []byte
 }
 
-// Put writes a record. It always uses the sqlx database, including for
-// callers that do not have a legacy file path.
+// Put writes a record and publishes the database. It always uses the
+// sqlx database, including for callers that do not have a legacy file path.
 func Put(app, kind, key string, body []byte) error {
+	db, err := open()
+	if err != nil {
+		return err
+	}
+	if err := put(db, app, kind, key, body); err != nil {
+		return err
+	}
+	publishAfterWrite(db, DatabaseName)
+	return nil
+}
+
+// PutLocal writes a record and does not publish.
+func PutLocal(app, kind, key string, body []byte) error {
 	db, err := open()
 	if err != nil {
 		return err
@@ -349,8 +374,21 @@ func Get(app, kind, key string) ([]byte, bool, error) {
 	return get(db, app, kind, key)
 }
 
-// Delete removes one record. A missing key is not an error.
+// Delete removes one record and publishes the database. A missing key is not an error.
 func Delete(app, kind, key string) error {
+	db, err := open()
+	if err != nil {
+		return err
+	}
+	if err := execSQL(db, "DELETE FROM record WHERE app = "+quote(app)+" AND kind = "+quote(kind)+" AND item_key = "+quote(key)); err != nil {
+		return err
+	}
+	publishAfterWrite(db, DatabaseName)
+	return nil
+}
+
+// DeleteLocal removes one record and does not publish.
+func DeleteLocal(app, kind, key string) error {
 	db, err := open()
 	if err != nil {
 		return err
@@ -403,10 +441,9 @@ func queryJSON(dbPath, sql string, dest any) error {
 	return sqliteQueryJSON(dbPath, sql, dest)
 }
 
+// publishAfterWrite uploads after a durable write. Tests replace it.
+var publishAfterWrite = publishObject
+
 func execSQL(dbPath, sql string) error {
-	if err := sqliteExec(dbPath, sql); err != nil {
-		return err
-	}
-	publishObject(dbPath, DatabaseName)
-	return nil
+	return sqliteExec(dbPath, sql)
 }

@@ -87,6 +87,10 @@ func newModel(presets []Preset, store Store, sess *tuisession.Session) *model {
 
 func (m *model) loop(term screen) error {
 	m.restore()
+	if m.session != nil {
+		stop := startSnapshots()
+		defer stop()
+	}
 	for {
 		m.width, m.height = term.size()
 		term.paint(m.render())

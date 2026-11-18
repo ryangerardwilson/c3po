@@ -2,6 +2,8 @@ package scout
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -238,6 +240,19 @@ func TestNLPIsNotC3po(t *testing.T) {
 	out, code = call("c3po", "nlp")
 	if code != 2 || !bytes.Contains(out, []byte("unknown command")) {
 		t.Fatalf("bare %d\n%s", code, out)
+	}
+}
+
+func TestSnapshotCommandLeavesAMissingDatabase(t *testing.T) {
+	t.Setenv("SQLX_ROOT", "")
+	dir := t.TempDir()
+	t.Setenv("SQLX_RUNTIME", dir)
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	if code := Main([]string{"c3po", "__snapshot"}); code != 0 {
+		t.Fatalf("code %d", code)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "c3po.sqlite")); !os.IsNotExist(err) {
+		t.Fatalf("created: %v", err)
 	}
 }
 

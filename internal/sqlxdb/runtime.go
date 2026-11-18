@@ -1,13 +1,9 @@
 package sqlxdb
 
 import (
-	"bytes"
-	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 )
 
 // RuntimeMode reports whether this process keeps the in-memory sqlite
@@ -69,28 +65,9 @@ func ExecRuntime(sql string) error {
 }
 
 // ExecBackup publishes the runtime sqlite. The worker already wrote it.
+// An empty record table is not published.
 func ExecBackup() error {
-	bin := os.Getenv("NEBULA_BIN")
-	if bin == "" {
-		found, err := exec.LookPath("nebula")
-		if err != nil {
-			bin = "nebula"
-		} else {
-			bin = found
-		}
-	}
-	object := "s3://backups/" + DatabaseName + ".sqlite"
-	cmd := exec.Command(bin, "s3", "put", RuntimeDB(), object)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return fmt.Errorf("%s", msg)
-	}
-	return nil
+	return publishFile(RuntimeDB(), DatabaseName)
 }
 
 // TouchRuntime opens the app sqlite and restores it from s3 when it is missing.
