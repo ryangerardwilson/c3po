@@ -11,18 +11,18 @@ import (
 
 // ScreenHelp is the help for r2d2 slack.
 const ScreenHelp = `r2d2 slack
-Slack workspaces, conversations, and messages
+Slack desk. Direct messages, tags, and what to know.
 
   r2d2 slack
-    open the workspace list
+    open the desk
   r2d2 slack help
     show this help
 
-j and k move. h and l switch workspace. enter opens the row.
-i writes a message in the open conversation. r replies in that thread.
-m marks the open conversation read. Opening a conversation does not.
+j and k move. h and l switch workspace.
+enter opens the row. Opening an item does not mark it read.
+r marks the row read on the desk.
 q quits. ? lists the shortcuts.
-The account file is the c3po slack config. The token is not shown.
+The rows come from the Slack desk. The token is not shown.
 `
 
 // Run serves r2d2 slack. args are the arguments after the screen name.

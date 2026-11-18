@@ -3,12 +3,20 @@ package tui
 import (
 	"errors"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
 	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
 	"github.com/ryangerardwilson/c3po/internal/tuisession"
 )
+
+func TestMain(m *testing.M) {
+	fetchBoard = func() (Board, error) { return Board{}, nil }
+	openDeskItem = func(string, string) error { return errors.New("open not stubbed") }
+	readDeskItem = func(string, string) error { return errors.New("read not stubbed") }
+	os.Exit(m.Run())
+}
 
 type fakeScreen struct {
 	keys   []string
@@ -30,213 +38,234 @@ func (f *fakeScreen) readKey() (string, error) {
 	return key, nil
 }
 
-type sent struct {
-	preset, channel, text, thread string
+type deskLog struct {
+	opened []string
+	read   []string
 }
 
-type marked struct {
-	preset, channel, ts string
-}
-
-type fakeStore struct {
-	convs   map[string][]Conversation
-	hist    map[string][]Message
-	sent    []sent
-	marked  []marked
-	sendErr error
-	token   string
-}
-
-func (f *fakeStore) Conversations(preset string) ([]Conversation, error) {
-	return f.convs[preset], nil
-}
-
-func (f *fakeStore) History(preset, channel string) ([]Message, error) {
-	return f.hist[preset+"/"+channel], nil
-}
-
-func (f *fakeStore) Send(preset, channel, text, thread string) error {
-	if f.sendErr != nil {
-		return f.sendErr
+func stubDesk(t *testing.T, next Board, openErr, readErr error) *deskLog {
+	t.Helper()
+	log := &deskLog{}
+	oldFetch, oldOpen, oldRead := fetchBoard, openDeskItem, readDeskItem
+	fetchBoard = func() (Board, error) { return next, nil }
+	openDeskItem = func(preset, id string) error {
+		log.opened = append(log.opened, preset+"/"+id)
+		return openErr
 	}
-	f.sent = append(f.sent, sent{preset, channel, text, thread})
-	return nil
+	readDeskItem = func(preset, id string) error {
+		log.read = append(log.read, preset+"/"+id)
+		return readErr
+	}
+	t.Cleanup(func() {
+		fetchBoard, openDeskItem, readDeskItem = oldFetch, oldOpen, oldRead
+	})
+	return log
 }
 
-func (f *fakeStore) Mark(preset, channel, ts string) error {
-	f.marked = append(f.marked, marked{preset, channel, ts})
-	return nil
-}
-
-func workspaces() []Preset {
-	return []Preset{{ID: "1", Name: "work"}, {ID: "2", Name: "ade"}}
-}
-
-func store() *fakeStore {
-	return &fakeStore{
-		token: "xoxp-secret-token",
-		convs: map[string][]Conversation{
-			"1": {{ID: "D1", Name: "Ada", Surface: "dm", Unread: 2, Latest: "200.2"}},
-			"2": {{ID: "C9", Name: "general", Surface: "channel", Unread: 0, Latest: "300.1"}},
-		},
-		hist: map[string][]Message{
-			"1/D1": {
-				{TS: "100.1", User: "Ada", Text: "earlier"},
-				{TS: "200.2", ThreadTS: "100.1", User: "Ada", Text: "later"},
+func sampleBoard() Board {
+	return Board{
+		RefreshedAt: "Wed, 18 Nov 2026, 6:04 AM IST",
+		Since:       "Wed, 15 Nov 2023, 3:43 AM IST",
+		Workspaces: []Workspace{
+			{
+				Preset: "1",
+				Name:   "WIOM",
+				DMs: []Item{{
+					MessageID: "D1:1",
+					Sender:    "Ada",
+					Text:      "need the numbers",
+					Date:      "Wed, 18 Nov 2026, 5:40 AM IST",
+				}},
+				Tagged: []Item{{
+					MessageID:    "C1:2",
+					Conversation: "ops",
+					Text:         "see this",
+					Date:         "Wed, 18 Nov 2026, 5:41 AM IST",
+				}},
+				Aware: []Item{{
+					MessageID: "C2:3",
+					Sender:    "Cy",
+					Text:      "production deploy failed",
+					Why:       "deploy failed",
+					Date:      "Wed, 18 Nov 2026, 5:42 AM IST",
+				}},
 			},
-			"2/C9": {{TS: "300.1", User: "Bea", Text: "beta"}},
+			{
+				Preset: "2",
+				Name:   "ADE",
+				DMs: []Item{{
+					MessageID: "D9:9",
+					Sender:    "Dee",
+					Text:      "ade note",
+					Date:      "Wed, 18 Nov 2026, 4:00 AM IST",
+				}},
+			},
 		},
 	}
 }
 
 func runKeys(t *testing.T, m *model, keys ...string) *fakeScreen {
 	t.Helper()
-	screen := &fakeScreen{width: 80, height: 24, keys: keys}
+	screen := &fakeScreen{width: 100, height: 24, keys: keys}
 	if err := m.loop(screen); err != nil {
 		t.Fatal(err)
 	}
 	return screen
 }
 
-func TestWorkspaceListHidesShortcutsAndTheToken(t *testing.T) {
-	kept := store()
-	m := newModel(workspaces(), kept, nil)
-	screen := runKeys(t, m, "q")
-	if strings.Contains(screen.frames[0], "j/k move") || !strings.Contains(screen.frames[0], "> 1  work") {
-		t.Fatalf("first\n%s", screen.frames[0])
+func selected(frame string) string {
+	const on = "\x1b[1;97m> "
+	i := strings.Index(frame, on)
+	if i < 0 {
+		return ""
 	}
-	if strings.Contains(screen.frames[0], kept.token) {
-		t.Fatal("token on the workspace list")
+	rest := frame[i+len(on):]
+	j := strings.Index(rest, "\x1b[0m")
+	if j < 0 {
+		return rest
+	}
+	return rest[:j]
+}
+
+func TestDeskTableShowsTheThreeSections(t *testing.T) {
+	screen := runKeys(t, newModel(sampleBoard(), nil), "q")
+	frame := screen.frames[0]
+	for _, want := range []string{"DMS  1", "TAGGED  1", "SHOULD KNOW  1", "WHEN", "WHO", "WHAT", "Ada", "need the numbers", "ops", "deploy failed"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("missing %q\n%s", want, frame)
+		}
+	}
+	if strings.Contains(frame, "production deploy failed") || strings.Contains(frame, "j/k move") || strings.Contains(frame, "xoxp-") {
+		t.Fatalf("frame\n%s", frame)
+	}
+	if !strings.Contains(selected(frame), "Ada") {
+		t.Fatalf("selected %q", selected(frame))
 	}
 }
 
-func TestQuestionMarkBlocksOpen(t *testing.T) {
-	kept := store()
-	m := newModel(workspaces(), kept, nil)
-	screen := runKeys(t, m, "?", "j", "enter", "esc", "q")
-	if !strings.Contains(screen.frames[1], "workspace") || !strings.Contains(screen.frames[1], "write") || !strings.Contains(screen.frames[1], "quit") {
+func TestQuestionMarkBlocksOpenAndRead(t *testing.T) {
+	log := stubDesk(t, sampleBoard(), nil, nil)
+	screen := runKeys(t, newModel(sampleBoard(), nil), "?", "j", "enter", "r", "esc", "q")
+	if !strings.Contains(screen.frames[1], "workspace") || !strings.Contains(screen.frames[1], "open") || !strings.Contains(screen.frames[1], "read") {
 		t.Fatalf("help\n%s", screen.frames[1])
 	}
-	if !strings.Contains(screen.frames[2], "workspace") || strings.Contains(screen.frames[2], "> 2  ade") {
-		t.Fatalf("j while help\n%s", screen.frames[2])
+	if !strings.Contains(selected(screen.frames[0]), "Ada") || !strings.Contains(selected(screen.frames[len(screen.frames)-1]), "Ada") {
+		t.Fatalf("cursor moved\n%s", selected(screen.frames[len(screen.frames)-1]))
 	}
-	last := screen.frames[len(screen.frames)-1]
-	if !strings.Contains(last, "> 1  work") || strings.Contains(last, "j/k move") {
-		t.Fatalf("after esc\n%s", last)
-	}
-	if len(kept.convs["1"]) == 0 {
-		t.Fatal("fixture")
-	}
-	if kept.hist == nil {
-		t.Fatal("fixture")
-	}
-	if len(kept.sent) != 0 || len(kept.marked) != 0 {
-		t.Fatalf("sent %v marked %v", kept.sent, kept.marked)
+	if len(log.opened) != 0 || len(log.read) != 0 {
+		t.Fatalf("opened %v read %v", log.opened, log.read)
 	}
 }
 
-func TestEnterOpensMessagesWithoutMarking(t *testing.T) {
-	kept := store()
-	m := newModel(workspaces(), kept, nil)
-	screen := runKeys(t, m, "enter", "enter", "q")
-	view := strings.Join(screen.frames, "\n")
-	if !strings.Contains(view, "Ada  later") || !strings.Contains(view, "Ada  earlier") {
-		t.Fatalf("messages\n%s", view)
-	}
-	if len(kept.marked) != 0 {
-		t.Fatalf("marked on open %v", kept.marked)
+func TestEnterOpensWithoutMarking(t *testing.T) {
+	log := stubDesk(t, sampleBoard(), nil, nil)
+	runKeys(t, newModel(sampleBoard(), nil), "enter")
+	if len(log.opened) != 1 || log.opened[0] != "1/D1:1" || len(log.read) != 0 {
+		t.Fatalf("opened %v read %v", log.opened, log.read)
 	}
 }
 
-func TestHLSwitchesWorkspace(t *testing.T) {
-	kept := store()
-	m := newModel(workspaces(), kept, nil)
-	screen := runKeys(t, m, "enter", "l", "h", "q")
-	if !strings.Contains(screen.frames[2], "slack  2  ade") || !strings.Contains(screen.frames[2], "general") {
-		t.Fatalf("next\n%s", screen.frames[2])
+func TestFailedOpenStaysOnTheRow(t *testing.T) {
+	log := stubDesk(t, sampleBoard(), errors.New("browser refused"), nil)
+	screen := runKeys(t, newModel(sampleBoard(), nil), "enter", "q")
+	if len(log.opened) != 1 || len(log.read) != 0 {
+		t.Fatalf("opened %v read %v", log.opened, log.read)
 	}
-	if !strings.Contains(screen.frames[3], "slack  1  work") || !strings.Contains(screen.frames[3], "Ada") {
+	if !strings.Contains(screen.frames[1], "browser refused") || !strings.Contains(selected(screen.frames[1]), "Ada") {
+		t.Fatalf("frame\n%s", screen.frames[1])
+	}
+}
+
+func TestMarkDropsTheRow(t *testing.T) {
+	next := sampleBoard()
+	next.Workspaces[0].DMs = nil
+	log := stubDesk(t, next, nil, nil)
+	screen := runKeys(t, newModel(sampleBoard(), nil), "r", "q")
+	if len(log.read) != 1 || log.read[0] != "1/D1:1" || len(log.opened) != 0 {
+		t.Fatalf("read %v opened %v", log.read, log.opened)
+	}
+	frame := screen.frames[1]
+	if strings.Contains(frame, "need the numbers") || !strings.Contains(frame, "marked") || !strings.Contains(frame, "DMS  0") {
+		t.Fatalf("after mark\n%s", frame)
+	}
+}
+
+func TestFailedMarkLeavesTheRow(t *testing.T) {
+	log := stubDesk(t, sampleBoard(), nil, errors.New("desk busy"))
+	screen := runKeys(t, newModel(sampleBoard(), nil), "r", "q")
+	if len(log.read) != 1 || !strings.Contains(screen.frames[1], "desk busy") || !strings.Contains(screen.frames[1], "need the numbers") {
+		t.Fatalf("frame\n%s", screen.frames[1])
+	}
+}
+
+func TestHLWrapsWorkspaces(t *testing.T) {
+	screen := runKeys(t, newModel(sampleBoard(), nil), "l", "l", "h", "q")
+	if !strings.Contains(screen.frames[1], "ade note") || strings.Contains(screen.frames[1], "need the numbers") {
+		t.Fatalf("next\n%s", screen.frames[1])
+	}
+	if !strings.Contains(screen.frames[2], "need the numbers") {
+		t.Fatalf("wrap\n%s", screen.frames[2])
+	}
+	if !strings.Contains(screen.frames[3], "ade note") {
 		t.Fatalf("back\n%s", screen.frames[3])
 	}
-	screen = runKeys(t, newModel(workspaces(), kept, nil), "l", "h", "q")
-	if !strings.Contains(screen.frames[1], "> 2  ade") || !strings.Contains(screen.frames[2], "> 1  work") {
-		t.Fatalf("workspace switch\n%s", strings.Join(screen.frames, "\n"))
+}
+
+func TestEmptyWorkspaceNamesTheIntake(t *testing.T) {
+	board := Board{
+		Since:      "Wed, 15 Nov 2023, 3:43 AM IST",
+		Workspaces: []Workspace{{Preset: "1", Name: "WIOM"}},
+	}
+	log := stubDesk(t, board, nil, nil)
+	screen := runKeys(t, newModel(board, nil), "enter", "q")
+	frame := screen.frames[0]
+	for _, want := range []string{"DMS  0", "TAGGED  0", "SHOULD KNOW  0", "watching after  Wed, 15 Nov 2023, 3:43 AM IST"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("missing %q\n%s", want, frame)
+		}
+	}
+	if len(log.opened) != 0 {
+		t.Fatal("opened an empty desk")
 	}
 }
 
-func TestWriteAndReply(t *testing.T) {
-	kept := store()
-	m := newModel(workspaces(), kept, nil)
-	runKeys(t, m, "enter", "enter", "i", "h", "i", "enter", "q")
-	if len(kept.sent) != 1 || kept.sent[0].text != "hi" || kept.sent[0].thread != "" || kept.sent[0].channel != "D1" {
-		t.Fatalf("write %#v", kept.sent)
-	}
-	kept.sent = nil
-	m = newModel(workspaces(), kept, nil)
-	runKeys(t, m, "enter", "enter", "k", "r", "y", "o", "enter", "q")
-	if len(kept.sent) != 1 || kept.sent[0].text != "yo" || kept.sent[0].thread != "100.1" {
-		t.Fatalf("reply %#v", kept.sent)
+func TestMissingDeskDoesNotOpen(t *testing.T) {
+	log := stubDesk(t, Board{}, nil, nil)
+	screen := runKeys(t, newModel(Board{Error: "desk unavailable"}, nil), "enter", "q")
+	if !strings.Contains(screen.frames[0], "DESK UNAVAILABLE") || len(log.opened) != 0 {
+		t.Fatalf("frame\n%s", screen.frames[0])
 	}
 }
 
-func TestEmptyDraftDoesNotSend(t *testing.T) {
-	kept := store()
-	m := newModel(workspaces(), kept, nil)
-	runKeys(t, m, "enter", "enter", "i", "enter", "q")
-	if len(kept.sent) != 0 {
-		t.Fatalf("sent %#v", kept.sent)
+func TestNoBriefYet(t *testing.T) {
+	screen := runKeys(t, newModel(Board{}, nil), "q")
+	if !strings.Contains(screen.frames[0], "no brief yet") {
+		t.Fatalf("frame\n%s", screen.frames[0])
 	}
 }
 
-func TestMarkIsExplicit(t *testing.T) {
-	kept := store()
-	m := newModel(workspaces(), kept, nil)
-	screen := runKeys(t, m, "enter", "m", "q")
-	if len(kept.marked) != 1 || kept.marked[0].ts != "200.2" || kept.marked[0].channel != "D1" {
-		t.Fatalf("mark %#v", kept.marked)
+func TestDecodeDropsAToken(t *testing.T) {
+	raw := []byte(`{"refreshed_at":"Wed, 18 Nov 2026, 6:04 AM IST","workspaces":[{"preset":"1","name":"WIOM","token":"xoxp-secret","dms":[{"message_id":"D1:1","sender":"Ada","text":"hi","date":"Wed, 18 Nov 2026, 5:40 AM IST"}],"tagged":[],"aware":[]}]}`)
+	board, err := decodeBoard(raw)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(screen.frames[len(screen.frames)-1], "marked") {
-		t.Fatalf("status\n%s", screen.frames[len(screen.frames)-1])
-	}
-}
-
-func TestFailedSendKeepsTheDraft(t *testing.T) {
-	kept := store()
-	kept.sendErr = errors.New("slack refused")
-	m := newModel(workspaces(), kept, nil)
-	screen := runKeys(t, m, "enter", "enter", "i", "h", "i", "enter", "esc", "q")
-	joined := strings.Join(screen.frames, "\n")
-	if !strings.Contains(joined, "> hi") || !strings.Contains(joined, "slack refused") {
-		t.Fatalf("draft\n%s", joined)
-	}
-	if len(kept.sent) != 0 {
-		t.Fatal("sent")
+	screen := runKeys(t, newModel(board, nil), "q")
+	if strings.Contains(screen.frames[0], "xoxp-secret") || !strings.Contains(screen.frames[0], "Ada") {
+		t.Fatalf("frame\n%s", screen.frames[0])
 	}
 }
 
-func TestEmptyAccountDoesNotCallSlack(t *testing.T) {
-	kept := store()
-	m := newModel(nil, kept, nil)
-	screen := runKeys(t, m, "enter", "q")
-	if !strings.Contains(screen.frames[len(screen.frames)-1], "no workspaces") {
-		t.Fatalf("empty\n%s", screen.frames[len(screen.frames)-1])
-	}
-	if len(kept.sent) != 0 || len(kept.marked) != 0 {
-		t.Fatal("called slack")
-	}
-}
-
-func TestResumeRestoresTheMessageAndOmitsTheToken(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("SQLX_ROOT", root)
+func TestResumeRestoresTheRowAndOmitsTheToken(t *testing.T) {
+	t.Setenv("SQLX_ROOT", t.TempDir())
 	first, err := tuisession.Open("slack", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := first.Place("2", "300.1"); err != nil {
+	if err := first.Place("2", "D9:9"); err != nil {
 		t.Fatal(err)
 	}
-	if err := first.Note(tuisession.Body{Args: []string{"messages", "C9"}}); err != nil {
+	if err := first.Note(tuisession.Body{}); err != nil {
 		t.Fatal(err)
 	}
 	id := first.ID()
@@ -247,20 +276,19 @@ func TestResumeRestoresTheMessageAndOmitsTheToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	kept := store()
-	m := newModel(workspaces(), kept, again)
-	screen := runKeys(t, m, "q")
+	screen := runKeys(t, newModel(sampleBoard(), again), "q")
 	if err := again.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(screen.frames[0], "general") || !strings.Contains(screen.frames[0], "Bea  beta") {
-		t.Fatalf("restored\n%s", screen.frames[0])
+	frame := screen.frames[0]
+	if !strings.Contains(selected(frame), "Dee") || !strings.Contains(frame, "ade note") || strings.Contains(frame, "need the numbers") {
+		t.Fatalf("restored\n%s", frame)
 	}
 	raw, ok, err := sqlxdb.Get("tui", "session", id)
 	if err != nil || !ok {
 		t.Fatalf("session %v %s", err, raw)
 	}
-	if strings.Contains(string(raw), kept.token) || !strings.Contains(string(raw), `"screen":"slack"`) || !strings.Contains(string(raw), `"path":"2"`) {
+	if strings.Contains(string(raw), "xoxp-") || !strings.Contains(string(raw), `"screen":"slack"`) || !strings.Contains(string(raw), `"path":"2"`) {
 		t.Fatalf("body %s", raw)
 	}
 }

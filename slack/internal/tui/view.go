@@ -2,19 +2,23 @@ package tui
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 )
+
+type painted struct {
+	text   string
+	active bool
+}
 
 func (m *model) render() string {
 	if m.help {
 		return m.helpView()
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%s\n\n", paint(styleTitle, m.heading()))
-	m.writeRows(&b)
-	if m.compose {
-		fmt.Fprintf(&b, "\n%s\n", truncate("> "+m.draft, m.width))
+	fmt.Fprintf(&b, "%s\n", m.heading())
+	fmt.Fprintf(&b, "%s\n\n", m.noticeLine())
+	for _, line := range m.window(m.table()) {
+		fmt.Fprintf(&b, "%s\n", line.text)
 	}
 	if m.status != "" {
 		style := styleMuted
@@ -27,107 +31,88 @@ func (m *model) render() string {
 }
 
 func (m *model) heading() string {
-	base := "slack"
-	if label := m.presetLabel(); label != "" {
-		base = "slack  " + label
+	var b strings.Builder
+	b.WriteString(paint(styleTitle, "slack"))
+	for i, ws := range m.board.Workspaces {
+		style := styleMuted
+		if i == m.ws {
+			style = styleActive
+		}
+		b.WriteString("  ")
+		b.WriteString(paint(style, workspaceName(ws)))
 	}
-	if m.mode != modeMessages {
-		return base
+	return b.String()
+}
+
+func workspaceName(ws Workspace) string {
+	if name := clean(ws.Name); name != "" {
+		return name
 	}
-	conv, ok := m.currentConv()
+	return clean(ws.Preset)
+}
+
+func (m *model) notice() (string, bool) {
+	if ws, ok := m.workspace(); ok {
+		if text := clean(ws.Error); text != "" {
+			return strings.ToUpper(text), true
+		}
+	}
+	if text := clean(m.board.Error); text != "" {
+		return strings.ToUpper(text), true
+	}
+	if text := clean(m.board.RefreshedAt); text != "" {
+		return text, false
+	}
+	return "no brief yet", false
+}
+
+func (m *model) noticeLine() string {
+	text, bad := m.notice()
+	if bad {
+		return paint(styleError, text)
+	}
+	return paint(styleMuted, text)
+}
+
+func (m *model) table() []painted {
+	ws, ok := m.workspace()
 	if !ok {
-		return base
+		return []painted{{text: "no brief yet"}}
 	}
-	return base + "  " + conv.Name
-}
-
-func (m *model) presetLabel() string {
-	if m.preset < 0 || m.preset >= len(m.presets) {
-		return ""
-	}
-	preset := m.presets[m.preset]
-	if preset.Name == "" || preset.Name == preset.ID {
-		return preset.ID
-	}
-	return preset.ID + "  " + preset.Name
-}
-
-func (m *model) writeRows(b *strings.Builder) {
-	lines := m.lines()
-	if len(lines) == 0 {
-		fmt.Fprintf(b, "%s\n", m.emptyLine())
-		return
-	}
-	start, end := m.window(len(lines))
-	for i := start; i < end; i++ {
-		prefix, style := "  ", ""
-		if i == m.clamp() {
-			prefix, style = "> ", styleActive
+	if m.count() == 0 {
+		lines := make([]painted, 0, 4)
+		for _, part := range ws.buckets() {
+			lines = append(lines, painted{text: paint(styleTitle, part.label+"  0")})
 		}
-		fmt.Fprintf(b, "%s\n", paint(style, truncate(prefix+lines[i], m.width)))
+		lines = append(lines, painted{text: m.emptyNote()})
+		return lines
 	}
-}
-
-func (m *model) lines() []string {
-	switch m.mode {
-	case modeWorkspaces:
-		return m.workspaceLines()
-	case modeConversations:
-		return m.conversationLines()
-	default:
-		return m.messageLines()
-	}
-}
-
-func (m *model) workspaceLines() []string {
-	lines := make([]string, len(m.presets))
-	for i, preset := range m.presets {
-		label := preset.ID
-		if preset.Name != "" && preset.Name != preset.ID {
-			label = preset.ID + "  " + preset.Name
+	lines := []painted{{text: paint(styleMuted, columnHead())}}
+	selected := m.clamp()
+	index := 0
+	for _, part := range ws.buckets() {
+		lines = append(lines, painted{text: paint(styleTitle, fmt.Sprintf("%s  %d", part.label, len(part.items)))})
+		for _, item := range part.items {
+			prefix, style := "  ", ""
+			active := index == selected
+			if active {
+				prefix, style = "> ", styleActive
+			}
+			lines = append(lines, painted{
+				text:   paint(style, truncate(prefix+itemLine(item), m.width)),
+				active: active,
+			})
+			index++
 		}
-		lines[i] = label
 	}
 	return lines
 }
 
-func (m *model) conversationLines() []string {
-	lines := make([]string, len(m.conversations))
-	for i, row := range m.conversations {
-		lines[i] = row.label()
+func (m *model) emptyNote() string {
+	if since := clean(m.board.Since); since != "" {
+		return "watching after  " + since
 	}
-	return lines
-}
-
-func (m *model) messageLines() []string {
-	lines := make([]string, len(m.messages))
-	for i, row := range m.messages {
-		lines[i] = row.User + "  " + row.Text
-	}
-	return lines
-}
-
-func (row Conversation) label() string {
-	unread := ""
-	if row.Unread > 0 {
-		unread = strconv.Itoa(row.Unread)
-	}
-	kind := row.Surface
-	if kind == "channel" || kind == "private_channel" {
-		kind = "#"
-	}
-	return fmt.Sprintf("%-5s %3s  %s", kind, unread, row.Name)
-}
-
-func (m *model) emptyLine() string {
-	switch m.mode {
-	case modeWorkspaces:
-		return "no workspaces"
-	case modeConversations:
-		return "no conversations"
-	default:
-		return "no messages"
-	}
+	return "no items"
 }
 
 func (m *model) helpView() string {
@@ -137,33 +122,37 @@ func (m *model) helpView() string {
 		"j/k    move",
 		"h/l    workspace",
 		"enter  open",
-		"i      write",
-		"r      reply",
-		"m      mark read",
+		"r      read",
 		"?      shortcuts",
 		"q      quit",
 	}
 	return strings.Join(lines, "\n") + "\n"
 }
 
-func (m *model) window(n int) (int, int) {
+func (m *model) window(lines []painted) []painted {
 	rows := m.height - 6
 	if rows < 1 {
 		rows = 1
 	}
-	if n <= rows {
-		return 0, n
+	if len(lines) <= rows {
+		return lines
+	}
+	at := 0
+	for i, line := range lines {
+		if line.active {
+			at = i
+			break
+		}
 	}
 	start := 0
-	cursor := m.clamp()
-	if cursor >= rows {
-		start = cursor - rows + 1
+	if at >= rows {
+		start = at - rows + 1
 	}
 	end := start + rows
-	if end > n {
-		end = n
+	if end > len(lines) {
+		end = len(lines)
 	}
-	return start, end
+	return lines[start:end]
 }
 
 func paint(style, text string) string {

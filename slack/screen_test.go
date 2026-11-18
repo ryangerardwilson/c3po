@@ -11,7 +11,7 @@ func TestScreenHelpNamesTheKeys(t *testing.T) {
 	if code := Screen([]string{"help"}, &out, &errb); code != 0 {
 		t.Fatalf("code %d\n%s", code, errb.String())
 	}
-	for _, want := range []string{"r2d2 slack", "h and l switch workspace", "Opening a conversation does not", "token is not shown"} {
+	for _, want := range []string{"r2d2 slack", "h and l switch workspace", "Opening an item does not mark it read", "token is not shown"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing %q\n%s", want, out.String())
 		}

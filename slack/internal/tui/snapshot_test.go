@@ -22,7 +22,7 @@ func TestAKeyDoesNotPublishTheBackup(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sess.Close() })
-	m := newModel(workspaces(), store(), sess)
+	m := newModel(sampleBoard(), sess)
 	m.noteSession()
 	if n.Load() != 0 {
 		t.Fatalf("publishes %d", n.Load())
