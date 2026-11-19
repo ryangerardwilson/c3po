@@ -11,6 +11,7 @@ import (
 
 func TestUsageReportSplitsHumanAndAgent(t *testing.T) {
 	t.Setenv("SQLX_ROOT", t.TempDir())
+	t.Setenv("SQLX_ENGINE", "")
 	t.Setenv("C3PO_ACTOR", "human")
 	old := usage.Now
 	usage.Now = func() time.Time { return time.Date(2026, 11, 11, 4, 0, 0, 0, time.UTC) }

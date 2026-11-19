@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-var portedScouts = []string{"clippy", "deport", "gcal", "gdrive", "gmail", "idealake", "looptab", "pass", "slack", "tunnel"}
+var portedScouts = []string{"clippy", "deport", "gcal", "gdrive", "gmail", "idealake", "looptab", "mess", "pass", "slack", "tunnel"}
 
 var retiredScouts = []string{"complexity", "hide", "visualize", "vibetree", "iha", "cx", "sluser"}
 

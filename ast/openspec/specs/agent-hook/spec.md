@@ -31,6 +31,9 @@ The hook SHALL deny, for an enforced target:
 - shell commands that write files outside `c3po ast` or `rgw-ast`, per the shell analysis
   requirement
 
+Independent of enforcement, the hook SHALL deny `git worktree add` and
+`c3po mess tidy add` as the linked worktree requirement says.
+
 The hook SHALL allow:
 - tools whose name is `rgw-ast`
 - shell commands with no write target, including `c3po ast` and `rgw-ast` invocations
@@ -312,3 +315,51 @@ When the hook receives a host Write of a path that does not exist, the path ends
 - **WHEN** the hook receives a Write of a missing `.ts` file in an enforced repo whose function is at max_cc or above
 - **THEN** the decision SHALL be deny
 
+
+### Requirement: Linked worktrees go through c3po mess
+The hook SHALL deny a shell command that runs `git worktree add`, including
+`git -C <dir> worktree add` and the same command inside `sh -c` or `bash -c`,
+when the effective directory (after `cd` and `git -C`) is inside a git
+repository. This SHALL NOT depend on enforcement, and SHALL apply even though
+the new worktree path is outside every current worktree. The reason SHALL say
+`use c3po mess tidy add`. When that repository already has a clean marked
+worktree, the reason SHALL also say to run `c3po mess tidy` first.
+
+The hook SHALL deny `c3po mess tidy add` only when the repository of the
+effective directory already has a clean marked worktree, and the reason SHALL
+name `c3po mess tidy`. `rgw-ast` is not involved in either match.
+
+The hook SHALL allow `git worktree list`, `git worktree remove`, `c3po mess`,
+and `c3po mess tidy` without `add`. Outside every git repository `git
+worktree add` SHALL be allowed.
+
+#### Scenario: git worktree add is denied without enforcement
+- **GIVEN** a git repository that is not enforced
+- **WHEN** stdin includes `git worktree add ../x -b x`
+- **THEN** stdout JSON SHALL have `permissionDecision` equal to `deny`
+- **AND** the reason SHALL contain `use c3po mess tidy add`
+
+#### Scenario: A new path outside every worktree is still denied
+- **GIVEN** a git repository, enforced or not
+- **WHEN** stdin includes `git worktree add /tmp/elsewhere`
+- **THEN** stdout JSON SHALL have `permissionDecision` equal to `deny`
+- **AND** the reason SHALL contain `use c3po mess tidy add`
+
+#### Scenario: git -C and bash -c are denied
+- **WHEN** stdin includes `git -C <repo> worktree add ../x` or `bash -c 'git worktree add ../x'`
+- **THEN** stdout JSON SHALL have `permissionDecision` equal to `deny`
+
+#### Scenario: Read and remove stay allowed
+- **WHEN** stdin includes `git worktree list`, `git worktree remove ../x`, `c3po mess`, or `c3po mess tidy`
+- **THEN** stdout JSON SHALL have `permissionDecision` equal to `allow`
+
+#### Scenario: tidy add is allowed when nothing is clean
+- **GIVEN** a git repository with no clean marked worktree
+- **WHEN** stdin includes `c3po mess tidy add ../x`
+- **THEN** stdout JSON SHALL have `permissionDecision` equal to `allow`
+
+#### Scenario: tidy add is denied while a clean worktree exists
+- **GIVEN** a git repository with a clean marked worktree
+- **WHEN** stdin includes `c3po mess tidy add ../x`
+- **THEN** stdout JSON SHALL have `permissionDecision` equal to `deny`
+- **AND** the reason SHALL name `c3po mess tidy`

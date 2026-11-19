@@ -585,6 +585,10 @@ type writeAnalysis struct {
 	hint       string // advice for targets added by the current command
 	targets    []shTarget
 	generators []genCall
+	// worktreeAdds and messAdds are the directories git worktree add and
+	// c3po mess tidy add run from.
+	worktreeAdds []string
+	messAdds     []string
 }
 
 // shTarget is one written path and the c3po ast command that would do it.
@@ -722,6 +726,7 @@ func (a *writeAnalysis) command(c shCommand, cwd string, depth int) string {
 	name := filepath.Base(words[0].text)
 	args := words[1:]
 	a.generator(words, cwd)
+	a.messAdd(words, cwd)
 	if strings.HasPrefix(name, "python") {
 		name = "python"
 	}
@@ -1018,6 +1023,10 @@ func (a *writeAnalysis) git(args []shWord, cwd string) {
 sub:
 	name := args[i].text
 	rest := args[i+1:]
+	if name == "worktree" && len(rest) > 0 && rest[0].text == "add" {
+		a.worktreeAdds = append(a.worktreeAdds, dir)
+		return
+	}
 	if gitWritingSubcommands[name] {
 		if name == "mv" {
 			a.hint = hintMove
@@ -1063,6 +1072,17 @@ func (a *writeAnalysis) generator(words []shWord, cwd string) {
 		}
 	}
 	a.generators = append(a.generators, genCall{cmd: strings.Join(argv, " "), cwd: cwd})
+}
+
+// messAdd records c3po mess tidy add, which the hook refuses while a clean
+// marked worktree exists.
+func (a *writeAnalysis) messAdd(words []shWord, cwd string) {
+	if len(words) < 4 || filepath.Base(words[0].text) != "c3po" {
+		return
+	}
+	if words[1].text == "mess" && words[2].text == "tidy" && words[3].text == "add" {
+		a.messAdds = append(a.messAdds, cwd)
+	}
 }
 
 var openspecMutating = map[string]bool{"new": true, "archive": true, "init": true, "update": true}

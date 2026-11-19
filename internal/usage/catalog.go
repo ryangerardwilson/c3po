@@ -115,6 +115,10 @@ var Catalog = []string{
 	"looptab show",
 	"looptab edit",
 
+	"mess",
+	"mess tidy",
+	"mess tidy add",
+
 	"pass",
 	"pass create",
 	"pass edit",

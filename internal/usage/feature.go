@@ -51,6 +51,8 @@ func c3poFeature(args []string) string {
 		return idealakeFeature(args[1:])
 	case "looptab":
 		return looptabFeature(args[1:])
+	case "mess":
+		return messFeature(args[1:])
 	case "pass":
 		return passFeature(args[1:])
 	case "slack":
@@ -141,6 +143,25 @@ func looptabFeature(args []string) string {
 	default:
 		return "looptab"
 	}
+}
+
+func messFeature(args []string) string {
+	if len(args) == 0 {
+		return "mess"
+	}
+	if helpWord(args[0]) {
+		return "help"
+	}
+	if args[0] == "version" || args[0] == "--version" || args[0] == "-v" {
+		return "version"
+	}
+	if args[0] != "tidy" {
+		return "mess"
+	}
+	if len(args) > 1 && args[1] == "add" {
+		return "mess tidy add"
+	}
+	return "mess tidy"
 }
 
 func idealakeFeature(args []string) string {

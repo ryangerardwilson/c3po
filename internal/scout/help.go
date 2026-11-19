@@ -18,6 +18,7 @@ Usage:
   c3po gmail [args...]
   c3po idealake [args...]
   c3po looptab [args...]
+  c3po mess [tidy [add <path> [-b <branch>]]]
   c3po pass <vault> <item> [args...]
   c3po slack [args...]
   c3po tunnel add|remove|list|start|stop|status|logs|run
@@ -40,6 +41,7 @@ const appText = `apps:
   gmail     Gmail send, list, spam clean, and the hourly timer
   idealake  ideas by topic, ranked by meaning
   looptab   registered jobs files, edited in vim
+  mess      linked worktrees to tidy, and what is blocked until then
   pass      1Password vaults and items
   slack     Slack messages across presets
   tunnel    Cloudflare Tunnel routes for ryangerardwilson.com

@@ -13,6 +13,7 @@ import (
 func TestNoteCountsDayActorAndSuccess(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("SQLX_ROOT", root)
+	t.Setenv("SQLX_ENGINE", "")
 	t.Setenv("C3PO_ACTOR", "human")
 	old := Now
 	Now = func() time.Time { return time.Date(2026, 11, 11, 3, 0, 0, 0, time.UTC) }

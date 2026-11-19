@@ -13,6 +13,7 @@ import (
 	"github.com/ryangerardwilson/c3po/ast/internal/config"
 	"github.com/ryangerardwilson/c3po/ast/internal/enforce"
 	"github.com/ryangerardwilson/c3po/ast/internal/measure"
+	"github.com/ryangerardwilson/c3po/mess"
 )
 
 const shellDenyDefault = "use c3po ast patch/create/move/delete, or c3po ast exec -- <generator>"
@@ -94,6 +95,9 @@ func Evaluate(req Request, cfg config.Config, cwd, rootOverride string) (Decisio
 			cmd = firstString(req.ToolInput, "command", "cmd", "script", "code")
 		}
 		an := analyzeShell(cmd, cwd, &j.cfg)
+		if dec, ok := worktreeDeny(an); ok {
+			return dec, nil
+		}
 		for _, g := range an.generators {
 			repo, enforced, err := j.enforced(g.cwd)
 			if err != nil {
@@ -118,6 +122,35 @@ func Evaluate(req Request, cfg config.Config, cwd, rootOverride string) (Decisio
 		}
 	}
 	return allow(), nil
+}
+
+// cleanWorktrees lists the clean marked worktrees of a repository.
+var cleanWorktrees = mess.Clean
+
+// worktreeDeny refuses git worktree add inside a repository, and c3po mess
+// tidy add while a clean marked worktree exists. Enforcement does not matter.
+func worktreeDeny(an *writeAnalysis) (Decision, bool) {
+	for _, dir := range an.worktreeAdds {
+		repo, ok := repoFor(dir)
+		if !ok {
+			continue
+		}
+		reason := "git worktree add in " + repo + " is blocked: use c3po mess tidy add"
+		if clean := cleanWorktrees(repo); len(clean) > 0 {
+			reason += "; " + mess.TidyFirst(clean)
+		}
+		return deny(reason), true
+	}
+	for _, dir := range an.messAdds {
+		repo, ok := repoFor(dir)
+		if !ok {
+			continue
+		}
+		if clean := cleanWorktrees(repo); len(clean) > 0 {
+			return deny("c3po mess tidy add in " + repo + " is blocked: " + mess.TidyFirst(clean)), true
+		}
+	}
+	return Decision{}, false
 }
 
 // Run reads JSON request from in and writes decision JSON to out.

@@ -18,6 +18,7 @@ import (
 	"github.com/ryangerardwilson/c3po/internal/version"
 	"github.com/ryangerardwilson/c3po/internal/xdg"
 	"github.com/ryangerardwilson/c3po/looptab"
+	"github.com/ryangerardwilson/c3po/mess"
 	"github.com/ryangerardwilson/c3po/pass"
 	"github.com/ryangerardwilson/c3po/slack"
 	"github.com/ryangerardwilson/c3po/tunnel"
@@ -35,6 +36,7 @@ var apps = map[string]runFunc{
 	"gmail":    gmail.Run,
 	"idealake": idealake.Run,
 	"looptab":  looptab.Command,
+	"mess":     mess.Run,
 	"pass":     pass.Run,
 	"slack":    slack.Run,
 	"tunnel":   tunnel.Run,
