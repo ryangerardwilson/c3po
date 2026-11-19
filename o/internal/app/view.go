@@ -98,6 +98,9 @@ func (m model) promptLine() string {
 	case m.filtering:
 		text := "/ " + m.input
 		return statusStyle.Render(blockLine(text, len([]rune(text)), m.width))
+	case m.commanding && len(m.matches) > 0:
+		text := strings.Join(m.matches, "  ")
+		return mutedStyle.Render(truncateEnd(text, m.width))
 	default:
 		if label := m.clipLabel(); label != "" {
 			return mutedStyle.Render(label)
@@ -290,7 +293,6 @@ func dirSuffix(entry fsnav.Entry) string {
 func (m model) renderHelp() string {
 	lines := []string{
 		titleStyle.Render("o help"),
-		"",
 		"Listings use a staged cascade. Text brightens by relative line count.",
 		"Structure is polled every 500ms and can be reloaded manually.",
 		"j/k or arrows      move",
@@ -300,6 +302,7 @@ func (m model) renderHelp() string {
 		"/                  enter or clear filter",
 		": / :!             mv, rm, cp, touch, mkdir, shell",
 		"!                  open the :! shell line",
+		"tab                complete the :! word",
 		".                  show or hide dot entries",
 		"= / -              increase or decrease nesting preview depth",
 		"r                  reload the active listing immediately",
@@ -315,6 +318,17 @@ func (m model) renderHelp() string {
 		"q                  quit",
 	}
 	return strings.Join(lines, "\n")
+}
+
+func truncateEnd(value string, limit int) string {
+	rs := []rune(value)
+	if limit < 0 {
+		limit = 0
+	}
+	if len(rs) <= limit {
+		return value
+	}
+	return string(rs[:limit])
 }
 
 func truncateMiddle(value string, limit int) string {

@@ -183,6 +183,9 @@ func openCommand(m model, shell bool) (model, tui.Cmd) {
 }
 
 func (m model) commandKey(msg tui.KeyMsg, key string) (model, tui.Cmd) {
+	if key != "tab" {
+		m.matches = nil
+	}
 	switch key {
 	case "esc", "ctrl+c":
 		m.commanding = false
@@ -243,6 +246,8 @@ func (m model) commandKey(msg tui.KeyMsg, key string) (model, tui.Cmd) {
 		m = m.killToEnd()
 	case "ctrl+u":
 		m = m.killToStart()
+	case "tab":
+		m = m.completeCommand()
 	default:
 		if !msg.Alt && len(msg.Runes) > 0 {
 			m = m.insertInput(string(msg.Runes))

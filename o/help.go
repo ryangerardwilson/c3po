@@ -57,6 +57,7 @@ keys:
   /                enter or clear the filter
   : / :!           mv, rm, cp, touch, mkdir, or a shell
   !                open the :! shell line
+  tab              complete the :! word
   r                reload the listing now
   .                show or hide dot entries (hidden by default)
   = / -            increase or decrease the nesting preview depth

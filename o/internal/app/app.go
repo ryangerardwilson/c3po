@@ -81,6 +81,7 @@ type model struct {
 	showHidden   bool
 	input        string
 	inputAt      int
+	matches      []string
 	filtering    bool
 	commanding   bool
 	clipSet      bool
