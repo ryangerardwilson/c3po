@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"testing"
 	"time"
 
 	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
@@ -283,8 +284,12 @@ func tryLock(name string) (*os.File, bool) {
 }
 
 // spawnWorker starts arg as a detached process unless a worker already holds
-// lockName.
+// lockName. A test binary starts none: os.Executable is the test binary,
+// which reruns its whole suite on the worker argument and forks without end.
 func spawnWorker(arg, lockName string) {
+	if testing.Testing() {
+		return
+	}
 	lock, ok := tryLock(lockName)
 	if !ok {
 		return
