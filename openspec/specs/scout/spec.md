@@ -5,12 +5,12 @@
 c3po runs one app from the first argument. There is no tui command. Screens open through r2d2.
 ## Requirements
 ### Requirement: The first argument selects an app
-`c3po ast` SHALL run the ast tool with the remaining arguments. `c3po clippy`, `c3po deport`, `c3po gcal`, `c3po gdrive`, `c3po gmail`, `c3po idealake`, `c3po looptab`, `c3po mess`, `c3po notify`, `c3po pass`, `c3po slack`, and `c3po tunnel` SHALL run those tools with the remaining arguments. There is no `c3po tui` command. `c3po tui` SHALL exit 2. `c3po` SHALL NOT open a terminal screen. Agents use the c3po commands and do not open a screen. `r2d2` is the terminal program, and running it opens the screen menu. The screens in this module SHALL be `cyclotree`, `l`, `o`, `tunnel`, `gdrive`, `pass`, `deport`, `xl`, and `looptab`, and `r2d2 <screen>` SHALL open them, including `r2d2 <screen> --resume <id>`. `c3po` with no tool SHALL list `ast`, `clippy`, `deport`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `mess`, `notify`, `pass`, `slack`, and `tunnel`, and SHALL exit 0. It SHALL NOT list `tui`. An unknown command SHALL exit 2 and SHALL list the apps. The names `complexity`, `hide`, `visualize`, `vibetree`, `scout`, `cyclotree`, `l`, `o`, `xl`, `nlp`, and `tui` SHALL be unknown commands. `c3po tunnel open` SHALL exit 2. `c3po tui <screen>` and `c3po tui <screen> --resume <id>` SHALL exit 2.
+`c3po ast` SHALL run the ast tool with the remaining arguments. `c3po clippy`, `c3po deport`, `c3po gates`, `c3po gcal`, `c3po gdrive`, `c3po gmail`, `c3po idealake`, `c3po looptab`, `c3po mess`, `c3po notify`, `c3po pass`, `c3po slack`, and `c3po tunnel` SHALL run those tools with the remaining arguments. There is no `c3po tui` command. `c3po tui` SHALL exit 2. `c3po` SHALL NOT open a terminal screen. Agents use the c3po commands and do not open a screen. `r2d2` is the terminal program, and running it opens the screen menu. The screens in this module SHALL be `cyclotree`, `l`, `o`, `tunnel`, `gdrive`, `pass`, `deport`, `xl`, and `looptab`, and `r2d2 <screen>` SHALL open them, including `r2d2 <screen> --resume <id>`. `c3po` with no tool SHALL list `ast`, `clippy`, `deport`, `gates`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `mess`, `notify`, `pass`, `slack`, and `tunnel`, and SHALL exit 0. It SHALL NOT list `tui`. An unknown command SHALL exit 2 and SHALL list the apps. The names `complexity`, `hide`, `visualize`, `vibetree`, `scout`, `cyclotree`, `l`, `o`, `xl`, `nlp`, and `tui` SHALL be unknown commands. `c3po tunnel open` SHALL exit 2. `c3po tui <screen>` and `c3po tui <screen> --resume <id>` SHALL exit 2.
 
 #### Scenario: c3po lists the apps
 - **WHEN** the operator runs `c3po`
 - **THEN** the command SHALL exit 0
-- **AND** the text SHALL list `ast`, `clippy`, `deport`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `mess`, `notify`, `pass`, `slack`, and `tunnel`
+- **AND** the text SHALL list `ast`, `clippy`, `deport`, `gates`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `mess`, `notify`, `pass`, `slack`, and `tunnel`
 - **AND** the text SHALL NOT list `tui`
 - **AND** the text SHALL NOT list `complexity`, `hide`, or `vibetree`
 - **AND** the text SHALL NOT list `cyclotree`, `l`, `o`, `xl`, or `nlp` as top-level apps
@@ -104,13 +104,13 @@ Invoking the binary as `rgw-ast` SHALL run ast. The arguments after the program 
 - **AND** the text SHALL name the patch command
 
 ### Requirement: One help command
-`c3po help` SHALL exit 0, SHALL show `c3po help -f`, and SHALL list `ast`, `clippy`, `deport`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `mess`, `notify`, `pass`, `slack`, and `tunnel`. It SHALL NOT list `tui`. `c3po help -f <category>` SHALL explain that category. `c3po help -f ast <feature>` SHALL explain that ast command. `c3po help -f <app>` SHALL print the same text as `c3po <app> help`. An unknown category SHALL exit 2. An unknown ast feature SHALL exit 2. A feature after an app other than ast SHALL exit 2. `c3po help -f tui`, `c3po help -f tui cyclotree`, `c3po help -f vibetree`, `c3po help -f cyclotree`, `c3po help -f l`, `c3po help -f o`, and `c3po help -f nlp` SHALL exit 2.
+`c3po help` SHALL exit 0, SHALL show `c3po help -f`, and SHALL list `ast`, `clippy`, `deport`, `gates`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `mess`, `notify`, `pass`, `slack`, and `tunnel`. It SHALL NOT list `tui`. `c3po help -f <category>` SHALL explain that category. `c3po help -f ast <feature>` SHALL explain that ast command. `c3po help -f <app>` SHALL print the same text as `c3po <app> help`. An unknown category SHALL exit 2. An unknown ast feature SHALL exit 2. A feature after an app other than ast SHALL exit 2. `c3po help -f tui`, `c3po help -f tui cyclotree`, `c3po help -f vibetree`, `c3po help -f cyclotree`, `c3po help -f l`, `c3po help -f o`, and `c3po help -f nlp` SHALL exit 2.
 
 #### Scenario: Help shows the single form
 - **WHEN** the operator runs `c3po help`
 - **THEN** the command SHALL exit 0
 - **AND** the text SHALL show `c3po help -f`
-- **AND** the text SHALL list `ast`, `clippy`, `deport`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `mess`, `notify`, `pass`, `slack`, and `tunnel`
+- **AND** the text SHALL list `ast`, `clippy`, `deport`, `gates`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `mess`, `notify`, `pass`, `slack`, and `tunnel`
 - **AND** the text SHALL NOT list `tui`
 - **AND** the text SHALL NOT list `vibetree`
 
@@ -244,4 +244,22 @@ Every c3po invocation SHALL add one to a daily counter for one catalog feature a
 - **WHEN** the agent runs `c3po notify heading "gmail" body "done"`
 - **THEN** the recorded feature SHALL be `notify`
 - **AND** `c3po notify --help` SHALL be recorded as `help`
+
+### Requirement: Gates is an app
+`c3po gates` SHALL run gates with the remaining arguments. `c3po` and `c3po help` SHALL list `gates` between `deport` and `gcal`. `c3po help -f gates` SHALL print the same text as `c3po gates help`. There SHALL be no gates screen. `c3po tui gates` SHALL exit 2. The usage feature SHALL be `gates`; help and version SHALL stay `help` and `version`. The usage record SHALL NOT store the type or the section.
+
+#### Scenario: Gates is listed with the apps
+- **WHEN** the operator runs `c3po`
+- **THEN** the command SHALL exit 0
+- **AND** the text SHALL list `gates`
+
+#### Scenario: Gates help is the category help
+- **WHEN** the operator runs `c3po help -f gates`
+- **THEN** the command SHALL exit 0
+- **AND** the text SHALL match `c3po gates help`
+
+#### Scenario: Gates usage feature
+- **WHEN** the agent runs `c3po gates show code 1`
+- **THEN** the recorded feature SHALL be `gates`
+- **AND** `c3po gates --help` SHALL be recorded as `help`
 

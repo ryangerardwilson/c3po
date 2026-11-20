@@ -13,6 +13,7 @@ Usage:
   c3po ast [args...]
   c3po clippy [text...]
   c3po deport list|<port>
+  c3po gates [list [<type>] | show <type> [<section>]]
   c3po gcal [args...]
   c3po gdrive [args...]
   c3po gmail [args...]
@@ -37,6 +38,7 @@ const appText = `apps:
   ast       AST-aware edits, trace, and the agent boundary
   clippy    copy a multiline text to the clipboard
   deport    free a safe external port
+  gates     the hardcoded gates an agent judges work against
   gcal      Google Calendar across presets
   gdrive    local-first Google Drive sync
   gmail     Gmail send, list, spam clean, and the hourly timer
