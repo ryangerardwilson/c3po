@@ -83,3 +83,21 @@ func TestPresetShortcutsStayBehindQuestionMark(t *testing.T) {
 		t.Fatal("q")
 	}
 }
+
+func TestJKWrapsThePresetList(t *testing.T) {
+	p := newPicker(presets())
+	p.key("k")
+	if p.cursor != 1 {
+		t.Fatalf("k %d", p.cursor)
+	}
+	p.key("j")
+	if p.cursor != 0 {
+		t.Fatalf("j %d", p.cursor)
+	}
+	one := newPicker([]Item{{ID: "1", Label: "only"}})
+	one.key("j")
+	one.key("k")
+	if one.cursor != 0 {
+		t.Fatalf("one %d", one.cursor)
+	}
+}

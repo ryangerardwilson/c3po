@@ -86,11 +86,23 @@ func (s *screen) Key(r rune) {
 
 func (s *screen) move(d int) {
 	s.layout()
-	next := s.cursor + d
-	if next < 0 || next >= len(s.rows) {
+	n := len(s.rows)
+	if n == 0 {
 		return
 	}
-	s.cursor = next
+	s.cursor = cycled(s.cursor, d, n)
+}
+
+func cycled(cursor, delta, n int) int {
+	if n <= 0 {
+		return 0
+	}
+	if cursor < 0 {
+		cursor = 0
+	} else if cursor >= n {
+		cursor = n - 1
+	}
+	return (cursor + delta%n + n) % n
 }
 
 func (s *screen) toCaller() {

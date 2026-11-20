@@ -91,14 +91,7 @@ func (p *picker) move(delta, n int) {
 	if n == 0 {
 		return
 	}
-	next := p.cursor + delta
-	if next < 0 {
-		next = 0
-	}
-	if next >= n {
-		next = n - 1
-	}
-	p.cursor = next
+	p.cursor = cycled(p.cursor, delta, n)
 }
 
 func (p *picker) frame() string {

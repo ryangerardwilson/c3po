@@ -151,6 +151,31 @@ func TestCopiedItemStaysOnScreenWhileJKMoves(t *testing.T) {
 	assertFrame(t, m)
 }
 
+func TestJKWrapsTheItemList(t *testing.T) {
+	m := &model{rows: []row{{name: "alpha"}, {name: "bravo"}}}
+	if m.handleKey("k") || m.cursor != 1 {
+		t.Fatalf("k %d", m.cursor)
+	}
+	if m.handleKey("j") || m.cursor != 0 {
+		t.Fatalf("j %d", m.cursor)
+	}
+	if m.handleKey("G") || m.cursor != 1 || m.handleKey("g") || m.cursor != 0 {
+		t.Fatalf("ends %d", m.cursor)
+	}
+	one := &model{rows: []row{{name: "only"}}}
+	one.handleKey("j")
+	one.handleKey("k")
+	if one.cursor != 0 {
+		t.Fatalf("one %d", one.cursor)
+	}
+	empty := &model{}
+	empty.handleKey("j")
+	empty.handleKey("k")
+	if empty.cursor != 0 {
+		t.Fatalf("empty %d", empty.cursor)
+	}
+}
+
 func TestPaintPinsEachLineToItsRow(t *testing.T) {
 	frame := "pass - Wiom\n\n> ITEM\ncopied ITEM_00\n"
 	got := paintBytes(frame, 37)

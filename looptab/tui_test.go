@@ -52,6 +52,25 @@ func TestJKMovesAcrossJobs(t *testing.T) {
 	}
 }
 
+func TestJKWrapsTheJobs(t *testing.T) {
+	m := &model{rows: twoJobs()}
+	if m.handleKey("k") || m.cursor != 1 {
+		t.Fatalf("k %d", m.cursor)
+	}
+	if m.handleKey("j") || m.cursor != 0 {
+		t.Fatalf("j %d", m.cursor)
+	}
+	if m.handleKey("G") || m.cursor != 1 || m.handleKey("g") || m.cursor != 0 {
+		t.Fatalf("ends %d", m.cursor)
+	}
+	empty := &model{}
+	empty.handleKey("j")
+	empty.handleKey("k")
+	if empty.cursor != 0 {
+		t.Fatalf("empty %d", empty.cursor)
+	}
+}
+
 func TestEnterRunsTheSelectedIndex(t *testing.T) {
 	rows := twoJobs()
 	var ran []int

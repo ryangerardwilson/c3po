@@ -110,17 +110,23 @@ func (m *model) helpKey(key string) bool {
 }
 
 func (m *model) move(delta int) {
-	if m.count() == 0 {
+	n := m.count()
+	if n == 0 {
 		return
 	}
-	next := m.clamp() + delta
-	if next < 0 {
-		next = 0
+	m.cursor = cycled(m.clamp(), delta, n)
+}
+
+func cycled(cursor, delta, n int) int {
+	if n <= 0 {
+		return 0
 	}
-	if next >= m.count() {
-		next = m.count() - 1
+	if cursor < 0 {
+		cursor = 0
+	} else if cursor >= n {
+		cursor = n - 1
 	}
-	m.cursor = next
+	return (cursor + delta%n + n) % n
 }
 
 func (m *model) switchPreset(delta int) {

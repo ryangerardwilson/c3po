@@ -149,9 +149,9 @@ func (m *model) motion(key string) bool {
 	case "ctrl+c", "q", "esc":
 		return true
 	case "j", "down":
-		m.cursor++
+		m.cursor = cycled(m.cursor, 1, len(m.rows))
 	case "k", "up":
-		m.cursor--
+		m.cursor = cycled(m.cursor, -1, len(m.rows))
 	case "g", "home":
 		m.cursor = 0
 	case "G", "end":
@@ -185,6 +185,18 @@ func (m *model) clamp() int {
 		return len(m.rows) - 1
 	}
 	return m.cursor
+}
+
+func cycled(cursor, delta, n int) int {
+	if n <= 0 {
+		return 0
+	}
+	if cursor < 0 {
+		cursor = 0
+	} else if cursor >= n {
+		cursor = n - 1
+	}
+	return (cursor + delta%n + n) % n
 }
 
 func (m *model) view() string {

@@ -57,6 +57,32 @@ func TestJKMovesAcrossPorts(t *testing.T) {
 	}
 }
 
+func TestJKWrapsThePorts(t *testing.T) {
+	m := &model{rows: twoPorts()}
+	m.motion("k")
+	if m.cursor != 1 {
+		t.Fatalf("k %d", m.cursor)
+	}
+	m.motion("j")
+	if m.cursor != 0 {
+		t.Fatalf("j %d", m.cursor)
+	}
+	m.motion("G")
+	if m.cursor != 1 {
+		t.Fatalf("G %d", m.cursor)
+	}
+	m.motion("g")
+	if m.cursor != 0 {
+		t.Fatalf("g %d", m.cursor)
+	}
+	empty := &model{}
+	empty.motion("j")
+	empty.motion("k")
+	if empty.cursor != 0 {
+		t.Fatalf("empty %d", empty.cursor)
+	}
+}
+
 func TestDDFreesTheSelectedPort(t *testing.T) {
 	rows := twoPorts()
 	var freed []int

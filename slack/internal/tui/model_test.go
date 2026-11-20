@@ -228,6 +228,33 @@ func TestHLWrapsWorkspaces(t *testing.T) {
 	}
 }
 
+func TestJKWrapsTheRows(t *testing.T) {
+	screen := runKeys(t, newModel(sampleBoard(), nil), "j", "j", "j", "k", "q")
+	if !strings.Contains(selected(screen.frames[2]), "deploy failed") {
+		t.Fatalf("last\n%s", selected(screen.frames[2]))
+	}
+	if !strings.Contains(selected(screen.frames[3]), "Ada") {
+		t.Fatalf("wrap down\n%s", selected(screen.frames[3]))
+	}
+	if !strings.Contains(selected(screen.frames[4]), "deploy failed") {
+		t.Fatalf("wrap up\n%s", selected(screen.frames[4]))
+	}
+}
+
+func TestEmptyRowsDoNotMove(t *testing.T) {
+	board := Board{Workspaces: []Workspace{{Preset: "1", Name: "WIOM"}}}
+	m := newModel(board, nil)
+	runKeys(t, m, "j", "k", "q")
+	if m.cursor != 0 {
+		t.Fatalf("empty %d", m.cursor)
+	}
+	one := newModel(sampleBoard(), nil)
+	runKeys(t, one, "l", "j", "k", "q")
+	if one.cursor != 0 {
+		t.Fatalf("one %d", one.cursor)
+	}
+}
+
 func TestEmptyWorkspaceSaysNoItems(t *testing.T) {
 	board := Board{
 		Since:      "Wed, 15 Nov 2023, 3:43 AM IST",

@@ -54,8 +54,24 @@ func TestKeysOpenCallsAndStopOnACycle(t *testing.T) {
 		t.Fatalf("root\n%s", s.Text(true))
 	}
 	s.Key('k')
-	if !strings.HasPrefix(cursorLine(s), "> ") || !strings.Contains(cursorLine(s), "Start") {
-		t.Fatalf("above root\n%s", s.Text(true))
+	if !strings.Contains(cursorLine(s), "cycle") {
+		t.Fatalf("wrap\n%s", s.Text(true))
+	}
+}
+
+func TestJKWrapsVisibleRows(t *testing.T) {
+	s, err := openTree(writeFlow(t), "Start")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Key('k')
+	if !strings.Contains(cursorLine(s), "Work") {
+		t.Fatalf("k\n%s", s.Text(true))
+	}
+	s.Key('j')
+	line := cursorLine(s)
+	if !strings.Contains(line, "Start") || strings.Contains(line, "Work") {
+		t.Fatalf("j\n%s", s.Text(true))
 	}
 }
 
