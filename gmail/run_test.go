@@ -121,6 +121,17 @@ func TestTimerUnitUsesC3PO(t *testing.T) {
 	if readErr != nil || !strings.Contains(string(body), "gmail spam clean") {
 		t.Fatalf("unit %s %v", body, readErr)
 	}
+	unit := string(body)
+	for _, want := range []string{" notify heading ", " notify --urgency critical heading ", "Hourly spam clean failed"} {
+		if !strings.Contains(unit, want) {
+			t.Fatalf("unit missing %q\n%s", want, unit)
+		}
+	}
+	for _, gone := range []string{"notify()", "notify-send", "quickshell"} {
+		if strings.Contains(unit, gone) {
+			t.Fatalf("unit still has %q\n%s", gone, unit)
+		}
+	}
 	if strings.Join(calls, "|") != "daemon-reload|enable gmail.timer|restart gmail.timer" {
 		t.Fatalf("calls %v", calls)
 	}

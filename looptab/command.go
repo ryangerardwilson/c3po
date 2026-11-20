@@ -39,8 +39,8 @@ const jobsTemplate = `# Schedules: now, hourly, hourly at <minute>, daily <time>
 # A job line is a schedule and a command. ? and : on the next lines notify.
 #
 # daily 5am,9am,12pm,4pm c3po gmail tidy
-# ? notify heading "gmail" body "morning inbox review finished"
-# : notify heading "gmail" body "morning inbox review failed"
+# ? c3po notify heading "gmail" body "morning inbox review finished"
+# : c3po notify heading "gmail" body "morning inbox review failed"
 `
 
 // Command serves c3po looptab. args are the arguments after the app name.

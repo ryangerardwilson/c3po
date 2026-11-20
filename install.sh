@@ -19,6 +19,7 @@ Usage:
 
 Installs to \$C3PO_INSTALL_DIR or ~/.local/bin.
 Links rgw-ast to the same binary, removes xl, cx, and complexity links that point at it, and removes a managed nlp launcher.
+Removes ~/.local/bin/notify and installs the ryan.notify omarchy-shell plugin.
 EOF
 }
 
@@ -97,6 +98,20 @@ remove_retired_nlp() {
   fi
 }
 
+remove_retired_notify() {
+  local path="$HOME/.local/bin/notify"
+  if [[ -L "$path" || -f "$path" ]]; then
+    rm -f "$path"
+  fi
+}
+
+install_notify_plugin() {
+  local source_path="$1"
+  local dest="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy/plugins/ryan.notify"
+  mkdir -p "$dest"
+  cp "$source_path/notify/plugin/manifest.json" "$source_path/notify/plugin/Overlay.qml" "$dest/"
+}
+
 install_from_source() {
   local source_path=$1
   [[ -d "$source_path" ]] || die "source path does not exist: $source_path"
@@ -113,6 +128,8 @@ install_from_source() {
   remove_compat_link cx
   remove_compat_link complexity
   remove_retired_nlp
+  remove_retired_notify
+  install_notify_plugin "$source_path"
   "$INSTALL_DIR/$APP" version
   write_snapshot_units
   activate_snapshot_timer

@@ -119,6 +119,8 @@ var Catalog = []string{
 	"mess tidy",
 	"mess tidy add",
 
+	"notify",
+
 	"pass",
 	"pass create",
 	"pass edit",

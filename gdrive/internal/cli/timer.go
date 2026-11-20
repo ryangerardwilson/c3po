@@ -27,28 +27,24 @@ func syncRunCommand() string {
 	return shellQuote(c3poBin()) + " gdrive sync run"
 }
 
-func notificationShellFunction() string {
-	return strings.Join([]string{
-		"notify() {",
-		`summary="$1";`,
-		`body="${2:-}";`,
-		`urgency="${3:-normal}";`,
-		`qs="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/omarchy-bar";`,
-		`if command -v quickshell >/dev/null 2>&1 && quickshell ipc -p "$qs" call bar notify "$summary" "$body" "$urgency" >/dev/null 2>&1; then return 0; fi;`,
-		`if command -v notify-send >/dev/null 2>&1; then notify-send -a "$summary" -u "$urgency" "$summary" "$body" || true; fi;`,
-		"};",
-	}, " ")
+// notifyCommand is the unit's toast. It runs c3po notify from the same
+// binary as the sync. Only a failure passes --urgency critical.
+func notifyCommand(body string, critical bool) string {
+	flag := ""
+	if critical {
+		flag = "--urgency critical "
+	}
+	return shellQuote(c3poBin()) + " notify " + flag + "heading 'gdrive' body " + shellQuote(body)
 }
 
 func buildTimerServiceScript(runCommand string) string {
 	return strings.Join([]string{
-		notificationShellFunction(),
-		"notify 'gdrive' 'Hourly backup started' normal;",
+		notifyCommand("Hourly backup started", false) + ";",
 		"if " + runCommand + "; then",
-		"notify 'gdrive' 'Hourly backup finished successfully' normal;",
+		notifyCommand("Hourly backup finished successfully", false) + ";",
 		"else",
 		"rc=$?;",
-		"notify 'gdrive' 'Hourly backup failed' critical;",
+		notifyCommand("Hourly backup failed", true) + ";",
 		`exit "$rc";`,
 		"fi",
 	}, " ")

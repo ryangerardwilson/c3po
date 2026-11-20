@@ -38,7 +38,7 @@ func c3poFeature(args []string) string {
 	case "ast":
 		return astFeature(args[1:])
 	case "clippy":
-		return clippyFeature(args[1:])
+		return singleFeature("clippy", args[1:])
 	case "deport":
 		return deportFeature(args[1:])
 	case "gcal":
@@ -53,6 +53,8 @@ func c3poFeature(args []string) string {
 		return looptabFeature(args[1:])
 	case "mess":
 		return messFeature(args[1:])
+	case "notify":
+		return singleFeature("notify", args[1:])
 	case "pass":
 		return passFeature(args[1:])
 	case "slack":
@@ -89,7 +91,9 @@ func astFeature(args []string) string {
 	return "ast " + cmd
 }
 
-func clippyFeature(args []string) string {
+// singleFeature is the feature of an app with one feature. Its help and
+// version words stay help and version.
+func singleFeature(name string, args []string) string {
 	if len(args) == 1 {
 		switch args[0] {
 		case "help", "-h", "--help":
@@ -98,7 +102,7 @@ func clippyFeature(args []string) string {
 			return "version"
 		}
 	}
-	return "clippy"
+	return name
 }
 
 func deportFeature(args []string) string {

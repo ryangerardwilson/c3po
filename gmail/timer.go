@@ -108,7 +108,7 @@ func (e Env) writeTimerUnits() error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	script := notificationShell() + " if " + gmailRun() + "; then " + notifyCall("Hourly spam clean finished successfully", "normal") + `; else rc=$?; ` + notifyCall("Hourly spam clean failed", "critical") + `; exit "$rc"; fi`
+	script := "if " + gmailRun() + "; then " + notifyCall("Hourly spam clean finished successfully", false) + `; else rc=$?; ` + notifyCall("Hourly spam clean failed", true) + `; exit "$rc"; fi`
 	service := strings.Join([]string{
 		"[Unit]",
 		"Description=gmail spam clean all presets",
@@ -152,21 +152,14 @@ func c3poBin() string {
 	return "c3po"
 }
 
-func notificationShell() string {
-	return strings.Join([]string{
-		"notify() {",
-		`summary="$1";`,
-		`body="${2:-}";`,
-		`urgency="${3:-normal}";`,
-		`qs="${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/omarchy-bar";`,
-		`if command -v quickshell >/dev/null 2>&1 && quickshell ipc -p "$qs" call bar notify "$summary" "$body" "$urgency" >/dev/null 2>&1; then return 0; fi;`,
-		`if command -v notify-send >/dev/null 2>&1; then notify-send -a "$summary" -u "$urgency" "$summary" "$body" || true; fi;`,
-		"};",
-	}, " ")
-}
-
-func notifyCall(body, urgency string) string {
-	return "notify " + shellQuote("gmail") + " " + shellQuote(body) + " " + shellQuote(urgency)
+// notifyCall is the unit's toast. It runs c3po notify from the same binary
+// as the spam clean. Only a failure passes --urgency critical.
+func notifyCall(body string, critical bool) string {
+	flag := ""
+	if critical {
+		flag = "--urgency critical "
+	}
+	return shellQuote(c3poBin()) + " notify " + flag + "heading 'gmail' body " + shellQuote(body)
 }
 
 func shellQuote(s string) string {

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "ryan.notify",
+  "name": "Notify toasts",
+  "version": "1.0.0",
+  "author": "Ryan Gerard Wilson",
+  "description": "Operator toasts for c3po notify",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Overlay.qml"
+  }
+}
