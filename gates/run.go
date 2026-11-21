@@ -27,22 +27,30 @@ Each added argument deepens the same probe.
   c3po gates <type> <statute>
     list every provision of one statute in section order, one section
     and heading per line
-  c3po gates <type> <statute> <section>
-    print the body of one provision
+  c3po gates <type> <statute> <section>...
+    print the body of one provision, or of several sections in one
+    pass
   c3po gates help
     show this help
   c3po gates version
     print the c3po version
 
-  c3po gates code architecture S.1.1
+  c3po gates code architecture §1.1
+  c3po gates code architecture 6 7 8.3
 
 types: code, essays
 statutes: code has architecture; essays has none yet
 
-A section is S and then dot-separated positive integers: S.1, S.1.1,
-S.2. Sections order numerically, and a prefix comes first. Copy the
-section from the provision list as the next argument. Names and
-sections are case-sensitive. A body is at most 300 characters.
+A section is the section sign § and then dot-separated positive
+integers, with no space: §1, §1.1, §2. Sections order numerically, and
+a prefix comes first. Copy the section from the provision list as the
+next argument. A section may be written §1.1, 1.1, or S.1.1; all three
+name §1.1. Names are case-sensitive. A body is at most 300 characters.
+
+One section prints only its body. Several sections after the statute
+print in the order written: each section on its own line, then its
+body, with a blank line before the next section. If any section is
+unknown, nothing is printed.
 
 architecture holds three structural disciplines: data model, state
 ownership, and boundaries. Mistakes there are paid for in every future
@@ -54,17 +62,17 @@ micro-optimization.
 The agent judges. c3po only prints the text. It does not scan a
 repository, call a model, or decide pass or fail. Report one line per
 section:
-  S.1  pass
-  S.1  fail
+  §1  pass
+  §1  fail
 After a fail, each later section is:
-  S.1.1  fail  not judged
+  §1.1  fail  not judged
 
 The text changes only when c3po itself is changed and reinstalled.
 There is no way to edit a gate: no add, edit, or remove command.
 There is no gates screen.
 `
 
-const usageLine = "usage: c3po gates [<type> [<statute> [<section>]]]"
+const usageLine = "usage: c3po gates [<type> [<statute> [<section>...]]]"
 
 // Run serves c3po gates. args are the words after gates.
 func Run(args []string, stdout, stderr io.Writer) int {
@@ -83,11 +91,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 }
 
 // probe prints one level deeper for each argument: types, statutes,
-// provisions, then one body.
+// provisions, then the bodies of the sections named.
 func probe(args []string, stdout, stderr io.Writer) int {
-	if len(args) > 3 {
-		return usageError(stderr, "expected at most a type, a statute, and a section")
-	}
 	if len(args) == 0 {
 		for _, k := range law {
 			fmt.Fprintln(stdout, k.name)
@@ -112,11 +117,32 @@ func probe(args []string, stdout, stderr io.Writer) int {
 		}
 		return 0
 	}
-	p, ok := s.find(args[2])
-	if !ok {
-		return usageError(stderr, "unknown section %q in %s %s", args[2], k.name, s.name)
+	return printSections(args[2:], k, s, stdout, stderr)
+}
+
+// printSections prints the bodies of the sections named, in the order
+// written. One section is its body alone. Several are each labelled with
+// the published section and separated by a blank line. An unknown section
+// prints nothing at all.
+func printSections(args []string, k kind, s statute, stdout, stderr io.Writer) int {
+	ps := make([]provision, 0, len(args))
+	for _, arg := range args {
+		p, ok := s.find(arg)
+		if !ok {
+			return usageError(stderr, "unknown section %q in %s %s", arg, k.name, s.name)
+		}
+		ps = append(ps, p)
 	}
-	fmt.Fprintln(stdout, p.body)
+	if len(ps) == 1 {
+		fmt.Fprintln(stdout, ps[0].body)
+		return 0
+	}
+	for i, p := range ps {
+		if i > 0 {
+			fmt.Fprintln(stdout)
+		}
+		fmt.Fprintf(stdout, "%s\n%s\n", p.section, p.body)
+	}
 	return 0
 }
 

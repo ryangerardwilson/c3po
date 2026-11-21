@@ -85,7 +85,7 @@ func TestFeatureNames(t *testing.T) {
 		{[]string{"c3po", "notify", "heading", "gmail", "body", "done"}, "notify"},
 		{[]string{"c3po", "notify", "--help"}, "help"},
 		{[]string{"c3po", "notify", "version"}, "version"},
-		{[]string{"c3po", "gates", "code", "architecture", "S.1"}, "gates"},
+		{[]string{"c3po", "gates", "code", "architecture", "§1"}, "gates"},
 		{[]string{"c3po", "gates", "code"}, "gates"},
 		{[]string{"c3po", "gates"}, "gates"},
 		{[]string{"c3po", "gates", "--help"}, "help"},

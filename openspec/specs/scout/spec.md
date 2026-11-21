@@ -259,7 +259,7 @@ Every c3po invocation SHALL add one to a daily counter for one catalog feature a
 - **AND** the text SHALL match `c3po gates help`
 
 #### Scenario: Gates usage feature
-- **WHEN** the agent runs `c3po gates code architecture S.1`
+- **WHEN** the agent runs `c3po gates code architecture §1`
 - **THEN** the recorded feature SHALL be `gates`
 - **AND** `c3po gates --help` SHALL be recorded as `help`
 

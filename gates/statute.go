@@ -69,8 +69,13 @@ func (k kind) find(name string) (statute, bool) {
 	return statute{}, false
 }
 
-// find looks up a published section exactly, case and all.
-func (s statute) find(section string) (provision, bool) {
+// find looks up a section argument written as §1.1, 1.1, or S.1.1. The
+// numbers must match a published section exactly.
+func (s statute) find(arg string) (provision, bool) {
+	section, ok := resolveSection(arg)
+	if !ok {
+		return provision{}, false
+	}
 	for _, p := range s.provisions {
 		if p.section == section {
 			return p, true
@@ -79,10 +84,24 @@ func (s statute) find(section string) (provision, bool) {
 	return provision{}, false
 }
 
-// parseSection reads S and then one or more positive integers separated by
-// dots. Zero, a leading zero, a sign, an empty part, and a missing S are refused.
+// resolveSection turns a section argument into its published § form. The
+// argument may carry the section sign, the old S. prefix, or neither.
+func resolveSection(arg string) (string, bool) {
+	rest, ok := strings.CutPrefix(arg, "§")
+	if !ok {
+		rest, _ = strings.CutPrefix(arg, "S.")
+	}
+	if _, ok := parseSection("§" + rest); !ok {
+		return "", false
+	}
+	return "§" + rest, true
+}
+
+// parseSection reads the section sign and then one or more positive integers
+// separated by dots, with no space and no letter. Zero, a leading zero, a sign,
+// an empty part, and a missing section sign are refused.
 func parseSection(s string) ([]int, bool) {
-	rest, ok := strings.CutPrefix(s, "S.")
+	rest, ok := strings.CutPrefix(s, "§")
 	if !ok {
 		return nil, false
 	}
