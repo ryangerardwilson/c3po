@@ -2,10 +2,14 @@ package gates
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"github.com/ryangerardwilson/c3po/internal/version"
 )
 
 func call(args ...string) (string, string, int) {
@@ -13,6 +17,22 @@ func call(args ...string) (string, string, int) {
 	code := Run(args, &out, &errb)
 	return out.String(), errb.String(), code
 }
+
+// receiptLine is the receipt line of a published section, computed here
+// from the version, the section, and the body rather than by receipt().
+func receiptLine(t *testing.T, section string) string {
+	t.Helper()
+	for _, p := range architecture {
+		if p.section == section {
+			sum := sha256.Sum256([]byte(version.String() + "\n" + section + "\n" + p.body))
+			return fmt.Sprintf("receipt %x\n", sum[:4])
+		}
+	}
+	t.Fatalf("no section %s", section)
+	return ""
+}
+
+const mention = "Mention it in the summary of the change.\n"
 
 func TestTypesInOrder(t *testing.T) {
 	out, _, code := call()
@@ -53,7 +73,7 @@ func TestListProvisions(t *testing.T) {
 		}
 		prev = nums
 	}
-	if strings.Contains(out, sequential) || strings.Contains(out, "\n\n") {
+	if strings.Contains(out, judging) || strings.Contains(out, "\n\n") {
 		t.Fatalf("the provision list carries a banner or blank line\n%s", out)
 	}
 }
@@ -97,32 +117,101 @@ func TestSubsectionsHaveNoGaps(t *testing.T) {
 	}
 }
 
-func TestSectionPrintsOnlyTheBody(t *testing.T) {
+func TestSectionPrintsTheBodyAndReceipt(t *testing.T) {
 	for _, arg := range []string{"§8.3", "8.3", "S.8.3"} {
-		if out, _, code := call("code", "architecture", arg); code != 0 || out != "Mention it in the summary of the change.\n" {
+		if out, _, code := call("code", "architecture", arg); code != 0 || out != mention+receiptLine(t, "§8.3") {
 			t.Fatalf("%s code %d\n%q", arg, code, out)
 		}
 	}
 	out, _, code := call("code", "architecture", "§5.1")
-	if code != 0 || out != "Hard rules marked MUST: do not write or approve code that violates them.\n" {
+	if code != 0 || out != "Hard rules marked MUST: do not write or approve code that violates them.\n"+receiptLine(t, "§5.1") {
 		t.Fatalf("code %d\n%q", code, out)
 	}
 }
 
-const exceptions = "A rule may be broken deliberately, never silently.\n\n" +
-	"§8.1  Comment at the site\n§8.2  Contain the violation\n" +
-	"§8.3  Mention it in the summary\n§8.4  Legitimate exceptions\n"
+func TestReceiptHashesVersionSectionAndBody(t *testing.T) {
+	p := provision{"§8.3", "Mention it in the summary", strings.TrimSuffix(mention, "\n")}
+	sum := sha256.Sum256([]byte(version.String() + "\n§8.3\n" + p.body))
+	if got := receipt(p); got != fmt.Sprintf("%x", sum[:4]) || len(got) != 8 {
+		t.Fatalf("receipt %q", got)
+	}
+	t.Logf("§8 %s", receiptLine(t, "§8"))
+	seen := map[string]string{}
+	for _, p := range architecture {
+		r := receipt(p)
+		if other, dup := seen[r]; dup {
+			t.Fatalf("%s and %s share receipt %s", p.section, other, r)
+		}
+		seen[r] = p.section
+	}
+	if receipt(provision{"§8.4", "", p.body}) == receipt(p) || receipt(provision{"§8.3", "", p.body + "."}) == receipt(p) {
+		t.Fatal("the receipt ignores the section or the body")
+	}
+	if out, _, _ := call("code", "architecture"); strings.Contains(out, "receipt") {
+		t.Fatalf("a title line carries a receipt\n%s", out)
+	}
+}
+
+func exceptions(t *testing.T) string {
+	return "A rule may be broken deliberately, never silently.\n" + receiptLine(t, "§8") + "\n" +
+		"§8.1  Comment at the site\n§8.2  Contain the violation\n" +
+		"§8.3  Mention it in the summary\n§8.4  Legitimate exceptions\n" +
+		"4 bodies not shown: c3po gates code architecture 8.{1..4}\n"
+}
 
 func TestSectionListsItsSubsections(t *testing.T) {
 	for _, arg := range []string{"8", "§8", "S.8"} {
-		if out, _, code := call("code", "architecture", arg); code != 0 || out != exceptions {
+		if out, _, code := call("code", "architecture", arg); code != 0 || out != exceptions(t) {
 			t.Fatalf("%s code %d\n%q", arg, code, out)
 		}
 	}
 	out, _, code := call("code", "architecture", "1")
-	if code != 0 || !strings.HasPrefix(out, "Everything else inherits its shape.\n\n§1.1  Domain truth\n") ||
-		!strings.HasSuffix(out, "\n§1.19  Red flag: payload unlike the model\n") || strings.Contains(out, "Goal:") {
+	if code != 0 || !strings.HasPrefix(out, "Everything else inherits its shape.\n"+receiptLine(t, "§1")+"\n§1.1  Domain truth\n") ||
+		!strings.HasSuffix(out, "\n§1.19  Red flag: payload unlike the model\n19 bodies not shown: c3po gates code architecture 1.{1..19}\n") ||
+		strings.Contains(out, "Goal:") {
 		t.Fatalf("code %d\n%q", code, out)
+	}
+}
+
+func TestShownSubsectionsAreNotCounted(t *testing.T) {
+	out, _, code := call("code", "architecture", "8", "8.1", "8.2", "8.3", "8.4")
+	if code != 0 || strings.Contains(out, "not shown") || !strings.Contains(out, "§8.4  Legitimate exceptions\n\n§8.1\n") {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+	for _, tc := range []struct{ args, want string }{
+		{"8 8.3", "3 bodies not shown: c3po gates code architecture 8.1 8.2 8.4\n"},
+		{"8 8.4 8.3", "2 bodies not shown: c3po gates code architecture 8.{1..2}\n"},
+		{"8 8.1 8.2 8.3", "1 body not shown: c3po gates code architecture 8.4\n"},
+		{"8.2 8", "3 bodies not shown: c3po gates code architecture 8.1 8.3 8.4\n"},
+	} {
+		out, _, code := call(append([]string{"code", "architecture"}, strings.Fields(tc.args)...)...)
+		if code != 0 || strings.Count(out, "not shown") != 1 || !strings.Contains(out, tc.want) {
+			t.Fatalf("%s code %d\n%s", tc.args, code, out)
+		}
+	}
+}
+
+func TestAllPrintsEveryProvision(t *testing.T) {
+	out, errOut, code := call("code", "architecture", "all")
+	if code != 0 || errOut != "" || strings.Contains(out, "not shown") || strings.Contains(out, "  ") {
+		t.Fatalf("code %d\n%s%s", code, out, errOut)
+	}
+	blocks := strings.Split(strings.TrimSuffix(out, "\n"), "\n\n")
+	if len(blocks) != 93 || len(architecture) != 93 {
+		t.Fatalf("%d blocks for %d provisions", len(blocks), len(architecture))
+	}
+	for i, p := range architecture {
+		if want := p.section + "\n" + p.body + "\n" + strings.TrimSuffix(receiptLine(t, p.section), "\n"); blocks[i] != want {
+			t.Fatalf("block %d is %q, want %q", i, blocks[i], want)
+		}
+	}
+	if !strings.Contains(out, "\n§8.3\n"+mention+receiptLine(t, "§8.3")) {
+		t.Fatal("all lacks the §8.3 leaf body")
+	}
+	for _, args := range [][]string{{"all", "8"}, {"8", "all"}, {"§all"}} {
+		if _, errOut, code := call(append([]string{"code", "architecture"}, args...)...); code != 2 || !strings.Contains(errOut, "unknown section") {
+			t.Fatalf("%q code %d %s", args, code, errOut)
+		}
 	}
 }
 
@@ -134,17 +223,19 @@ func TestOnlyTheNextLevelIsListed(t *testing.T) {
 	}
 	sortProvisions(ps)
 	s := statute{name: "deep", provisions: ps}
+	k := kind{name: "code"}
 	var out bytes.Buffer
-	printBody(&out, s, ps[0])
-	if out.String() != "eight\n\n§8.1  One\n§8.2  Two\n" {
+	printBody(&out, k, s, ps[0], nil)
+	if out.String() != "eight\nreceipt "+receipt(ps[0])+"\n\n§8.1  One\n§8.2  Two\n2 bodies not shown: c3po gates code deep 8.{1..2}\n" {
 		t.Fatalf("§8\n%q", out.String())
 	}
 	out.Reset()
-	printBody(&out, s, ps[1])
-	want := "one\n\n"
+	printBody(&out, k, s, ps[1], map[string]bool{"§8.1.2": true})
+	want := "one\nreceipt " + receipt(ps[1]) + "\n\n"
 	for i := 1; i <= 6; i++ {
 		want += "§8.1." + strconv.Itoa(i) + "  Leaf " + strconv.Itoa(i) + "\n"
 	}
+	want += "5 bodies not shown: c3po gates code deep 8.1.1 8.1.3 8.1.4 8.1.5 8.1.6\n"
 	if out.String() != want {
 		t.Fatalf("§8.1\n%q", out.String())
 	}
@@ -172,11 +263,11 @@ func TestThreeFormsNameOneSection(t *testing.T) {
 func TestSeveralSectionsInTheOrderWritten(t *testing.T) {
 	six, _, _ := call("code", "architecture", "6")
 	seven, _, _ := call("code", "architecture", "7")
-	if !strings.Contains(six, "\n\n§6.1  ") || !strings.HasSuffix(six, "\n§6.13  Boundaries: business rule in the core\n") ||
-		!strings.HasSuffix(seven, "\n§7.5  Finding order\n") {
+	if !strings.Contains(six, "\n\n§6.1  ") || !strings.HasSuffix(six, "\n§6.13  Boundaries: business rule in the core\n13 bodies not shown: c3po gates code architecture 6.{1..13}\n") ||
+		!strings.HasSuffix(seven, "\n§7.5  Finding order\n5 bodies not shown: c3po gates code architecture 7.{1..5}\n") {
 		t.Fatalf("§6 and §7 do not list their subsections\n%q\n%q", six, seven)
 	}
-	want := "§6\n" + six + "\n§7\n" + seven + "\n§8.3\nMention it in the summary of the change.\n"
+	want := "§6\n" + six + "\n§7\n" + seven + "\n§8.3\n" + mention + receiptLine(t, "§8.3")
 	for _, args := range [][]string{{"6", "7", "8.3"}, {"§6", "S.7", "8.3"}} {
 		out, errOut, code := call(append([]string{"code", "architecture"}, args...)...)
 		if code != 0 || out != want || errOut != "" {
@@ -184,7 +275,9 @@ func TestSeveralSectionsInTheOrderWritten(t *testing.T) {
 		}
 	}
 	out, _, code := call("code", "architecture", "8.3", "8")
-	if code != 0 || out != "§8.3\nMention it in the summary of the change.\n\n§8\n"+exceptions {
+	want = "§8.3\n" + mention + receiptLine(t, "§8.3") + "\n§8\n" +
+		strings.Replace(exceptions(t), "4 bodies not shown: c3po gates code architecture 8.{1..4}", "3 bodies not shown: c3po gates code architecture 8.1 8.2 8.4", 1)
+	if code != 0 || out != want {
 		t.Fatalf("statute order instead of the order written: code %d\n%q", code, out)
 	}
 }
@@ -297,17 +390,21 @@ func TestHelpAndVersion(t *testing.T) {
 	}
 	for _, needle := range []string{"  c3po gates\n", "c3po gates <type>\n", "c3po gates <type> <statute>\n",
 		"c3po gates <type> <statute> <section>...\n", "c3po gates code architecture §1.1\n",
-		"c3po gates code architecture 6 7 8.3\n", "§1.1, 1.1, or S.1.1", "Several sections after the statute",
-		"A section with\nsubsections lists those subsections under the body",
+		"c3po gates code architecture 6 7 8.3\n", "c3po gates <type> <statute> all\n", "c3po gates code architecture all\n",
+		"c3po gates <type> <statute> tally <sheet>\n", "  receipt <8 hex>\n", "  §1.2 <receipt> <pass|fail> <site> [files <path>...]\n",
+		"  §8.3 " + receipt(provision{"§8.3", "", strings.TrimSuffix(mention, "\n")}) + " fail store/order.go:41 files store/order.go\n",
+		"4 bodies not shown: c3po gates code architecture 8.{1..4}", "all is not a section", "unfixed", "unclaimed",
+		"§1.1, 1.1, or S.1.1", "Several sections after\nthe statute",
+		"A section with subsections lists those subsections under the body",
 		"code, essays", "architecture",
-		"300", sequential, "  §1  pass\n", "  §1  fail\n", "  §1.1  fail  not judged\n",
+		"300", judging, "Every body is still judged",
 		"The agent judges", "c3po only prints the text", "no gates screen", "no way to edit a gate",
 		"changed and reinstalled", "stricter than style, framework choice, or\nmicro-optimization"} {
 		if !strings.Contains(Help, needle) {
 			t.Fatalf("help missing %q", needle)
 		}
 	}
-	for _, gone := range []string{"gates show", "gates list", "gates get", "C/A/", "<id>", "S.1  "} {
+	for _, gone := range []string{"gates show", "gates list", "gates get", "C/A/", "<id>", "S.1  ", "not judged", "later gates"} {
 		if strings.Contains(Help, gone) {
 			t.Fatalf("help names %q", gone)
 		}

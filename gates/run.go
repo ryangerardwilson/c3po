@@ -1,5 +1,6 @@
 // Package gates prints the hardcoded gates an agent judges work against.
-// It does not scan a repository, call a model, or decide pass or fail.
+// It does not search code for violations, call a model, or decide pass or
+// fail. tally reads only the sheet, its site paths, and git status.
 package gates
 
 import (
@@ -9,13 +10,16 @@ import (
 	"github.com/ryangerardwilson/c3po/internal/version"
 )
 
-// sequential is how gates are judged. It belongs in the help, not in probe output.
-const sequential = "Gates run in the list order. A failed gate fails every later gate, and those later gates are not judged."
+// judging is how gates are judged. It belongs in the help, not in probe output.
+const judging = "Judge every provision. The first failure is the headline, and later fixes wait until that provision passes. Every body is still judged."
 
 const frozen = "the gates change only when c3po itself is changed and reinstalled"
 
-// Help is the text for c3po gates and c3po help -f gates.
-const Help = `c3po gates
+// Help is the text for c3po gates and c3po help -f gates. Its sheet example
+// carries the real receipt of §8.3 for this build.
+var Help = helpHead + exampleLine() + helpTail
+
+const helpHead = `c3po gates
 print the hardcoded gates so an agent can judge work against them
 
 Each added argument deepens the same probe.
@@ -30,6 +34,11 @@ Each added argument deepens the same probe.
   c3po gates <type> <statute> <section>...
     print the body of one provision, or of several sections in one
     pass
+  c3po gates <type> <statute> all
+    print every provision in section order as its section, body, and
+    receipt
+  c3po gates <type> <statute> tally <sheet>
+    count a sheet of verdicts against this build and the git tree
   c3po gates help
     show this help
   c3po gates version
@@ -37,6 +46,8 @@ Each added argument deepens the same probe.
 
   c3po gates code architecture §1.1
   c3po gates code architecture 6 7 8.3
+  c3po gates code architecture all
+  c3po gates code architecture tally sheet.txt
 
 types: code, essays
 statutes: code has architecture; essays has none yet
@@ -47,34 +58,67 @@ a prefix comes first. Copy the section from the provision list as the
 next argument. A section may be written §1.1, 1.1, or S.1.1; all three
 name §1.1. Names are case-sensitive. A body is at most 300 characters.
 
-One section prints only its body. Several sections after the statute
-print in the order written: each section on its own line, then its
-body, with a blank line before the next section. A section with
-subsections lists those subsections under the body, one section and
-heading per line, one level deeper only. If any section is unknown,
-nothing is printed.
+Every printed body is followed by one receipt line:
+  receipt <8 hex>
+The receipt is the first 8 hex characters of SHA-256 over the c3po
+version, the section, and the body. It changes when the build or the
+text changes. Copy it into the sheet.
+
+One section prints its body and its receipt. Several sections after
+the statute print in the order written: each section on its own line,
+then its body and receipt, with a blank line before the next section.
+A section with subsections lists those subsections under the body, one
+section and heading per line, one level deeper only, then counts the
+subsection bodies this output does not show and gives the command that
+prints them:
+  4 bodies not shown: c3po gates code architecture 8.{1..4}
+If any section is unknown, nothing is printed. all prints every
+provision with no subsection list; all is not a section.
 
 architecture holds three structural disciplines: data model, state
 ownership, and boundaries. Mistakes there are paid for in every future
 change, so architecture is stricter than style, framework choice, or
 micro-optimization.
 
-` + sequential + `
+` + judging + `
 
-The agent judges. c3po only prints the text. It does not scan a
-repository, call a model, or decide pass or fail. Report one line per
-section:
-  §1  pass
-  §1  fail
-After a fail, each later section is:
-  §1.1  fail  not judged
+The agent judges. c3po only prints the text. It does not search code
+for violations, call a model, or decide pass or fail. Write a sheet
+with one line per provision, in any order:
+  §1.2 <receipt> <pass|fail> <site> [files <path>...]
+`
+
+const helpTail = `<site> is none when the search found nothing, or path:line, with the
+path relative to the current directory. A fail may use none. files
+names the changed files that fix the provision. Extra words are a bad
+line.
+
+tally prints how many provisions are judged, then, when they apply,
+the missing sections and the command that fetches their bodies, the
+fails that name no files (unfixed), and the changed files no line
+claims (unclaimed). Changed files come from git status in the current
+directory; untracked files are ignored. tally exits 0 when every
+provision has one line, every receipt matches this build, every site
+is none or a real path:line, and every changed file is claimed. In a
+dirty tree an unfixed fail exits 2. Otherwise tally exits 2 and names
+the bad line or path. tally counts the sheet; it does not judge it.
 
 The text changes only when c3po itself is changed and reinstalled.
 There is no way to edit a gate: no add, edit, or remove command.
 There is no gates screen.
 `
 
-const usageLine = "usage: c3po gates [<type> [<statute> [<section>...]]]"
+// exampleLine is a sheet line for §8.3 with its receipt in this build.
+func exampleLine() string {
+	for _, p := range architecture {
+		if p.section == "§8.3" {
+			return "  " + p.section + " " + receipt(p) + " fail store/order.go:41 files store/order.go\n"
+		}
+	}
+	return ""
+}
+
+const usageLine = "usage: c3po gates [<type> [<statute> [<section>...|all|tally <sheet>]]]"
 
 // Run serves c3po gates. args are the words after gates.
 func Run(args []string, stdout, stderr io.Writer) int {
@@ -93,7 +137,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 }
 
 // probe prints one level deeper for each argument: types, statutes,
-// provisions, then the bodies of the sections named.
+// provisions, then the bodies of the sections named. all and tally take
+// the place of the sections.
 func probe(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		for _, k := range law {
@@ -113,50 +158,17 @@ func probe(args []string, stdout, stderr io.Writer) int {
 	if !ok {
 		return usageError(stderr, "unknown statute %q in %s", args[1], k.name)
 	}
-	if len(args) == 2 {
+	switch {
+	case len(args) == 2:
 		printHeadings(stdout, s.provisions)
 		return 0
+	case len(args) == 3 && args[2] == "all":
+		printAll(stdout, s)
+		return 0
+	case args[2] == "tally":
+		return runTally(args[3:], k, s, stdout, stderr)
 	}
 	return printSections(args[2:], k, s, stdout, stderr)
-}
-
-// printSections prints the bodies of the sections named, in the order
-// written. One section is its body alone. Several are each labelled with
-// the published section and separated by a blank line. A section with
-// subsections lists them under its body. An unknown section prints
-// nothing at all.
-func printSections(args []string, k kind, s statute, stdout, stderr io.Writer) int {
-	ps := make([]provision, 0, len(args))
-	for _, arg := range args {
-		p, ok := s.find(arg)
-		if !ok {
-			return usageError(stderr, "unknown section %q in %s %s", arg, k.name, s.name)
-		}
-		ps = append(ps, p)
-	}
-	if len(ps) == 1 {
-		printBody(stdout, s, ps[0])
-		return 0
-	}
-	for i, p := range ps {
-		if i > 0 {
-			fmt.Fprintln(stdout)
-		}
-		fmt.Fprintln(stdout, p.section)
-		printBody(stdout, s, p)
-	}
-	return 0
-}
-
-// printBody prints a body and, when the section has subsections, a blank
-// line and one heading line per immediate subsection. Subsection bodies
-// are not printed.
-func printBody(stdout io.Writer, s statute, p provision) {
-	fmt.Fprintln(stdout, p.body)
-	if subs := s.subsections(p.section); len(subs) > 0 {
-		fmt.Fprintln(stdout)
-		printHeadings(stdout, subs)
-	}
 }
 
 // printHeadings prints one line per provision: the section, two spaces,
