@@ -5,8 +5,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 )
 
 // maxBody is the longest body, in Unicode code points, a provision may publish.
@@ -39,15 +37,14 @@ var law = []kind{
 }
 
 func init() {
-	seen := map[string]bool{}
 	for _, k := range law {
 		for _, s := range k.statutes {
+			seen := map[string]bool{}
 			for _, p := range s.provisions {
-				id := k.id(s, p)
-				if _, ok := parseSection(p.section); !ok || seen[id] {
-					panic(fmt.Sprintf("gates: bad or repeated id %q", id))
+				if _, ok := parseSection(p.section); !ok || seen[p.section] {
+					panic(fmt.Sprintf("gates: bad or repeated section %q in %s %s", p.section, k.name, s.name))
 				}
-				seen[id] = true
+				seen[p.section] = true
 			}
 			sortProvisions(s.provisions)
 		}
@@ -72,25 +69,11 @@ func (k kind) find(name string) (statute, bool) {
 	return statute{}, false
 }
 
-// id is <type letter>/<statute letter>/<section>, for example C/A/S.1.
-func (k kind) id(s statute, p provision) string {
-	return initial(k.name) + "/" + initial(s.name) + "/" + p.section
-}
-
-func initial(name string) string {
-	r, _ := utf8.DecodeRuneInString(name)
-	return string(unicode.ToUpper(r))
-}
-
-// findProvision looks up a published id exactly, case and all.
-func findProvision(id string) (provision, bool) {
-	for _, k := range law {
-		for _, s := range k.statutes {
-			for _, p := range s.provisions {
-				if k.id(s, p) == id {
-					return p, true
-				}
-			}
+// find looks up a published section exactly, case and all.
+func (s statute) find(section string) (provision, bool) {
+	for _, p := range s.provisions {
+		if p.section == section {
+			return p, true
 		}
 	}
 	return provision{}, false

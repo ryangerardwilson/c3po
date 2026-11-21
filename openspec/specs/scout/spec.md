@@ -246,7 +246,7 @@ Every c3po invocation SHALL add one to a daily counter for one catalog feature a
 - **AND** `c3po notify --help` SHALL be recorded as `help`
 
 ### Requirement: Gates is an app
-`c3po gates` SHALL run gates with the remaining arguments. `c3po` and `c3po help` SHALL list `gates` between `deport` and `gcal`. `c3po help -f gates` SHALL print the same text as `c3po gates help`. There SHALL be no gates screen. `c3po tui gates` SHALL exit 2. The usage feature SHALL be `gates`; help and version SHALL stay `help` and `version`. The usage record SHALL NOT store the type, the statute, or the id.
+`c3po gates` SHALL run gates with the remaining arguments. `c3po` and `c3po help` SHALL list `gates` between `deport` and `gcal`. `c3po help -f gates` SHALL print the same text as `c3po gates help`. There SHALL be no gates screen. `c3po tui gates` SHALL exit 2. The usage feature SHALL be `gates`; help and version SHALL stay `help` and `version`. The usage record SHALL NOT store the type, the statute, or the section.
 
 #### Scenario: Gates is listed with the apps
 - **WHEN** the operator runs `c3po`
@@ -259,7 +259,7 @@ Every c3po invocation SHALL add one to a daily counter for one catalog feature a
 - **AND** the text SHALL match `c3po gates help`
 
 #### Scenario: Gates usage feature
-- **WHEN** the agent runs `c3po gates get C/A/S.1`
+- **WHEN** the agent runs `c3po gates code architecture S.1`
 - **THEN** the recorded feature SHALL be `gates`
 - **AND** `c3po gates --help` SHALL be recorded as `help`
 

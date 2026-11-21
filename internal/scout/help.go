@@ -13,7 +13,7 @@ Usage:
   c3po ast [args...]
   c3po clippy [text...]
   c3po deport list|<port>
-  c3po gates [list [<type> [<statute>]] | get <id>]
+  c3po gates [<type> [<statute> [<section>]]]
   c3po gcal [args...]
   c3po gdrive [args...]
   c3po gmail [args...]

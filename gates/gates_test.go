@@ -15,28 +15,26 @@ func call(args ...string) (string, string, int) {
 }
 
 func TestTypesInOrder(t *testing.T) {
-	for _, args := range [][]string{nil, {"list"}} {
-		out, _, code := call(args...)
-		if code != 0 || out != "code\nessays\n" {
-			t.Fatalf("%q code %d\n%s", args, code, out)
-		}
+	out, _, code := call()
+	if code != 0 || out != "code\nessays\n" {
+		t.Fatalf("code %d\n%s", code, out)
 	}
 }
 
 func TestListStatutes(t *testing.T) {
-	out, _, code := call("list", "code")
+	out, _, code := call("code")
 	if code != 0 || out != "architecture\n" {
 		t.Fatalf("code %d\n%q", code, out)
 	}
-	out, _, code = call("list", "essays")
+	out, _, code = call("essays")
 	if code != 0 || out != "no statutes\n" {
 		t.Fatalf("essays code %d\n%q", code, out)
 	}
 }
 
 func TestListProvisions(t *testing.T) {
-	out, _, code := call("list", "code", "architecture")
-	if code != 0 || !strings.HasPrefix(out, "C/A/S.1  Data model\nC/A/S.1.1  Domain truth\n") {
+	out, _, code := call("code", "architecture")
+	if code != 0 || !strings.HasPrefix(out, "S.1  Data model\nS.1.1  Domain truth\n") {
 		t.Fatalf("code %d\n%s", code, out)
 	}
 	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
@@ -45,10 +43,9 @@ func TestListProvisions(t *testing.T) {
 	}
 	var prev []int
 	for _, line := range lines {
-		id, heading, ok := strings.Cut(line, "  ")
-		section := strings.TrimPrefix(id, "C/A/")
+		section, heading, ok := strings.Cut(line, "  ")
 		nums, parsed := parseSection(section)
-		if !ok || heading == "" || section == id || !parsed {
+		if !ok || heading == "" || !parsed {
 			t.Fatalf("bad line %q", line)
 		}
 		if prev != nil && !sectionLess(prev, nums) {
@@ -57,7 +54,7 @@ func TestListProvisions(t *testing.T) {
 		prev = nums
 	}
 	if strings.Contains(out, sequential) || strings.Contains(out, "\n\n") {
-		t.Fatalf("list carries a banner or blank line\n%s", out)
+		t.Fatalf("the provision list carries a banner or blank line\n%s", out)
 	}
 }
 
@@ -100,12 +97,12 @@ func TestSubsectionsHaveNoGaps(t *testing.T) {
 	}
 }
 
-func TestGetPrintsOnlyTheBody(t *testing.T) {
-	out, _, code := call("get", "C/A/S.1")
+func TestSectionPrintsOnlyTheBody(t *testing.T) {
+	out, _, code := call("code", "architecture", "S.1")
 	if code != 0 || out != "Everything else inherits its shape.\n" {
 		t.Fatalf("code %d\n%q", code, out)
 	}
-	out, _, code = call("get", "C/A/S.5.1")
+	out, _, code = call("code", "architecture", "S.5.1")
 	if code != 0 || out != "Hard rules marked MUST: do not write or approve code that violates them.\n" {
 		t.Fatalf("code %d\n%q", code, out)
 	}
@@ -115,7 +112,7 @@ func TestBodiesFitTheLimit(t *testing.T) {
 	for _, k := range law {
 		for _, s := range k.statutes {
 			for _, p := range s.provisions {
-				id := k.id(s, p)
+				id := k.name + " " + s.name + " " + p.section
 				if n := utf8.RuneCountInString(p.body); n > maxBody || n == 0 {
 					t.Errorf("%s body is %d code points", id, n)
 				}
@@ -125,9 +122,9 @@ func TestBodiesFitTheLimit(t *testing.T) {
 				if strings.ContainsAny(p.body, "*`\n") || strings.HasPrefix(p.body, "- ") {
 					t.Errorf("%s body keeps markdown", id)
 				}
-				out, _, code := call("get", id)
+				out, _, code := call(k.name, s.name, p.section)
 				if code != 0 || out != p.body+"\n" {
-					t.Errorf("get %s changed the body", id)
+					t.Errorf("%s changed the body", id)
 				}
 			}
 		}
@@ -152,15 +149,18 @@ func TestUnknownNames(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"list", "poems"}, "unknown type"},
-		{[]string{"list", "code", "style"}, "unknown statute"},
-		{[]string{"list", "essays", "architecture"}, "unknown statute"},
-		{[]string{"get", "c/a/s.1"}, "unknown gate"},
-		{[]string{"get", "C/A/S.99"}, "unknown gate"},
-		{[]string{"get", "C/A/S.1.0"}, "unknown gate"},
-		{[]string{"get", "C/A/S.01"}, "unknown gate"},
-		{[]string{"get", "C/A/1"}, "unknown gate"},
-		{[]string{"get", "1"}, "unknown gate"},
+		{[]string{"poems"}, "unknown type"},
+		{[]string{"nope", "C/A/S.1"}, "unknown type"},
+		{[]string{"Code"}, "unknown type"},
+		{[]string{"code", "style"}, "unknown statute"},
+		{[]string{"essays", "architecture"}, "unknown statute"},
+		{[]string{"code", "architecture", "S.9"}, "unknown section"},
+		{[]string{"code", "architecture", "S.99"}, "unknown section"},
+		{[]string{"code", "architecture", "S.1.0"}, "unknown section"},
+		{[]string{"code", "architecture", "S.01"}, "unknown section"},
+		{[]string{"code", "architecture", "1"}, "unknown section"},
+		{[]string{"code", "architecture", "s.1"}, "unknown section"},
+		{[]string{"code", "architecture", "C/A/S.1"}, "unknown section"},
 	} {
 		out, errOut, code := call(tc.args...)
 		if code != 2 || out != "" || !strings.Contains(errOut, tc.want) {
@@ -170,20 +170,22 @@ func TestUnknownNames(t *testing.T) {
 }
 
 func TestNoWayToRewrite(t *testing.T) {
-	for _, cmd := range []string{"edit", "add", "remove", "show", "nope"} {
-		out, errOut, code := call(cmd, "C/A/S.1")
+	for _, args := range [][]string{{"list"}, {"list", "code"}, {"get", "C/A/S.1"}, {"show", "code"},
+		{"edit", "S.1"}, {"add"}, {"remove", "code", "architecture", "S.1"}} {
+		cmd := args[0]
+		out, errOut, code := call(args...)
 		if code != 2 || out != "" {
 			t.Fatalf("%s code %d\n%s", cmd, code, out)
 		}
-		if !strings.Contains(errOut, "changed and reinstalled") {
+		if !strings.Contains(errOut, "unknown command") || !strings.Contains(errOut, "changed and reinstalled") {
 			t.Fatalf("%s does not say how the text changes\n%s", cmd, errOut)
 		}
 	}
 }
 
 func TestExtraWordsRejected(t *testing.T) {
-	for _, args := range [][]string{{"list", "code", "architecture", "S.1"}, {"get"},
-		{"get", "C/A/S.1", "C/A/S.2"}, {"help", "x"}, {"version", "x"}} {
+	for _, args := range [][]string{{"code", "architecture", "S.1", "S.2"}, {"code", "architecture", "S.1", "x"},
+		{"help", "x"}, {"version", "x"}} {
 		out, _, code := call(args...)
 		if code != 2 || out != "" {
 			t.Fatalf("%q code %d\n%s", args, code, out)
@@ -198,16 +200,19 @@ func TestHelpAndVersion(t *testing.T) {
 			t.Fatalf("%s code %d", word, code)
 		}
 	}
-	for _, needle := range []string{"c3po gates list", "c3po gates get", "code, essays", "architecture",
-		"C/A/S.1", "300", sequential, "<id>  pass", "<id>  fail", "<id>  fail  not judged",
+	for _, needle := range []string{"  c3po gates\n", "c3po gates <type>\n", "c3po gates <type> <statute>\n",
+		"c3po gates <type> <statute> <section>\n", "code, essays", "architecture",
+		"300", sequential, "  S.1  pass\n", "  S.1  fail\n", "  S.1.1  fail  not judged\n",
 		"The agent judges", "c3po only prints the text", "no gates screen", "no way to edit a gate",
 		"changed and reinstalled", "stricter than style, framework choice, or\nmicro-optimization"} {
 		if !strings.Contains(Help, needle) {
 			t.Fatalf("help missing %q", needle)
 		}
 	}
-	if strings.Contains(Help, "gates show") {
-		t.Fatal("help names show")
+	for _, gone := range []string{"gates show", "gates list", "gates get", "C/A/", "<id>"} {
+		if strings.Contains(Help, gone) {
+			t.Fatalf("help names %q", gone)
+		}
 	}
 	out, _, code := call("version")
 	if code != 0 || !strings.HasPrefix(out, "c3po ") {
