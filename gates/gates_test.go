@@ -2,9 +2,10 @@ package gates
 
 import (
 	"bytes"
-	"os"
+	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func call(args ...string) (string, string, int) {
@@ -22,78 +23,155 @@ func TestTypesInOrder(t *testing.T) {
 	}
 }
 
-func TestListCode(t *testing.T) {
+func TestListStatutes(t *testing.T) {
 	out, _, code := call("list", "code")
-	want := sequential + "\nSection 1  Architecture guardrails\n"
-	if code != 0 || out != want {
+	if code != 0 || out != "architecture\n" {
+		t.Fatalf("code %d\n%q", code, out)
+	}
+	out, _, code = call("list", "essays")
+	if code != 0 || out != "no statutes\n" {
+		t.Fatalf("essays code %d\n%q", code, out)
+	}
+}
+
+func TestListProvisions(t *testing.T) {
+	out, _, code := call("list", "code", "architecture")
+	if code != 0 || !strings.HasPrefix(out, "C/A/S.1  Data model\nC/A/S.1.1  Domain truth\n") {
+		t.Fatalf("code %d\n%s", code, out)
+	}
+	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
+	if len(lines) != len(architecture) {
+		t.Fatalf("%d lines for %d provisions", len(lines), len(architecture))
+	}
+	var prev []int
+	for _, line := range lines {
+		id, heading, ok := strings.Cut(line, "  ")
+		section := strings.TrimPrefix(id, "C/A/")
+		nums, parsed := parseSection(section)
+		if !ok || heading == "" || section == id || !parsed {
+			t.Fatalf("bad line %q", line)
+		}
+		if prev != nil && !sectionLess(prev, nums) {
+			t.Fatalf("%q is out of section order", line)
+		}
+		prev = nums
+	}
+	if strings.Contains(out, sequential) || strings.Contains(out, "\n\n") {
+		t.Fatalf("list carries a banner or blank line\n%s", out)
+	}
+}
+
+func TestTopSections(t *testing.T) {
+	want := map[string][2]string{
+		"S.1": {"Data model", "Everything else inherits its shape."},
+		"S.2": {"State ownership", "Each fact has exactly one owner and one write path."},
+		"S.3": {"Boundaries", "The core domain is independent of UI, database, and frameworks."},
+		"S.4": {"How to apply", "Before writing code, read the schema, the module layout, and where the affected state is written."},
+		"S.5": {"Severity", "Hard rules are MUST. Defaults are SHOULD."},
+		"S.6": {"Checklist", "A no on a hard rule blocks the change."},
+		"S.7": {"Reporting", "Report each finding as the rule, where, why it matters, and the fix."},
+		"S.8": {"Exceptions", "A rule may be broken deliberately, never silently."},
+	}
+	var top int
+	for _, p := range architecture {
+		if nums, _ := parseSection(p.section); len(nums) == 1 {
+			top++
+			if w := want[p.section]; p.heading != w[0] || p.body != w[1] {
+				t.Fatalf("%s is %q %q", p.section, p.heading, p.body)
+			}
+		}
+	}
+	if top != len(want) {
+		t.Fatalf("%d top sections", top)
+	}
+}
+
+func TestSubsectionsHaveNoGaps(t *testing.T) {
+	next := map[string]int{}
+	for _, p := range architecture {
+		parent, last, _ := strings.Cut(p.section[2:], ".")
+		if last == "" {
+			continue
+		}
+		next[parent]++
+		if want := "S." + parent + "." + strconv.Itoa(next[parent]); p.section != want {
+			t.Fatalf("%s where %s belongs", p.section, want)
+		}
+	}
+}
+
+func TestGetPrintsOnlyTheBody(t *testing.T) {
+	out, _, code := call("get", "C/A/S.1")
+	if code != 0 || out != "Everything else inherits its shape.\n" {
+		t.Fatalf("code %d\n%q", code, out)
+	}
+	out, _, code = call("get", "C/A/S.5.1")
+	if code != 0 || out != "Hard rules marked MUST: do not write or approve code that violates them.\n" {
 		t.Fatalf("code %d\n%q", code, out)
 	}
 }
 
-func TestEssaysHaveNoGates(t *testing.T) {
-	for _, cmd := range []string{"list", "show"} {
-		out, _, code := call(cmd, "essays")
-		if code != 0 || out != sequential+"\nno gates\n" {
-			t.Fatalf("%s code %d\n%q", cmd, code, out)
+func TestBodiesFitTheLimit(t *testing.T) {
+	for _, k := range law {
+		for _, s := range k.statutes {
+			for _, p := range s.provisions {
+				id := k.id(s, p)
+				if n := utf8.RuneCountInString(p.body); n > maxBody || n == 0 {
+					t.Errorf("%s body is %d code points", id, n)
+				}
+				if n := utf8.RuneCountInString(p.heading); n > 40 || n == 0 {
+					t.Errorf("%s heading is %d code points", id, n)
+				}
+				if strings.ContainsAny(p.body, "*`\n") || strings.HasPrefix(p.body, "- ") {
+					t.Errorf("%s body keeps markdown", id)
+				}
+				out, _, code := call("get", id)
+				if code != 0 || out != p.body+"\n" {
+					t.Errorf("get %s changed the body", id)
+				}
+			}
 		}
 	}
 }
 
-func TestShowOneGate(t *testing.T) {
-	out, _, code := call("show", "code", "1")
-	if code != 0 || !strings.HasPrefix(out, "Section 1\nArchitecture guardrails\n\n# Architecture guardrails\n") {
-		t.Fatalf("code %d\n%s", code, out)
-	}
-	if !strings.Contains(out, "stable, immutable identifier") {
-		t.Fatalf("statute sentence missing\n%s", out)
-	}
-	if strings.Contains(out, sequential) {
-		t.Fatalf("one gate repeats the sequential line\n%s", out)
-	}
-}
-
-func TestShowType(t *testing.T) {
-	out, _, code := call("show", "code")
-	if code != 0 || !strings.HasPrefix(out, sequential+"\n\nSection 1\nArchitecture guardrails\n\n") {
-		t.Fatalf("code %d\n%s", code, out)
-	}
-}
-
-func TestEmbeddedBodyMatchesFile(t *testing.T) {
-	raw, err := os.ReadFile("statute/code/1.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(raw) != codeArchitecture || !strings.HasSuffix(codeArchitecture, ".\n") {
-		t.Fatal("embedded body differs from statute/code/1.md")
-	}
-	out, _, _ := call("show", "code", "1")
-	if out != "Section 1\nArchitecture guardrails\n\n"+string(raw) {
-		t.Fatal("show changed the body")
-	}
-}
-
-func TestUnknownType(t *testing.T) {
-	for _, args := range [][]string{{"show", "poems"}, {"list", "poems"}} {
-		out, errOut, code := call(args...)
-		if code != 2 || out != "" || !strings.Contains(errOut, "unknown type") {
-			t.Fatalf("%q code %d\n%s%s", args, code, out, errOut)
+func TestRulesKept(t *testing.T) {
+	for _, phrase := range []string{"stable, immutable identifier", "exactly one write path",
+		"Dependencies MUST point inward", "inherits its shape"} {
+		var found bool
+		for _, p := range architecture {
+			found = found || strings.Contains(p.body, phrase)
+		}
+		if !found {
+			t.Errorf("no body says %q", phrase)
 		}
 	}
 }
 
-func TestUnknownSection(t *testing.T) {
-	for _, section := range []string{"2", "1.0", "01", "1.1"} {
-		out, errOut, code := call("show", "code", section)
-		if code != 2 || out != "" || !strings.Contains(errOut, "unknown section") {
-			t.Fatalf("%s code %d\n%s%s", section, code, out, errOut)
+func TestUnknownNames(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"list", "poems"}, "unknown type"},
+		{[]string{"list", "code", "style"}, "unknown statute"},
+		{[]string{"list", "essays", "architecture"}, "unknown statute"},
+		{[]string{"get", "c/a/s.1"}, "unknown gate"},
+		{[]string{"get", "C/A/S.99"}, "unknown gate"},
+		{[]string{"get", "C/A/S.1.0"}, "unknown gate"},
+		{[]string{"get", "C/A/S.01"}, "unknown gate"},
+		{[]string{"get", "C/A/1"}, "unknown gate"},
+		{[]string{"get", "1"}, "unknown gate"},
+	} {
+		out, errOut, code := call(tc.args...)
+		if code != 2 || out != "" || !strings.Contains(errOut, tc.want) {
+			t.Fatalf("%q code %d\n%s%s", tc.args, code, out, errOut)
 		}
 	}
 }
 
 func TestNoWayToRewrite(t *testing.T) {
-	for _, cmd := range []string{"edit", "add", "remove", "nope"} {
-		out, errOut, code := call(cmd, "code", "1")
+	for _, cmd := range []string{"edit", "add", "remove", "show", "nope"} {
+		out, errOut, code := call(cmd, "C/A/S.1")
 		if code != 2 || out != "" {
 			t.Fatalf("%s code %d\n%s", cmd, code, out)
 		}
@@ -104,9 +182,11 @@ func TestNoWayToRewrite(t *testing.T) {
 }
 
 func TestExtraWordsRejected(t *testing.T) {
-	for _, args := range [][]string{{"list", "code", "1"}, {"show"}, {"show", "code", "1", "2"}, {"help", "x"}} {
-		if _, _, code := call(args...); code != 2 {
-			t.Fatalf("%q code %d", args, code)
+	for _, args := range [][]string{{"list", "code", "architecture", "S.1"}, {"get"},
+		{"get", "C/A/S.1", "C/A/S.2"}, {"help", "x"}, {"version", "x"}} {
+		out, _, code := call(args...)
+		if code != 2 || out != "" {
+			t.Fatalf("%q code %d\n%s", args, code, out)
 		}
 	}
 }
@@ -118,11 +198,16 @@ func TestHelpAndVersion(t *testing.T) {
 			t.Fatalf("%s code %d", word, code)
 		}
 	}
-	for _, needle := range []string{"code, essays", "c3po gates list", "c3po gates show", sequential,
-		"changed and reinstalled", "The agent judges", "Section <number>  <title>  pass", "not judged"} {
+	for _, needle := range []string{"c3po gates list", "c3po gates get", "code, essays", "architecture",
+		"C/A/S.1", "300", sequential, "<id>  pass", "<id>  fail", "<id>  fail  not judged",
+		"The agent judges", "c3po only prints the text", "no gates screen", "no way to edit a gate",
+		"changed and reinstalled", "stricter than style, framework choice, or\nmicro-optimization"} {
 		if !strings.Contains(Help, needle) {
 			t.Fatalf("help missing %q", needle)
 		}
+	}
+	if strings.Contains(Help, "gates show") {
+		t.Fatal("help names show")
 	}
 	out, _, code := call("version")
 	if code != 0 || !strings.HasPrefix(out, "c3po ") {
@@ -131,35 +216,35 @@ func TestHelpAndVersion(t *testing.T) {
 }
 
 func TestSectionOrderIsNumeric(t *testing.T) {
-	gs := []gate{{section: "10"}, {section: "3.5.1"}, {section: "2.3"}, {section: "3"}, {section: "1"}, {section: "2"}}
-	sortGates(gs)
+	ps := []provision{{section: "S.10"}, {section: "S.3.5.1"}, {section: "S.2.3"}, {section: "S.3"}, {section: "S.1"}, {section: "S.2"}}
+	sortProvisions(ps)
 	var got []string
-	for _, g := range gs {
-		got = append(got, g.section)
+	for _, p := range ps {
+		got = append(got, p.section)
 	}
-	if strings.Join(got, " ") != "1 2 2.3 3 3.5.1 10" {
+	if strings.Join(got, " ") != "S.1 S.2 S.2.3 S.3 S.3.5.1 S.10" {
 		t.Fatalf("order %v", got)
 	}
 }
 
 func TestParseSection(t *testing.T) {
-	for _, s := range []string{"1", "2.3", "3.5.1", "10"} {
+	for _, s := range []string{"S.1", "S.2.3", "S.3.5.1", "S.10"} {
 		if _, ok := parseSection(s); !ok {
 			t.Fatalf("%q refused", s)
 		}
 	}
-	for _, s := range []string{"", "0", "1.0", "01", "1..2", "1.", "+1", "-1", "a"} {
+	for _, s := range []string{"", "1", "S", "S.", "s.1", "S.0", "S.1.0", "S.01", "S.1..2", "S.1.", "S.+1", "S.-1", "S.a"} {
 		if _, ok := parseSection(s); ok {
 			t.Fatalf("%q accepted", s)
 		}
 	}
 }
 
-func TestStatuteShape(t *testing.T) {
-	if len(statute) != 2 || statute[0].name != "code" || statute[1].name != "essays" {
-		t.Fatalf("types %v", statute)
+func TestLawShape(t *testing.T) {
+	if len(law) != 2 || law[0].name != "code" || law[1].name != "essays" {
+		t.Fatalf("types %v", law)
 	}
-	if len(statute[0].gates) != 1 || len(statute[1].gates) != 0 {
-		t.Fatal("only code section 1 is published")
+	if len(law[0].statutes) != 1 || law[0].statutes[0].name != "architecture" || len(law[1].statutes) != 0 {
+		t.Fatal("only code architecture is published")
 	}
 }

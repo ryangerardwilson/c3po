@@ -1,51 +1,61 @@
 package gates
 
 import (
-	_ "embed"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
-// gate is one section of a type's statute.
-type gate struct {
+// maxBody is the longest body, in Unicode code points, a provision may publish.
+const maxBody = 300
+
+// provision is one numbered rule of a statute.
+type provision struct {
 	section string
-	title   string
+	heading string
 	body    string
 }
 
-// kind is a broad subject and its gates in section order.
-type kind struct {
-	name  string
-	gates []gate
+// statute is a named body of provisions in section order.
+type statute struct {
+	name       string
+	provisions []provision
 }
 
-//go:embed statute/code/1.md
-var codeArchitecture string
+// kind is a broad subject and its statutes.
+type kind struct {
+	name     string
+	statutes []statute
+}
 
-// statute is the published legislation, in type order. It is compiled into
-// the binary; there is no file, directory, or command that changes it.
-var statute = []kind{
-	{name: "code", gates: []gate{
-		{section: "1", title: "Architecture guardrails", body: codeArchitecture},
-	}},
+// law is the published legislation, in type order. It is compiled into the
+// binary; there is no file, directory, or command that changes it.
+var law = []kind{
+	{name: "code", statutes: []statute{{name: "architecture", provisions: architecture}}},
 	{name: "essays"},
 }
 
 func init() {
-	for i := range statute {
-		for _, g := range statute[i].gates {
-			if _, ok := parseSection(g.section); !ok {
-				panic(fmt.Sprintf("gates: bad section %q in %s", g.section, statute[i].name))
+	seen := map[string]bool{}
+	for _, k := range law {
+		for _, s := range k.statutes {
+			for _, p := range s.provisions {
+				id := k.id(s, p)
+				if _, ok := parseSection(p.section); !ok || seen[id] {
+					panic(fmt.Sprintf("gates: bad or repeated id %q", id))
+				}
+				seen[id] = true
 			}
+			sortProvisions(s.provisions)
 		}
-		sortGates(statute[i].gates)
 	}
 }
 
 func findKind(name string) (kind, bool) {
-	for _, k := range statute {
+	for _, k := range law {
 		if k.name == name {
 			return k, true
 		}
@@ -53,19 +63,47 @@ func findKind(name string) (kind, bool) {
 	return kind{}, false
 }
 
-func (k kind) find(section string) (gate, bool) {
-	for _, g := range k.gates {
-		if g.section == section {
-			return g, true
+func (k kind) find(name string) (statute, bool) {
+	for _, s := range k.statutes {
+		if s.name == name {
+			return s, true
 		}
 	}
-	return gate{}, false
+	return statute{}, false
 }
 
-// parseSection reads one or more positive integers separated by dots.
-// Zero, a leading zero, a sign, and an empty part are refused.
+// id is <type letter>/<statute letter>/<section>, for example C/A/S.1.
+func (k kind) id(s statute, p provision) string {
+	return initial(k.name) + "/" + initial(s.name) + "/" + p.section
+}
+
+func initial(name string) string {
+	r, _ := utf8.DecodeRuneInString(name)
+	return string(unicode.ToUpper(r))
+}
+
+// findProvision looks up a published id exactly, case and all.
+func findProvision(id string) (provision, bool) {
+	for _, k := range law {
+		for _, s := range k.statutes {
+			for _, p := range s.provisions {
+				if k.id(s, p) == id {
+					return p, true
+				}
+			}
+		}
+	}
+	return provision{}, false
+}
+
+// parseSection reads S and then one or more positive integers separated by
+// dots. Zero, a leading zero, a sign, an empty part, and a missing S are refused.
 func parseSection(s string) ([]int, bool) {
-	parts := strings.Split(s, ".")
+	rest, ok := strings.CutPrefix(s, "S.")
+	if !ok {
+		return nil, false
+	}
+	parts := strings.Split(rest, ".")
 	nums := make([]int, len(parts))
 	for i, p := range parts {
 		n, err := strconv.Atoi(p)
@@ -87,11 +125,11 @@ func sectionLess(a, b []int) bool {
 	return len(a) < len(b)
 }
 
-// sortGates puts gates in section order. Every section must parse.
-func sortGates(gs []gate) {
-	sort.SliceStable(gs, func(i, j int) bool {
-		a, _ := parseSection(gs[i].section)
-		b, _ := parseSection(gs[j].section)
+// sortProvisions puts provisions in section order. Every section must parse.
+func sortProvisions(ps []provision) {
+	sort.SliceStable(ps, func(i, j int) bool {
+		a, _ := parseSection(ps[i].section)
+		b, _ := parseSection(ps[j].section)
 		return sectionLess(a, b)
 	})
 }
