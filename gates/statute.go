@@ -84,6 +84,19 @@ func (s statute) find(arg string) (provision, bool) {
 	return provision{}, false
 }
 
+// subsections returns the immediate subsections of a section in section
+// order: the section, a dot, and one more number. A grandchild is not one.
+func (s statute) subsections(section string) []provision {
+	var subs []provision
+	for _, p := range s.provisions {
+		rest, ok := strings.CutPrefix(p.section, section+".")
+		if ok && !strings.Contains(rest, ".") {
+			subs = append(subs, p)
+		}
+	}
+	return subs
+}
+
 // resolveSection turns a section argument into its published § form. The
 // argument may carry the section sign, the old S. prefix, or neither.
 func resolveSection(arg string) (string, bool) {

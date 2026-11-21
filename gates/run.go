@@ -49,8 +49,10 @@ name §1.1. Names are case-sensitive. A body is at most 300 characters.
 
 One section prints only its body. Several sections after the statute
 print in the order written: each section on its own line, then its
-body, with a blank line before the next section. If any section is
-unknown, nothing is printed.
+body, with a blank line before the next section. A section with
+subsections lists those subsections under the body, one section and
+heading per line, one level deeper only. If any section is unknown,
+nothing is printed.
 
 architecture holds three structural disciplines: data model, state
 ownership, and boundaries. Mistakes there are paid for in every future
@@ -112,9 +114,7 @@ func probe(args []string, stdout, stderr io.Writer) int {
 		return usageError(stderr, "unknown statute %q in %s", args[1], k.name)
 	}
 	if len(args) == 2 {
-		for _, p := range s.provisions {
-			fmt.Fprintf(stdout, "%s  %s\n", p.section, p.heading)
-		}
+		printHeadings(stdout, s.provisions)
 		return 0
 	}
 	return printSections(args[2:], k, s, stdout, stderr)
@@ -122,8 +122,9 @@ func probe(args []string, stdout, stderr io.Writer) int {
 
 // printSections prints the bodies of the sections named, in the order
 // written. One section is its body alone. Several are each labelled with
-// the published section and separated by a blank line. An unknown section
-// prints nothing at all.
+// the published section and separated by a blank line. A section with
+// subsections lists them under its body. An unknown section prints
+// nothing at all.
 func printSections(args []string, k kind, s statute, stdout, stderr io.Writer) int {
 	ps := make([]provision, 0, len(args))
 	for _, arg := range args {
@@ -134,16 +135,36 @@ func printSections(args []string, k kind, s statute, stdout, stderr io.Writer) i
 		ps = append(ps, p)
 	}
 	if len(ps) == 1 {
-		fmt.Fprintln(stdout, ps[0].body)
+		printBody(stdout, s, ps[0])
 		return 0
 	}
 	for i, p := range ps {
 		if i > 0 {
 			fmt.Fprintln(stdout)
 		}
-		fmt.Fprintf(stdout, "%s\n%s\n", p.section, p.body)
+		fmt.Fprintln(stdout, p.section)
+		printBody(stdout, s, p)
 	}
 	return 0
+}
+
+// printBody prints a body and, when the section has subsections, a blank
+// line and one heading line per immediate subsection. Subsection bodies
+// are not printed.
+func printBody(stdout io.Writer, s statute, p provision) {
+	fmt.Fprintln(stdout, p.body)
+	if subs := s.subsections(p.section); len(subs) > 0 {
+		fmt.Fprintln(stdout)
+		printHeadings(stdout, subs)
+	}
+}
+
+// printHeadings prints one line per provision: the section, two spaces,
+// and the heading, so the section can be copied as the next argument.
+func printHeadings(stdout io.Writer, ps []provision) {
+	for _, p := range ps {
+		fmt.Fprintf(stdout, "%s  %s\n", p.section, p.heading)
+	}
 }
 
 func listStatutes(stdout io.Writer, k kind) {

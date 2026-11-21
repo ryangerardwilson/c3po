@@ -98,25 +98,62 @@ func TestSubsectionsHaveNoGaps(t *testing.T) {
 }
 
 func TestSectionPrintsOnlyTheBody(t *testing.T) {
-	out, _, code := call("code", "architecture", "§1")
-	if code != 0 || out != "Everything else inherits its shape.\n" {
-		t.Fatalf("code %d\n%q", code, out)
-	}
-	for _, arg := range []string{"1", "S.1"} {
-		if out, _, code := call("code", "architecture", arg); code != 0 || out != "Everything else inherits its shape.\n" {
+	for _, arg := range []string{"§8.3", "8.3", "S.8.3"} {
+		if out, _, code := call("code", "architecture", arg); code != 0 || out != "Mention it in the summary of the change.\n" {
 			t.Fatalf("%s code %d\n%q", arg, code, out)
 		}
 	}
-	out, _, code = call("code", "architecture", "§5.1")
+	out, _, code := call("code", "architecture", "§5.1")
 	if code != 0 || out != "Hard rules marked MUST: do not write or approve code that violates them.\n" {
 		t.Fatalf("code %d\n%q", code, out)
+	}
+}
+
+const exceptions = "A rule may be broken deliberately, never silently.\n\n" +
+	"§8.1  Comment at the site\n§8.2  Contain the violation\n" +
+	"§8.3  Mention it in the summary\n§8.4  Legitimate exceptions\n"
+
+func TestSectionListsItsSubsections(t *testing.T) {
+	for _, arg := range []string{"8", "§8", "S.8"} {
+		if out, _, code := call("code", "architecture", arg); code != 0 || out != exceptions {
+			t.Fatalf("%s code %d\n%q", arg, code, out)
+		}
+	}
+	out, _, code := call("code", "architecture", "1")
+	if code != 0 || !strings.HasPrefix(out, "Everything else inherits its shape.\n\n§1.1  Domain truth\n") ||
+		!strings.HasSuffix(out, "\n§1.19  Red flag: payload unlike the model\n") || strings.Contains(out, "Goal:") {
+		t.Fatalf("code %d\n%q", code, out)
+	}
+}
+
+func TestOnlyTheNextLevelIsListed(t *testing.T) {
+	ps := []provision{{"§8", "Eight", "eight"}, {"§8.1", "One", "one"}, {"§8.1.2.3", "Deep", "deep"}, {"§8.2", "Two", "two"}}
+	for i := 1; i <= 6; i++ {
+		n := strconv.Itoa(i)
+		ps = append(ps, provision{"§8.1." + n, "Leaf " + n, "leaf " + n})
+	}
+	sortProvisions(ps)
+	s := statute{name: "deep", provisions: ps}
+	var out bytes.Buffer
+	printBody(&out, s, ps[0])
+	if out.String() != "eight\n\n§8.1  One\n§8.2  Two\n" {
+		t.Fatalf("§8\n%q", out.String())
+	}
+	out.Reset()
+	printBody(&out, s, ps[1])
+	want := "one\n\n"
+	for i := 1; i <= 6; i++ {
+		want += "§8.1." + strconv.Itoa(i) + "  Leaf " + strconv.Itoa(i) + "\n"
+	}
+	if out.String() != want {
+		t.Fatalf("§8.1\n%q", out.String())
 	}
 }
 
 func TestThreeFormsNameOneSection(t *testing.T) {
 	for _, forms := range [][]string{{"§6", "6", "S.6"}, {"§8.3", "8.3", "S.8.3"}, {"§6.1", "6.1", "S.6.1"}} {
 		want, _, code := call("code", "architecture", forms[0])
-		if code != 0 || want == "" || strings.Contains(want, "§") {
+		if code != 0 || want == "" || strings.HasPrefix(want, "§") {
 			t.Fatalf("%s code %d\n%q", forms[0], code, want)
 		}
 		for _, form := range forms[1:] {
@@ -133,17 +170,21 @@ func TestThreeFormsNameOneSection(t *testing.T) {
 }
 
 func TestSeveralSectionsInTheOrderWritten(t *testing.T) {
-	want := "§6\nA no on a hard rule blocks the change.\n\n" +
-		"§7\nReport each finding as the rule, where, why it matters, and the fix.\n\n" +
-		"§8.3\nMention it in the summary of the change.\n"
+	six, _, _ := call("code", "architecture", "6")
+	seven, _, _ := call("code", "architecture", "7")
+	if !strings.Contains(six, "\n\n§6.1  ") || !strings.HasSuffix(six, "\n§6.13  Boundaries: business rule in the core\n") ||
+		!strings.HasSuffix(seven, "\n§7.5  Finding order\n") {
+		t.Fatalf("§6 and §7 do not list their subsections\n%q\n%q", six, seven)
+	}
+	want := "§6\n" + six + "\n§7\n" + seven + "\n§8.3\nMention it in the summary of the change.\n"
 	for _, args := range [][]string{{"6", "7", "8.3"}, {"§6", "S.7", "8.3"}} {
 		out, errOut, code := call(append([]string{"code", "architecture"}, args...)...)
 		if code != 0 || out != want || errOut != "" {
 			t.Fatalf("%q code %d\n%q\n%s", args, code, out, errOut)
 		}
 	}
-	out, _, code := call("code", "architecture", "8.3", "§1")
-	if code != 0 || out != "§8.3\nMention it in the summary of the change.\n\n§1\nEverything else inherits its shape.\n" {
+	out, _, code := call("code", "architecture", "8.3", "8")
+	if code != 0 || out != "§8.3\nMention it in the summary of the change.\n\n§8\n"+exceptions {
 		t.Fatalf("statute order instead of the order written: code %d\n%q", code, out)
 	}
 }
@@ -163,7 +204,7 @@ func TestBodiesFitTheLimit(t *testing.T) {
 					t.Errorf("%s body keeps markdown", id)
 				}
 				out, _, code := call(k.name, s.name, p.section)
-				if code != 0 || out != p.body+"\n" {
+				if code != 0 || !strings.HasPrefix(out, p.body+"\n") {
 					t.Errorf("%s changed the body", id)
 				}
 			}
@@ -257,6 +298,7 @@ func TestHelpAndVersion(t *testing.T) {
 	for _, needle := range []string{"  c3po gates\n", "c3po gates <type>\n", "c3po gates <type> <statute>\n",
 		"c3po gates <type> <statute> <section>...\n", "c3po gates code architecture §1.1\n",
 		"c3po gates code architecture 6 7 8.3\n", "§1.1, 1.1, or S.1.1", "Several sections after the statute",
+		"A section with\nsubsections lists those subsections under the body",
 		"code, essays", "architecture",
 		"300", sequential, "  §1  pass\n", "  §1  fail\n", "  §1.1  fail  not judged\n",
 		"The agent judges", "c3po only prints the text", "no gates screen", "no way to edit a gate",
