@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 type terminal struct {
@@ -55,6 +56,27 @@ func (t *terminal) readKey() (string, error) {
 		return "", err
 	}
 	return decodeKey(buf[:n]), nil
+}
+
+func (t *terminal) readUntil(deadline time.Time) (string, bool, error) {
+	for {
+		ready, err := waitReadable(int(t.in.Fd()), deadline.Sub(now()))
+		if err != nil {
+			return "", false, err
+		}
+		if !ready {
+			return "", false, nil
+		}
+		buf := make([]byte, 16)
+		n, err := t.in.Read(buf)
+		if err != nil {
+			return "", false, err
+		}
+		if n == 0 {
+			continue
+		}
+		return decodeKey(buf[:n]), true, nil
+	}
 }
 
 var escapeKeys = map[string]string{

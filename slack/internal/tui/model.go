@@ -2,6 +2,8 @@
 package tui
 
 import (
+	"time"
+
 	"github.com/ryangerardwilson/c3po/internal/tuisession"
 )
 
@@ -13,10 +15,23 @@ const (
 	styleReset  = "\x1b[0m"
 )
 
+// syncEvery is how often an open screen asks the desk to refresh.
+var syncEvery = 10 * time.Minute
+
+// helpHold is the key wait while the shortcut list is open.
+// A refresh that comes due during that list waits until the list closes.
+var helpHold = 24 * time.Hour
+
+var now = time.Now
+
 type screen interface {
 	size() (width, height int)
 	paint(frame string)
 	readKey() (string, error)
+}
+
+type keyWaiter interface {
+	readUntil(deadline time.Time) (key string, ok bool, err error)
 }
 
 type model struct {
@@ -41,19 +56,57 @@ func (m *model) loop(term screen) error {
 		stop := startSnapshots()
 		defer stop()
 	}
+	next := now().Add(syncEvery)
 	for {
 		m.width, m.height = term.size()
 		term.paint(m.render())
-		key, err := term.readKey()
+		key, ok, err := waitKey(term, m.readDeadline(next))
 		if err != nil {
 			return err
 		}
+		if !ok {
+			if m.help {
+				continue
+			}
+			m.paintSync(term)
+			next = now().Add(syncEvery)
+			continue
+		}
+		manual := key == "s" && !m.help
 		if m.syncKey(term, key) {
 			m.noteSession()
 			return nil
 		}
+		if manual {
+			next = now().Add(syncEvery)
+		}
 		m.noteSession()
 	}
+}
+
+func (m *model) readDeadline(next time.Time) time.Time {
+	if m.help {
+		return now().Add(helpHold)
+	}
+	return next
+}
+
+func (m *model) paintSync(term screen) {
+	m.status = "syncing"
+	m.err = nil
+	term.paint(m.render())
+	m.sync()
+}
+
+func waitKey(term screen, deadline time.Time) (string, bool, error) {
+	if waiter, ok := term.(keyWaiter); ok {
+		return waiter.readUntil(deadline)
+	}
+	key, err := term.readKey()
+	if err != nil {
+		return "", false, err
+	}
+	return key, true, nil
 }
 
 func (m *model) syncKey(term screen, key string) bool {

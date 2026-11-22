@@ -84,7 +84,7 @@ func TestXLHelp(t *testing.T) {
 
 func TestSlackHelp(t *testing.T) {
 	out, _, code := run("slack", "help")
-	for _, want := range []string{"r2d2 slack", "h and l switch workspace", "Opening an item does not mark it read", "syncs the desk from Slack"} {
+	for _, want := range []string{"r2d2 slack", "h and l switch workspace", "Opening an item does not mark it read", "syncs the desk from Slack", "syncs about every 10 minutes"} {
 		if code != 0 || !bytes.Contains(out, []byte(want)) {
 			t.Fatalf("help %d missing %q\n%s", code, want, out)
 		}

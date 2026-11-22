@@ -21,7 +21,7 @@ Slack desk. Direct messages, tags, and what to know.
 j and k move. h and l switch workspace.
 enter opens the row. Opening an item does not mark it read.
 r marks the row read on the desk.
-s syncs the desk from Slack. The screen shows when the desk last synced.
+s syncs the desk from Slack. The screen also syncs about every 10 minutes. The screen shows when the desk last synced.
 q quits. ? lists the shortcuts.
 The rows come from the Slack desk. The token is not shown.
 `

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ryangerardwilson/c3po/internal/tuisession"
 )
@@ -406,5 +407,180 @@ func TestResumeRestoresTheRowAndOmitsTheToken(t *testing.T) {
 	raw := strings.Join(append([]string{body.CWD, body.Path, body.Cursor}, body.Args...), " ")
 	if !ok || strings.Contains(raw, "xoxp-") || body.Screen != "slack" || body.Path != "2" {
 		t.Fatalf("body %+v", body)
+	}
+}
+
+func freshBoard() Board {
+	next := sampleBoard()
+	next.RefreshedAt = "2026-11-18T03:16:09Z"
+	next.Workspaces[0].DMs = append([]Item{{
+		MessageID: "D2:2",
+		Sender:    "Bea",
+		Text:      "fresh note",
+		Date:      "Wed, 18 Nov 2026, 8:40 AM IST",
+	}}, next.Workspaces[0].DMs...)
+	return next
+}
+
+type timedKey struct {
+	at  time.Time
+	key string
+}
+
+type timedScreen struct {
+	fakeScreen
+	at       time.Time
+	keys     []timedKey
+	timeouts int
+}
+
+func (s *timedScreen) readUntil(deadline time.Time) (string, bool, error) {
+	if len(s.keys) > 0 && !s.keys[0].at.After(deadline) {
+		if s.keys[0].at.After(s.at) {
+			s.at = s.keys[0].at
+		}
+		key := s.keys[0].key
+		s.keys = s.keys[1:]
+		return key, true, nil
+	}
+	s.timeouts++
+	if s.timeouts > 4 {
+		return "", false, errors.New("too many timeouts")
+	}
+	if len(s.keys) == 0 {
+		return "", false, io.EOF
+	}
+	if deadline.After(s.at) {
+		s.at = deadline
+	}
+	return "", false, nil
+}
+
+func bindClock(t *testing.T, s *timedScreen) {
+	t.Helper()
+	old := now
+	now = func() time.Time { return s.at }
+	t.Cleanup(func() { now = old })
+}
+
+func runTimed(t *testing.T, m *model, start time.Time, keys ...timedKey) *timedScreen {
+	t.Helper()
+	screen := &timedScreen{fakeScreen: fakeScreen{width: 100, height: 24}, at: start}
+	screen.keys = append([]timedKey(nil), keys...)
+	bindClock(t, screen)
+	if err := m.loop(screen); err != nil {
+		t.Fatal(err)
+	}
+	return screen
+}
+
+func clockStart() time.Time {
+	return time.Date(2026, 11, 18, 8, 0, 0, 0, time.UTC)
+}
+
+func TestAutoSyncRefreshesTheDesk(t *testing.T) {
+	stubDesk(t, freshBoard(), nil, nil)
+	start := clockStart()
+	screen := &timedScreen{fakeScreen: fakeScreen{width: 100, height: 24}, at: start}
+	screen.keys = []timedKey{{at: start.Add(syncEvery + time.Minute), key: "q"}}
+	bindClock(t, screen)
+	n := 0
+	old := syncDesk
+	syncDesk = func() error {
+		n++
+		if len(screen.frames) == 0 {
+			t.Fatal("no frame before refresh")
+		}
+		last := screen.frames[len(screen.frames)-1]
+		if !strings.Contains(last, "syncing") || !strings.Contains(last, "need the numbers") {
+			t.Fatalf("before refresh\n%s", last)
+		}
+		return nil
+	}
+	t.Cleanup(func() { syncDesk = old })
+	if err := newModel(sampleBoard(), nil).loop(screen); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("syncs %d", n)
+	}
+	last := screen.frames[len(screen.frames)-1]
+	if !strings.Contains(last, "fresh note") || !strings.Contains(last, "last synced at Wed, 18 Nov 2026, 8:46 AM IST") || strings.Contains(last, "syncing") {
+		t.Fatalf("after\n%s", last)
+	}
+}
+
+func TestOpenDoesNotSync(t *testing.T) {
+	syncs := stubSync(t, nil)
+	start := clockStart()
+	runTimed(t, newModel(sampleBoard(), nil), start, timedKey{at: start.Add(time.Minute), key: "q"})
+	if *syncs != 0 {
+		t.Fatalf("syncs %d", *syncs)
+	}
+}
+
+func TestHelpHoldsTheRefresh(t *testing.T) {
+	syncs := stubSync(t, nil)
+	start := clockStart()
+	runTimed(t, newModel(sampleBoard(), nil), start,
+		timedKey{at: start, key: "?"},
+		timedKey{at: start.Add(15 * time.Minute), key: "q"},
+	)
+	if *syncs != 0 {
+		t.Fatalf("syncs %d", *syncs)
+	}
+}
+
+func TestHelpCloseSyncsWhenDue(t *testing.T) {
+	stubDesk(t, freshBoard(), nil, nil)
+	syncs := stubSync(t, nil)
+	start := clockStart()
+	screen := runTimed(t, newModel(sampleBoard(), nil), start,
+		timedKey{at: start, key: "?"},
+		timedKey{at: start.Add(15 * time.Minute), key: "esc"},
+		timedKey{at: start.Add(16 * time.Minute), key: "q"},
+	)
+	if *syncs != 1 {
+		t.Fatalf("syncs %d", *syncs)
+	}
+	var syncing string
+	for _, frame := range screen.frames {
+		if strings.Contains(frame, "syncing") {
+			syncing = frame
+		}
+	}
+	if syncing == "" || strings.Contains(syncing, "j/k    move") || !strings.Contains(syncing, "need the numbers") {
+		t.Fatalf("syncing\n%s", syncing)
+	}
+	last := screen.frames[len(screen.frames)-1]
+	if !strings.Contains(last, "fresh note") || !strings.Contains(last, "last synced at Wed, 18 Nov 2026, 8:46 AM IST") {
+		t.Fatalf("after\n%s", last)
+	}
+}
+
+func TestFailedAutoSyncKeepsTheTable(t *testing.T) {
+	syncs := stubSync(t, errors.New("slack refused"))
+	start := clockStart()
+	screen := runTimed(t, newModel(sampleBoard(), nil), start,
+		timedKey{at: start.Add(syncEvery + 30*time.Second), key: "q"},
+	)
+	if *syncs != 1 {
+		t.Fatalf("syncs %d", *syncs)
+	}
+	last := screen.frames[len(screen.frames)-1]
+	if !strings.Contains(last, "need the numbers") || !strings.Contains(last, "slack refused") {
+		t.Fatalf("frame\n%s", last)
+	}
+}
+
+func TestManualSyncRestartsTheWait(t *testing.T) {
+	syncs := stubSync(t, nil)
+	start := clockStart()
+	runTimed(t, newModel(sampleBoard(), nil), start,
+		timedKey{at: start.Add(9 * time.Minute), key: "s"},
+		timedKey{at: start.Add(10*time.Minute + 30*time.Second), key: "q"},
+	)
+	if *syncs != 1 {
+		t.Fatalf("syncs %d", *syncs)
 	}
 }
