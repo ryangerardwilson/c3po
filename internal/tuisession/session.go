@@ -1,6 +1,7 @@
-// Package tuisession stores one sqlx session for each c3po terminal screen.
-// The session body stays after the screen closes so a later --resume can
-// open the same screen. The active row is only present while the process runs.
+// Package tuisession stores one session for each c3po terminal screen in the
+// tui_session table. The session stays after the screen closes so a later
+// --resume can open the same screen. Its tui_active row is the running
+// process and is only present while that process runs.
 package tuisession
 
 import (
@@ -18,32 +19,17 @@ import (
 	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
 )
 
-const (
-	appName     = "tui"
-	kindSession = "session"
-	kindActive  = "active"
-)
-
 var idPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
-// Body is the durable screen state. Cursor is a stable row key. Path is a
+// Place is where a screen was: the durable screen state. Cursor is a stable row key. Path is a
 // directory, a file, or a parent id. Args are the flags a one-shot screen
-// such as l should replay. Secrets are not stored.
-type Body struct {
-	ID     string   `json:"id"`
-	Screen string   `json:"screen"`
-	CWD    string   `json:"cwd,omitempty"`
-	Path   string   `json:"path,omitempty"`
-	Cursor string   `json:"cursor,omitempty"`
-	Args   []string `json:"args,omitempty"`
-}
-
-type activeBody struct {
-	SessionID string `json:"session_id"`
-	PID       int    `json:"pid"`
-	PIDStart  int64  `json:"pid_start"`
-	Screen    string `json:"screen"`
-	CWD       string `json:"cwd,omitempty"`
+// such as l should replay; nil means none were noted. Secrets are not stored.
+type Place struct {
+	Screen string
+	CWD    string
+	Path   string
+	Cursor string
+	Args   []string
 }
 
 // Session is one open screen. A nil Session ignores Note, Place, and Close
@@ -51,8 +37,9 @@ type activeBody struct {
 type Session struct {
 	id       string
 	screen   string
-	body     Body
+	body     Place
 	restored bool
+	pid      int
 }
 
 // TakeResume removes one --resume <id> or --resume=<id> from args.
@@ -93,6 +80,11 @@ func TakeResume(args []string) (string, []string, error) {
 // Open loads id or creates a session. A missing id returns an error so restore
 // does not start an empty screen. The active row records this process.
 func Open(screen, id string) (*Session, error) {
+	return open(screen, id, os.Getpid())
+}
+
+// open is Open for the screen running as process pid.
+func open(screen, id string, pid int) (*Session, error) {
 	if screen == "" {
 		return nil, errors.New("c3po: session screen is empty")
 	}
@@ -101,7 +93,7 @@ func Open(screen, id string) (*Session, error) {
 		if err != nil {
 			return nil, err
 		}
-		sess := &Session{id: next, screen: screen, body: Body{ID: next, Screen: screen}}
+		sess := &Session{id: next, screen: screen, body: Place{Screen: screen}, pid: pid}
 		if err := sess.write(); err != nil {
 			return nil, err
 		}
@@ -110,23 +102,18 @@ func Open(screen, id string) (*Session, error) {
 	if !idPattern.MatchString(id) {
 		return nil, errors.New("c3po: --resume needs a session id")
 	}
-	raw, ok, err := sqlxdb.Get(appName, kindSession, id)
+	body, ok, err := load(id)
 	if err != nil {
 		return nil, err
 	}
 	if !ok {
 		return nil, fmt.Errorf("c3po: session %s was not found", id)
 	}
-	var body Body
-	if err := json.Unmarshal(raw, &body); err != nil {
-		return nil, err
-	}
-	if body.Screen != "" && body.Screen != screen {
+	if body.Screen != screen {
 		return nil, fmt.Errorf("c3po: session %s is a %s screen", id, body.Screen)
 	}
-	body.ID = id
 	body.Screen = screen
-	sess := &Session{id: id, screen: screen, body: body, restored: true}
+	sess := &Session{id: id, screen: screen, body: body, restored: true, pid: pid}
 	if err := sess.write(); err != nil {
 		return nil, err
 	}
@@ -134,9 +121,9 @@ func Open(screen, id string) (*Session, error) {
 }
 
 // Restored returns the saved body when this session was opened by id.
-func (s *Session) Restored() (Body, bool) {
+func (s *Session) Restored() (Place, bool) {
 	if s == nil || !s.restored {
-		return Body{}, false
+		return Place{}, false
 	}
 	return s.body, true
 }
@@ -151,7 +138,7 @@ func (s *Session) ID() string {
 
 // Note merges non-empty fields into the session and writes it.
 // A non-nil Args slice replaces the saved args, including an empty slice.
-func (s *Session) Note(note Body) error {
+func (s *Session) Note(note Place) error {
 	if s == nil {
 		return nil
 	}
@@ -198,38 +185,55 @@ func (s *Session) Close() error {
 	if s == nil {
 		return nil
 	}
-	return sqlxdb.DeleteLocal(appName, kindActive, s.id)
+	return sqlxdb.ExecLocal("DELETE FROM tui_active WHERE session_id = " + sqlxdb.Quote(s.id))
 }
 
+func load(id string) (Place, bool, error) {
+	var rows []struct {
+		Screen string  `json:"screen"`
+		CWD    string  `json:"cwd"`
+		Path   string  `json:"path"`
+		Cursor string  `json:"cursor"`
+		Args   *string `json:"args"`
+	}
+	if err := sqlxdb.Query("SELECT screen, cwd, path, cursor, args FROM tui_session WHERE id = "+sqlxdb.Quote(id), &rows); err != nil {
+		return Place{}, false, err
+	}
+	if len(rows) == 0 {
+		return Place{}, false, nil
+	}
+	row := rows[0]
+	body := Place{Screen: row.Screen, CWD: row.CWD, Path: row.Path, Cursor: row.Cursor}
+	if row.Args != nil {
+		if err := json.Unmarshal([]byte(*row.Args), &body.Args); err != nil {
+			return Place{}, false, err
+		}
+	}
+	return body, true, nil
+}
+
+// write stores the session and its active row in one transaction.
 func (s *Session) write() error {
 	if cwd, err := os.Getwd(); err == nil && cwd != "" {
 		s.body.CWD = cwd
 	}
-	s.body.ID = s.id
 	s.body.Screen = s.screen
-	raw, err := json.Marshal(s.body)
-	if err != nil {
-		return err
+	args := "NULL"
+	if s.body.Args != nil {
+		raw, err := json.Marshal(s.body.Args)
+		if err != nil {
+			return err
+		}
+		args = sqlxdb.Quote(string(raw))
 	}
-	if err := sqlxdb.PutLocal(appName, kindSession, s.id, raw); err != nil {
-		return err
-	}
-	return s.writeActive()
-}
-
-func (s *Session) writeActive() error {
-	ticks, _ := processStartTicks(os.Getpid())
-	raw, err := json.Marshal(activeBody{
-		SessionID: s.id,
-		PID:       os.Getpid(),
-		PIDStart:  ticks,
-		Screen:    s.screen,
-		CWD:       s.body.CWD,
-	})
-	if err != nil {
-		return err
-	}
-	return sqlxdb.PutLocal(appName, kindActive, s.id, raw)
+	ticks, _ := processStartTicks(s.pid)
+	id := sqlxdb.Quote(s.id)
+	return sqlxdb.ExecLocal("INSERT INTO tui_session(id, screen, cwd, path, cursor, args) VALUES (" +
+		id + ", " + sqlxdb.Quote(s.screen) + ", " + sqlxdb.Quote(s.body.CWD) + ", " + sqlxdb.Quote(s.body.Path) + ", " +
+		sqlxdb.Quote(s.body.Cursor) + ", " + args + ") ON CONFLICT(id) DO UPDATE SET screen = excluded.screen, " +
+		"cwd = excluded.cwd, path = excluded.path, cursor = excluded.cursor, args = excluded.args;\n" +
+		"INSERT INTO tui_active(session_id, pid, pid_start) VALUES (" + id + ", " + strconv.Itoa(s.pid) + ", " +
+		strconv.FormatInt(ticks, 10) + ") ON CONFLICT(session_id) DO UPDATE SET pid = excluded.pid, pid_start = excluded.pid_start")
 }
 
 func newID() (string, error) {

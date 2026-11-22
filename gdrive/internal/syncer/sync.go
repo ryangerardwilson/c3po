@@ -1,12 +1,8 @@
 package syncer
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
-
-	"github.com/ryangerardwilson/c3po/gdrive/internal/config"
-	"github.com/ryangerardwilson/c3po/gdrive/internal/driveapi"
+	"errors"
+	"path"
 )
 
 type SyncSummary struct {
@@ -18,12 +14,12 @@ type SyncSummary struct {
 
 // syncRun is one local-authoritative pass over a registration.
 type syncRun struct {
-	drive        driveapi.Client
-	localRoot    string
+	drive        SyncRemote
+	files        LocalFiles
 	remoteRootID string
 	previous     map[string]StateEntry
 	local        map[string]LocalEntry
-	remote       map[string]driveapi.RemoteEntry
+	remote       map[string]RemoteEntry
 	dirIDs       map[string]string
 	renameMap    map[string]string
 	removedFiles map[string]bool
@@ -33,17 +29,16 @@ type syncRun struct {
 
 // SyncRegistration makes Drive match the local folder, including local
 // deletes and content-preserving renames, then saves the sync state.
-func SyncRegistration(preset string, registration *config.Registration, drive driveapi.Client, backupRootName string) (SyncSummary, error) {
-	localRoot := registration.LocalDir
-	info, err := os.Stat(localRoot)
-	if err != nil || !info.IsDir() {
-		return SyncSummary{}, fmt.Errorf("missing local dir: %s", localRoot)
+func SyncRegistration(preset string, registration *Registration, local LocalSource, drive SyncRemote, state StateStore, backupRootName string) (SyncSummary, error) {
+	root, err := local.Stat("")
+	if err != nil || root.Kind != "dir" {
+		return SyncSummary{}, errors.New("missing local dir: " + local.Locate(""))
 	}
-	previous, err := LoadState(preset, registration.ID)
+	previous, err := state.Load(preset, registration.ID)
 	if err != nil {
 		return SyncSummary{}, err
 	}
-	localEntries, err := ScanLocalTree(localRoot, previous)
+	localEntries, err := scanLocal(local, previous)
 	if err != nil {
 		return SyncSummary{}, err
 	}
@@ -56,20 +51,20 @@ func SyncRegistration(preset string, registration *config.Registration, drive dr
 		return SyncSummary{}, err
 	}
 	run := &syncRun{
-		drive: drive, localRoot: localRoot, remoteRootID: remoteRootID,
+		drive: drive, files: local, remoteRootID: remoteRootID,
 		previous: previous, local: localEntries, remote: remoteEntries,
 		current: map[string]StateEntry{},
 	}
 	if err := run.execute(); err != nil {
 		return SyncSummary{}, err
 	}
-	if err := SaveState(preset, registration.ID, run.current); err != nil {
+	if err := state.Save(preset, registration.ID, run.current); err != nil {
 		return SyncSummary{}, err
 	}
 	return run.summary, nil
 }
 
-func ensureRemoteRoot(registration *config.Registration, drive driveapi.Client, backupRootName string) (string, error) {
+func ensureRemoteRoot(registration *Registration, drive RemoteTree, backupRootName string) (string, error) {
 	if registration.RemoteRootID != "" {
 		return registration.RemoteRootID, nil
 	}
@@ -102,16 +97,16 @@ func (r *syncRun) execute() error {
 func (r *syncRun) createDirs() error {
 	r.dirIDs = map[string]string{"": r.remoteRootID}
 	for relpath, entry := range r.remote {
-		if entry.IsDir() {
+		if entry.IsDir {
 			r.dirIDs[relpath] = entry.ID
 		}
 	}
 	for _, relpath := range sortPathsDeep(filterLocalKind(r.local, "dir"), false) {
-		if existing, ok := r.remote[relpath]; ok && existing.IsDir() {
+		if existing, ok := r.remote[relpath]; ok && existing.IsDir {
 			r.dirIDs[relpath] = existing.ID
 			continue
 		}
-		driveID, err := r.drive.CreateFolder(r.dirIDs[ParentRelPath(relpath)], filepath.Base(relpath))
+		driveID, err := r.drive.CreateFolder(r.dirIDs[ParentRelPath(relpath)], path.Base(relpath))
 		if err != nil {
 			return err
 		}
@@ -124,20 +119,20 @@ func (r *syncRun) createDirs() error {
 func (r *syncRun) applyRenames() error {
 	r.renameMap = BuildRenameMap(r.previous, r.local)
 	r.removedFiles = map[string]bool{}
-	for path, entry := range r.previous {
+	for rel, entry := range r.previous {
 		if entry.Kind != "file" {
 			continue
 		}
-		_, exists := r.local[path]
-		_, renamed := r.renameMap[path]
+		_, exists := r.local[rel]
+		_, renamed := r.renameMap[rel]
 		if !exists && !renamed {
-			r.removedFiles[path] = true
+			r.removedFiles[rel] = true
 		}
 	}
 	for oldPath, newPath := range r.renameMap {
 		oldState := r.previous[oldPath]
 		parentID := r.dirIDs[ParentRelPath(newPath)]
-		if err := r.drive.MoveEntry(oldState.DriveID, parentID, filepath.Base(newPath), r.previousParentID(oldState)); err != nil {
+		if err := r.drive.MoveEntry(oldState.DriveID, parentID, path.Base(newPath), r.previousParentID(oldState)); err != nil {
 			return err
 		}
 		r.summary.Moved++
@@ -174,7 +169,7 @@ func (r *syncRun) syncFiles() error {
 func (r *syncRun) syncFile(relpath string) error {
 	localEntry := r.local[relpath]
 	existing, hasExisting := r.remote[relpath]
-	if hasExisting && existing.IsDir() {
+	if hasExisting && existing.IsDir {
 		if err := r.drive.DeleteEntry(existing.ID); err != nil {
 			return err
 		}
@@ -203,7 +198,7 @@ func (r *syncRun) syncFile(relpath string) error {
 // remote file at the same path, or uploads a new one.
 func (r *syncRun) syncNewFile(relpath, existingFileID string) (string, error) {
 	if existingFileID != "" {
-		if err := r.drive.UpdateFile(existingFileID, r.localPath(relpath)); err != nil {
+		if err := r.drive.UpdateFile(existingFileID, r.files.Locate(relpath)); err != nil {
 			return "", err
 		}
 		r.summary.Updated++
@@ -214,7 +209,7 @@ func (r *syncRun) syncNewFile(relpath, existingFileID string) (string, error) {
 
 func (r *syncRun) uploadNew(relpath string) (string, error) {
 	parentID := r.dirIDs[ParentRelPath(relpath)]
-	driveID, err := r.drive.UploadFile(parentID, filepath.Base(relpath), r.localPath(relpath))
+	driveID, err := r.drive.UploadFile(parentID, path.Base(relpath), r.files.Locate(relpath))
 	if err != nil {
 		return "", err
 	}
@@ -234,7 +229,7 @@ func (r *syncRun) syncKnownFile(relpath string, prev StateEntry, existingFileID 
 		}
 		driveID = id
 	} else if driveID != prev.DriveID || localEntry.Size != prev.Size || localEntry.SHA1 != prev.SHA1 {
-		if err := r.drive.UpdateFile(driveID, r.localPath(relpath)); err != nil {
+		if err := r.drive.UpdateFile(driveID, r.files.Locate(relpath)); err != nil {
 			return "", err
 		}
 		r.summary.Updated++
@@ -243,7 +238,7 @@ func (r *syncRun) syncKnownFile(relpath string, prev StateEntry, existingFileID 
 }
 
 func (r *syncRun) relocateKnownFile(relpath string, prev StateEntry, driveID string) error {
-	name := filepath.Base(relpath)
+	name := path.Base(relpath)
 	if prev.ParentRelPath != ParentRelPath(relpath) {
 		oldParentID := r.remoteRootID
 		if prev.ParentRelPath != "" {
@@ -255,7 +250,7 @@ func (r *syncRun) relocateKnownFile(relpath string, prev StateEntry, driveID str
 		r.summary.Moved++
 		return nil
 	}
-	if name == filepath.Base(prev.RelPath) {
+	if name == path.Base(prev.RelPath) {
 		return nil
 	}
 	if err := r.drive.RenameEntry(driveID, name); err != nil {
@@ -278,11 +273,11 @@ func (r *syncRun) deleteRemovedFiles() error {
 // known to the previous state.
 func (r *syncRun) deleteRemoteExtras() error {
 	extras := []string{}
-	for path := range r.remote {
-		_, isLocal := r.local[path]
-		_, existedBefore := r.previous[path]
+	for rel := range r.remote {
+		_, isLocal := r.local[rel]
+		_, existedBefore := r.previous[rel]
 		if !isLocal && !existedBefore {
-			extras = append(extras, path)
+			extras = append(extras, rel)
 		}
 	}
 	for _, relpath := range sortPathsDeep(extras, true) {
@@ -303,9 +298,9 @@ func (r *syncRun) recordDirs() error {
 
 func (r *syncRun) deleteRemovedDirs() error {
 	removed := []string{}
-	for path, entry := range r.previous {
-		if _, exists := r.local[path]; entry.Kind == "dir" && !exists {
-			removed = append(removed, path)
+	for rel, entry := range r.previous {
+		if _, exists := r.local[rel]; entry.Kind == "dir" && !exists {
+			removed = append(removed, rel)
 		}
 	}
 	for _, relpath := range sortPathsDeep(removed, true) {
@@ -324,19 +319,15 @@ func (r *syncRun) deleteID(driveID string) error {
 	return nil
 }
 
-func (r *syncRun) localPath(relpath string) string {
-	return filepath.Join(r.localRoot, filepath.FromSlash(relpath))
-}
-
 func fileState(relpath, driveID string, local LocalEntry) StateEntry {
 	return StateEntry{RelPath: relpath, Kind: "file", DriveID: driveID, ParentRelPath: ParentRelPath(relpath), Size: local.Size, MTimeNS: local.MTimeNS, SHA1: local.SHA1}
 }
 
 func filterLocalKind(entries map[string]LocalEntry, kind string) []string {
 	paths := []string{}
-	for path, entry := range entries {
+	for rel, entry := range entries {
 		if entry.Kind == kind {
-			paths = append(paths, path)
+			paths = append(paths, rel)
 		}
 	}
 	return paths

@@ -13,7 +13,7 @@ func (m *model) restore() {
 	m.apply(body)
 }
 
-func (m *model) apply(body tuisession.Body) {
+func (m *model) apply(body tuisession.Place) {
 	m.ws = workspaceIndex(m.board.Workspaces, body.Path)
 	m.cursor = m.indexOf(body.Cursor)
 }
@@ -27,7 +27,7 @@ func (m *model) noteSession() {
 		id = item.MessageID
 	}
 	_ = m.session.Place(m.presetID(), id)
-	_ = m.session.Note(tuisession.Body{})
+	_ = m.session.Note(tuisession.Place{})
 }
 
 func (m *model) indexOf(id string) int {

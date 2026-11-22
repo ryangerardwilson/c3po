@@ -2,8 +2,9 @@ package idealake
 
 import (
 	"fmt"
-	"sort"
 	"strings"
+
+	"github.com/ryangerardwilson/c3po/idealake/internal/lake"
 )
 
 func (d *desk) list(args []string) int {
@@ -18,7 +19,7 @@ func (d *desk) list(args []string) int {
 	if code != 0 {
 		return code
 	}
-	return d.printIdeas(filterTopic(ideas, topic))
+	return d.printIdeas(lake.FilterTopic(ideas, topic))
 }
 
 func (d *desk) show(args []string) int {
@@ -29,7 +30,7 @@ func (d *desk) show(args []string) int {
 	if code != 0 {
 		return code
 	}
-	idea, ok := findIdea(ideas, args[0])
+	idea, ok := lake.FindIdea(ideas, args[0])
 	if !ok {
 		fmt.Fprintf(d.stderr, "idealake: no idea %s\n", args[0])
 		return 1
@@ -49,11 +50,11 @@ func (d *desk) remove(args []string) int {
 	if code != 0 {
 		return code
 	}
-	if _, ok := findIdea(ideas, args[0]); !ok {
+	if _, ok := lake.FindIdea(ideas, args[0]); !ok {
 		fmt.Fprintf(d.stderr, "idealake: no idea %s\n", args[0])
 		return 1
 	}
-	if err := deleteIdea(args[0]); err != nil {
+	if err := d.store.Delete(args[0]); err != nil {
 		fmt.Fprintln(d.stderr, err.Error())
 		return 1
 	}
@@ -72,19 +73,19 @@ func (d *desk) topics(args []string) int {
 	if code != 0 {
 		return code
 	}
-	names, err := loadTopicNames()
+	names, err := d.store.TopicNames()
 	if err != nil {
 		fmt.Fprintln(d.stderr, err.Error())
 		return 1
 	}
-	return d.printTopics(mergeTopics(topicCounts(ideas), names))
+	return d.printTopics(lake.MergeTopics(lake.TopicCounts(ideas), names))
 }
 
 func (d *desk) search(args []string) int {
 	if len(args) != 2 {
 		return d.usage()
 	}
-	topic, err := cleanTopic(args[0])
+	topic, err := lake.CleanTopic(args[0])
 	if err != nil {
 		fmt.Fprintln(d.stderr, err.Error())
 		return 2
@@ -98,15 +99,15 @@ func (d *desk) search(args []string) int {
 	if code != 0 {
 		return code
 	}
-	ideas = filterTopic(ideas, topic)
-	missing := unembedded(ideas)
+	ideas = lake.FilterTopic(ideas, topic)
+	missing := lake.Unembedded(ideas)
 	if len(ideas) == 0 || missing == len(ideas) {
 		if missing > 0 {
 			fmt.Fprint(d.stderr, missingNote(missing))
 		}
 		return d.printHits(nil)
 	}
-	vectors, ok := embedQuery(query)
+	vectors, ok := lake.EmbedQuery(d.embed, query)
 	if !ok {
 		fmt.Fprintln(d.stderr, "idealake: embedding unavailable")
 		return 1
@@ -114,7 +115,7 @@ func (d *desk) search(args []string) int {
 	if missing > 0 {
 		fmt.Fprint(d.stderr, missingNote(missing))
 	}
-	return d.printHits(rankIdeas(ideas, vectors))
+	return d.printHits(lake.Rank(ideas, vectors))
 }
 
 func (d *desk) contains(args []string) int {
@@ -134,14 +135,14 @@ func (d *desk) contains(args []string) int {
 	if code != 0 {
 		return code
 	}
-	return d.printIdeas(containsIdeas(filterTopic(ideas, topic), query))
+	return d.printIdeas(lake.Contains(lake.FilterTopic(ideas, topic), query))
 }
 
 func (d *desk) optionalTopic(args []string) (string, int) {
 	if len(args) == 0 {
 		return "", 0
 	}
-	topic, err := cleanTopic(args[0])
+	topic, err := lake.CleanTopic(args[0])
 	if err != nil {
 		fmt.Fprintln(d.stderr, err.Error())
 		return "", 2
@@ -149,8 +150,8 @@ func (d *desk) optionalTopic(args []string) (string, int) {
 	return topic, 0
 }
 
-func (d *desk) load() ([]Idea, int) {
-	ideas, err := loadIdeas()
+func (d *desk) load() ([]lake.Idea, int) {
+	ideas, err := d.store.Ideas()
 	if err != nil {
 		fmt.Fprintln(d.stderr, err.Error())
 		return nil, 1
@@ -163,39 +164,4 @@ func missingNote(n int) string {
 		return "idealake: 1 idea has no embedding\n"
 	}
 	return fmt.Sprintf("idealake: %d ideas have no embedding\n", n)
-}
-
-func mergeTopics(counts []topicCount, names []string) []topicCount {
-	seen := map[string]bool{}
-	for _, count := range counts {
-		seen[count.Topic] = true
-	}
-	for _, name := range names {
-		if seen[name] {
-			continue
-		}
-		counts = append(counts, topicCount{Topic: name, N: 0})
-		seen[name] = true
-	}
-	sort.Slice(counts, func(i, j int) bool {
-		return counts[i].Topic < counts[j].Topic
-	})
-	return counts
-}
-
-func topicCounts(ideas []Idea) []topicCount {
-	counts := map[string]int{}
-	var names []string
-	for _, idea := range ideas {
-		if _, ok := counts[idea.Topic]; !ok {
-			names = append(names, idea.Topic)
-		}
-		counts[idea.Topic]++
-	}
-	sort.Strings(names)
-	out := make([]topicCount, 0, len(names))
-	for _, name := range names {
-		out = append(out, topicCount{Topic: name, N: counts[name]})
-	}
-	return out
 }

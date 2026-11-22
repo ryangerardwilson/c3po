@@ -88,15 +88,21 @@ TBD - created by archiving change add-idealake. Update Purpose after archive.
 - **THEN** `c3po idealake contains` of that word SHALL include the idea
 
 ### Requirement: Records use the c3po sqlite backup
-Each idea SHALL be stored in the sqlx database `c3po` as a record with app `idealake` and kind `idea`. A topic with no ideas SHALL be stored in that same database as a record with app `idealake` and kind `topic`. A write SHALL publish that sqlite file with nebula s3 the same way other c3po records do. The command SHALL NOT call nebula sql.
+Each topic SHALL be a row in `idealake_topic`, unique by name. Each idea SHALL be a row in `idealake_idea` whose `topic_id` references its topic. A topic that still has ideas SHALL NOT be deleted. Storing an idea SHALL create its topic when it is missing, in the same transaction. A topic with no ideas SHALL be a topic row with no idea rows. The schema SHALL reject an empty, multi-line, or too-long topic or idea. An idea id SHALL NOT be issued twice, even after that idea is removed. A write SHALL publish the c3po sqlite file with nebula s3 the same way other c3po writes do. The command SHALL NOT call nebula sql.
 
 #### Scenario: An idea is a c3po record
-- **WHEN** an idea is stored
-- **THEN** the c3po sqlite file SHALL contain that idea under app `idealake`
+- **WHEN** an idea is stored in topic `xyz`
+- **THEN** the c3po sqlite file SHALL hold that idea with a reference to topic `xyz`
+- **AND** deleting topic `xyz` SHALL fail while the idea exists
 
 #### Scenario: An empty topic is a c3po record
 - **WHEN** a topic is stored with no ideas
-- **THEN** the c3po sqlite file SHALL contain that topic under app `idealake` and kind `topic`
+- **THEN** the c3po sqlite file SHALL hold that topic and no idea for it
+
+#### Scenario: A removed id is not issued again
+- **GIVEN** idea `1` was stored and removed
+- **WHEN** another idea is stored
+- **THEN** its id SHALL be `2`
 
 ### Requirement: Help names the limit
 `c3po idealake` with no arguments and `c3po idealake help` SHALL exit 0 and SHALL name 300 characters, a topic, `search`, `contains`, `XAI_API_KEY`, and `--json`. The text SHALL show that add can store a topic with no ideas. `c3po idealake version` SHALL print the c3po version. An unknown subcommand SHALL exit 2 and SHALL print the help. `c3po help -f idealake` SHALL print the same text as `c3po idealake help`.
@@ -107,19 +113,4 @@ Each idea SHALL be stored in the sqlx database `c3po` as a record with app `idea
 - **AND** the text SHALL include `300`
 - **AND** the text SHALL include `XAI_API_KEY`
 - **AND** the text SHALL show that a topic can be stored with no ideas
-
-### Requirement: A record body does not repeat its key
-The record key of an idea SHALL be its id, and the record key of a topic SHALL be its name. An idea body SHALL NOT hold `id`, and a topic body SHALL NOT hold `topic`. Loading an idea SHALL take its id from the record key, and listing topics SHALL take each name from the record key. Before it lists ideas or topics, idealake SHALL run the migration `idealake-body-key-1` once, which SHALL remove `id` from every idea body and `topic` from every topic body. A body that is not valid JSON SHALL be left unchanged. Command output SHALL NOT change.
-
-#### Scenario: A new idea and topic store no key copy
-- **WHEN** an idea is stored and a topic is stored with no ideas
-- **THEN** the idea body SHALL NOT contain `id`
-- **AND** the topic body SHALL NOT contain `topic`
-
-#### Scenario: An old body loses its copy and still loads
-- **GIVEN** idea `7` whose body holds `"id":"7"` and topic `xyz` whose body holds `"topic":"xyz"`
-- **WHEN** `c3po idealake show 7` and `c3po idealake topics` run
-- **THEN** each SHALL exit 0 and print that idea and that topic
-- **AND** the idea body SHALL NOT contain `id` and SHALL still name its topic
-- **AND** the topic body SHALL NOT contain `topic`
 

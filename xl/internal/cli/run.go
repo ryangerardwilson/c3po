@@ -82,7 +82,7 @@ func (r Runner) open(path string) int {
 			path = body.Path
 		}
 	}
-	if err := sess.Note(tuisession.Body{Path: path}); err != nil {
+	if err := sess.Note(tuisession.Place{Path: path}); err != nil {
 		return r.fail(err.Error())
 	}
 	s, err := sheet.Open(path)

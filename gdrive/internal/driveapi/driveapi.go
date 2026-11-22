@@ -53,23 +53,6 @@ func (e NavEntry) IsDir() bool {
 	return e.MimeType == FolderMime
 }
 
-type Client interface {
-	EnsureDrivePath(drivePath string) (string, error)
-	ListChildren(parentID string) ([]NavEntry, error)
-	GetEntry(fileID string) (NavEntry, error)
-	FindChild(parentID, name, mimeType string) (*NavEntry, error)
-	CreateFolder(parentID, name string) (string, error)
-	FindAvailableName(parentID, name string) (string, error)
-	DownloadEntry(entry NavEntry, targetPath string) (string, error)
-	ListTree(rootID string) (map[string]RemoteEntry, error)
-	UploadFile(parentID, name, filePath string) (string, error)
-	UpdateFile(fileID, filePath string) error
-	MoveEntry(fileID, newParentID, newName, oldParentID string) error
-	RenameEntry(fileID, newName string) error
-	DeleteEntry(fileID string) error
-	TrashEntry(fileID string) error
-}
-
 // DriveClient calls the Drive v3 REST API with an authorized HTTP client.
 type DriveClient struct {
 	http       *http.Client

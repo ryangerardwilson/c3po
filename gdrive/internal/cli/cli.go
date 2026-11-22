@@ -3,7 +3,6 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
@@ -22,13 +21,7 @@ var stdin io.Reader = os.Stdin
 
 // newDriveClient builds the Drive client for an account. Tests replace it
 // so no command reaches the network.
-var newDriveClient = func(ctx context.Context, account *config.Account) (driveapi.Client, error) {
-	client, err := driveapi.New(ctx, account)
-	if err != nil {
-		return nil, err
-	}
-	return client, nil
-}
+var newDriveClient = driveapi.New
 
 // Dispatch runs one non-global command. Every error is a usage or runtime
 // failure that the caller prints and turns into exit status 2.

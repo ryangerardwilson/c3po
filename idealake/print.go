@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+
+	"github.com/ryangerardwilson/c3po/idealake/internal/lake"
 )
 
 type ideaJSON struct {
@@ -20,19 +22,14 @@ type ideasDoc struct {
 }
 
 type topicsDoc struct {
-	Topics []topicCount `json:"topics"`
-}
-
-type topicCount struct {
-	Topic string `json:"topic"`
-	N     int    `json:"n"`
+	Topics []lake.TopicCount `json:"topics"`
 }
 
 type removedDoc struct {
 	Removed string `json:"removed"`
 }
 
-func (d *desk) printIdeas(ideas []Idea) int {
+func (d *desk) printIdeas(ideas []lake.Idea) int {
 	if d.json {
 		views := make([]ideaJSON, 0, len(ideas))
 		for _, idea := range ideas {
@@ -50,7 +47,7 @@ func (d *desk) printIdeas(ideas []Idea) int {
 	return 0
 }
 
-func (d *desk) printHits(hits []hit) int {
+func (d *desk) printHits(hits []lake.Hit) int {
 	if d.json {
 		views := make([]ideaJSON, 0, len(hits))
 		for _, item := range hits {
@@ -72,10 +69,10 @@ func (d *desk) printHits(hits []hit) int {
 	return 0
 }
 
-func (d *desk) printTopics(counts []topicCount) int {
+func (d *desk) printTopics(counts []lake.TopicCount) int {
 	if d.json {
 		if counts == nil {
-			counts = []topicCount{}
+			counts = []lake.TopicCount{}
 		}
 		return d.emit(topicsDoc{Topics: counts})
 	}
@@ -89,13 +86,13 @@ func (d *desk) printTopics(counts []topicCount) int {
 	return 0
 }
 
-func viewIdea(idea Idea) ideaJSON {
+func viewIdea(idea lake.Idea) ideaJSON {
 	return ideaJSON{
 		ID:       idea.ID,
 		Topic:    idea.Topic,
 		Text:     idea.Text,
 		Created:  idea.Created,
-		Embedded: idea.Model == embedModel && len(idea.Embedding) > 0,
+		Embedded: idea.Model == lake.EmbedModel && len(idea.Embedding) > 0,
 	}
 }
 

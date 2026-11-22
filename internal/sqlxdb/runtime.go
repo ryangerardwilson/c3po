@@ -35,8 +35,9 @@ func RuntimeReady() bool {
 	return err == nil && info.Mode().IsRegular()
 }
 
-// UsageBody is one increment inside a transaction. n and ok are the amounts
-// to add. last is the unix time of this run.
+// UsageBody is one increment inside a transaction. day is YYYY-MM-DD in UTC
+// and is stored as whole days since 1970-01-01. n and ok are the amounts to
+// add. last is the unix time of this run.
 func UsageBody(feature, actor, day string, n, ok int, last int64) string {
 	if n <= 0 {
 		n = 1
@@ -45,12 +46,13 @@ func UsageBody(feature, actor, day string, n, ok int, last int64) string {
 		ok = 0
 	}
 	lastText := strconv.FormatInt(last, 10)
+	dayNumber := "(unixepoch(" + quote(day) + ") / 86400)"
 	return "UPDATE usage SET n = n + " + strconv.Itoa(n) + ", ok = ok + " + strconv.Itoa(ok) +
 		", last = CASE WHEN last > " + lastText + " THEN last ELSE " + lastText +
 		" END WHERE feature = " + quote(feature) + " AND actor = " + quote(actor) +
-		" AND day = " + quote(day) + ";\n" +
+		" AND day = " + dayNumber + ";\n" +
 		"INSERT INTO usage(feature, actor, day, n, ok, last) SELECT " +
-		quote(feature) + ", " + quote(actor) + ", " + quote(day) + ", " + strconv.Itoa(n) + ", " + strconv.Itoa(ok) + ", " + lastText +
+		quote(feature) + ", " + quote(actor) + ", " + dayNumber + ", " + strconv.Itoa(n) + ", " + strconv.Itoa(ok) + ", " + lastText +
 		" WHERE changes() = 0;\n"
 }
 
@@ -59,8 +61,12 @@ func WrapUsage(body string) string {
 	return "BEGIN IMMEDIATE;\n" + body + "COMMIT;\n"
 }
 
-// ExecRuntime applies sql to the app sqlite and does not publish the backup.
+// ExecRuntime brings the app sqlite to the current schema, applies sql, and
+// does not publish the backup.
 func ExecRuntime(sql string) error {
+	if err := migrate(RuntimeDB()); err != nil {
+		return err
+	}
 	return sqliteExec(RuntimeDB(), sql)
 }
 
@@ -72,5 +78,5 @@ func ExecBackup() error {
 
 // TouchRuntime opens the app sqlite and restores it from s3 when it is missing.
 func TouchRuntime() error {
-	return prepareAppDB(RuntimeDB(), DatabaseName, ormText())
+	return prepareAppDB(RuntimeDB(), DatabaseName)
 }

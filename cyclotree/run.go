@@ -125,7 +125,7 @@ func runAt(args []string, cwd string, stdout, stderr io.Writer) int {
 		if opt.symbol != "" {
 			argsNote = []string{opt.symbol}
 		}
-		_ = sess.Note(tuisession.Body{Path: root, Args: argsNote})
+		_ = sess.Note(tuisession.Place{Path: root, Args: argsNote})
 		screen.session = sess
 		if body, ok := sess.Restored(); ok && body.Cursor != "" {
 			screen.layout()

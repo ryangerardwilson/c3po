@@ -15,20 +15,6 @@ import (
 // The application owns this sqlite file. Nebula sql is the Postgres
 // interface and is not called. Nebula s3 backs the file up.
 
-type appModel struct {
-	name    string
-	cols    []appColumn
-	indexes []string
-}
-
-type appColumn struct {
-	name    string
-	typ     string
-	pk      bool
-	notNull bool
-	def     string
-}
-
 func dbFile(name string) string {
 	if root := os.Getenv("SQLX_ROOT"); root != "" {
 		return filepath.Join(root, "data", name+".sqlite")
@@ -45,7 +31,7 @@ func dbFile(name string) string {
 	return filepath.Join(base, name+".sqlite")
 }
 
-func prepareAppDB(path, name, models string) error {
+func prepareAppDB(path, name string) error {
 	if root := os.Getenv("SQLX_ROOT"); root != "" {
 		if err := os.MkdirAll(root, 0o700); err != nil {
 			return err
@@ -64,10 +50,10 @@ func prepareAppDB(path, name, models string) error {
 	if err := loadMissing(path, name); err != nil {
 		return err
 	}
-	if err := applyModels(path, models); err != nil {
+	if err := migrate(path); err != nil {
 		return err
 	}
-	if err := writeSchemaFile(name, models); err != nil {
+	if err := writeSchemaFile(name, schemaText()); err != nil {
 		return err
 	}
 	return os.Chmod(path, 0o600)
@@ -241,7 +227,7 @@ func sqliteRun(path, sql string, asJSON bool) (string, error) {
 	if bin == "" {
 		bin = "/usr/bin/sqlite3"
 	}
-	args := []string{"-batch", "-cmd", ".timeout 5000"}
+	args := []string{"-batch", "-cmd", ".timeout 5000", "-cmd", "PRAGMA foreign_keys = ON"}
 	if asJSON {
 		args = append(args, "-json")
 	}
@@ -264,38 +250,6 @@ func sqliteRun(path, sql string, asJSON bool) (string, error) {
 	return stdout.String(), nil
 }
 
-func applyModels(path, text string) error {
-	for _, model := range parseModels(text) {
-		if err := applyModel(path, model); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func applyModel(path string, model appModel) error {
-	exists, err := tableExists(path, model.name)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		if err := sqliteExec(path, createSQL(model)); err != nil {
-			return err
-		}
-	} else if err := addMissing(path, model); err != nil {
-		return err
-	}
-	for _, index := range model.indexes {
-		if index == "" {
-			continue
-		}
-		if err := sqliteExec(path, index); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func tableExists(path, name string) (bool, error) {
 	var rows []struct {
 		Name string `json:"name"`
@@ -307,168 +261,10 @@ func tableExists(path, name string) (bool, error) {
 	return len(rows) > 0, nil
 }
 
-func addMissing(path string, model appModel) error {
-	have, err := tableColumns(path, model.name)
-	if err != nil {
-		return err
-	}
-	for _, column := range model.cols {
-		if have[column.name] || column.pk {
-			continue
-		}
-		if err := sqliteExec(path, "ALTER TABLE "+quoteIdent(model.name)+" ADD COLUMN "+columnSQL(column)); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func tableColumns(path, table string) (map[string]bool, error) {
-	var rows []struct {
-		Name string `json:"name"`
-	}
-	if err := sqliteQueryJSON(path, "PRAGMA table_info("+quoteIdent(table)+")", &rows); err != nil {
-		return nil, err
-	}
-	out := map[string]bool{}
-	for _, row := range rows {
-		out[row.Name] = true
-	}
-	return out, nil
-}
-
-func parseModels(text string) []appModel {
-	var models []appModel
-	cur := -1
-	for _, line := range strings.Split(text, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) == 0 {
-			continue
-		}
-		switch fields[0] {
-		case "model":
-			if len(fields) < 2 {
-				continue
-			}
-			models = append(models, appModel{name: fields[1]})
-			cur = len(models) - 1
-		case "index":
-			if cur < 0 {
-				continue
-			}
-			models[cur].indexes = append(models[cur].indexes, indexSQL(models[cur].name, fields))
-		default:
-			if cur < 0 || len(fields) < 2 {
-				continue
-			}
-			models[cur].cols = append(models[cur].cols, parseColumn(fields))
-		}
-	}
-	return models
-}
-
-func parseColumn(fields []string) appColumn {
-	column := appColumn{name: fields[0], typ: fields[1]}
-	for i := 2; i < len(fields); {
-		switch fields[i] {
-		case "primary":
-			if i+1 < len(fields) && fields[i+1] == "key" {
-				column.pk = true
-				i += 2
-				continue
-			}
-		case "not":
-			if i+1 < len(fields) && fields[i+1] == "null" {
-				column.notNull = true
-				i += 2
-				continue
-			}
-		case "default":
-			column.def = strings.Join(fields[i+1:], " ")
-			return column
-		}
-		i++
-	}
-	return column
-}
-
-func indexSQL(table string, fields []string) string {
-	if len(fields) < 3 {
-		return ""
-	}
-	name := fields[1]
-	rest := fields[2:]
-	unique := ""
-	if rest[0] == "unique" {
-		unique = "UNIQUE "
-		rest = rest[1:]
-	}
-	if len(rest) == 0 {
-		return ""
-	}
-	cols := make([]string, len(rest))
-	for i, column := range rest {
-		cols[i] = quoteIdent(column)
-	}
-	return "CREATE " + unique + "INDEX IF NOT EXISTS " + quoteIdent(name) + " ON " + quoteIdent(table) + "(" + strings.Join(cols, ", ") + ")"
-}
-
-func createSQL(model appModel) string {
-	var b strings.Builder
-	b.WriteString("CREATE TABLE IF NOT EXISTS " + quoteIdent(model.name) + " (\n")
-	for i, column := range model.cols {
-		b.WriteString("  " + columnSQL(column))
-		if i+1 < len(model.cols) {
-			b.WriteString(",")
-		}
-		b.WriteString("\n")
-	}
-	b.WriteString(")")
-	return b.String()
-}
-
-func columnSQL(column appColumn) string {
-	line := quoteIdent(column.name) + " " + strings.ToUpper(column.typ)
-	if column.pk {
-		line += " PRIMARY KEY"
-	}
-	if column.notNull {
-		line += " NOT NULL"
-	}
-	if column.def != "" {
-		line += " DEFAULT " + column.def
-	}
-	return line
-}
-
 func quoteIdent(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
 func sqlQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
-}
-
-// runOnce applies sql and records id in app_once in one transaction. ran is
-// false when id was already recorded. An error stops the script, so the sql
-// and the id commit together or not at all. Two processes can both see id
-// missing, so sql must be safe to apply twice.
-func runOnce(path, id, sql string) (bool, error) {
-	if err := sqliteExec(path, "CREATE TABLE IF NOT EXISTS app_once (id TEXT PRIMARY KEY)"); err != nil {
-		return false, err
-	}
-	var rows []struct {
-		N int `json:"n"`
-	}
-	if err := sqliteQueryJSON(path, "SELECT COUNT(*) AS n FROM app_once WHERE id = "+sqlQuote(id), &rows); err != nil {
-		return false, err
-	}
-	if len(rows) > 0 && rows[0].N > 0 {
-		return false, nil
-	}
-	script := ".bail on\nBEGIN IMMEDIATE;\n" + sql + ";\nINSERT OR IGNORE INTO app_once(id) VALUES (" + sqlQuote(id) + ");\nCOMMIT;\n"
-	if err := sqliteExec(path, script); err != nil {
-		return false, err
-	}
-	return true, nil
 }

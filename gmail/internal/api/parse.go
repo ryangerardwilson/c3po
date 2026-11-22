@@ -1,13 +1,16 @@
+// Package api is the Gmail REST client used by c3po gmail. It returns
+// mailbox types and keeps Gmail JSON inside this package.
 package api
 
 import (
 	"encoding/base64"
 	"encoding/json"
-	"net/mail"
 	"strings"
+
+	"github.com/ryangerardwilson/c3po/gmail/internal/mailbox"
 )
 
-func parseMessage(raw []byte) (Message, error) {
+func parseMessage(raw []byte) (mailbox.Message, error) {
 	var body struct {
 		ID       string   `json:"id"`
 		ThreadID string   `json:"threadId"`
@@ -18,9 +21,9 @@ func parseMessage(raw []byte) (Message, error) {
 		Payload  part     `json:"payload"`
 	}
 	if err := json.Unmarshal(raw, &body); err != nil {
-		return Message{}, err
+		return mailbox.Message{}, err
 	}
-	msg := Message{
+	msg := mailbox.Message{
 		ID: body.ID, ThreadID: body.ThreadID, History: body.History,
 		Snippet: body.Snippet, Labels: body.Labels, Headers: map[string]string{},
 	}
@@ -46,7 +49,7 @@ type part struct {
 	Parts    []part `json:"parts"`
 }
 
-func walkPart(msg *Message, p part) {
+func walkPart(msg *mailbox.Message, p part) {
 	for _, h := range p.Headers {
 		key := strings.ToLower(h.Name)
 		if _, ok := msg.Headers[key]; !ok {
@@ -55,7 +58,7 @@ func walkPart(msg *Message, p part) {
 	}
 	if p.Filename != "" && !skipAttachment(p.Filename, p.Mime) {
 		msg.HasFile = true
-		msg.Attachments = append(msg.Attachments, Attachment{Filename: p.Filename, ID: p.Body.AttachmentID, Mime: p.Mime})
+		msg.Attachments = append(msg.Attachments, mailbox.Attachment{Filename: p.Filename, ID: p.Body.AttachmentID, Mime: p.Mime})
 	}
 	text := decodePart(p.Body.Data)
 	switch p.Mime {
@@ -103,23 +106,4 @@ func rawURL(raw []byte) string {
 
 func parseInt(s string) (int64, error) {
 	return json.Number(s).Int64()
-}
-
-func header(msg Message, name string) string {
-	return msg.Headers[strings.ToLower(name)]
-}
-
-func emailOf(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	addr, err := mail.ParseAddress(value)
-	if err != nil {
-		if strings.Contains(value, "@") {
-			return strings.ToLower(strings.Trim(value, "<> "))
-		}
-		return ""
-	}
-	return strings.ToLower(addr.Address)
 }

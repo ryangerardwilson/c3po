@@ -53,13 +53,25 @@ func publishFile(path, name string) error {
 	return nil
 }
 
+// canPublish refuses a c3po database that holds no data, so an empty file
+// never replaces the backup. The migration ledger is not data.
 func canPublish(path string) bool {
 	exists, err := tableExists(path, "record")
 	if err != nil || !exists {
 		return err == nil && !exists
 	}
-	n, err := countRows(path, "record")
-	return err == nil && n > 0
+	var rows []struct {
+		Name string `json:"name"`
+	}
+	if err := sqliteQueryJSON(path, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> 'schema_migration'", &rows); err != nil {
+		return false
+	}
+	for _, row := range rows {
+		if n, err := countRows(path, row.Name); err == nil && n > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func countRows(path, table string) (int, error) {

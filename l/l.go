@@ -110,7 +110,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		defer sess.Close()
 	}
 	if sess != nil {
-		_ = sess.Note(tuisession.Body{Path: opts.config.Root, Args: append([]string(nil), args...)})
+		_ = sess.Note(tuisession.Place{Path: opts.config.Root, Args: append([]string(nil), args...)})
 	}
 	return list(opts, stdout, stderr)
 }

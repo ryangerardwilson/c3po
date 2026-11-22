@@ -2,14 +2,15 @@ package gcal
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/ryangerardwilson/c3po/gcal/internal/desk"
 	"github.com/ryangerardwilson/c3po/gcal/internal/oauth"
-	"github.com/ryangerardwilson/c3po/internal/version"
 )
 
 func (h *harness) validToken() {
@@ -59,55 +60,6 @@ func TestHelpIsHumanFriendly(t *testing.T) {
 		if strings.Contains(Help, bad) {
 			t.Errorf("help has %q", bad)
 		}
-	}
-}
-
-func TestHelpIsGrayOnTerminal(t *testing.T) {
-	h := newHarness(t)
-	delete(h.vars, "NO_COLOR")
-	e := h.env()
-	e.tty = true
-	run([]string{"help"}, e)
-	if !strings.HasPrefix(h.stdout.String(), ansiGray) || !strings.HasSuffix(h.stdout.String(), ansiReset+"\n") {
-		t.Fatalf("not muted: %q", h.stdout.String())
-	}
-}
-
-func TestVersionAndRemovedCommands(t *testing.T) {
-	h := newHarness(t)
-	if out := h.mustRun("version"); out != version.String()+"\n" {
-		t.Fatalf("version %q", out)
-	}
-	if msg := h.mustFail(2, "version", "x"); msg != "Use: c3po gcal version\n" {
-		t.Fatalf("got %q", msg)
-	}
-	h.mustFail(2, "help", "x")
-	h.mustFail(2, "upgrade")
-}
-
-func TestPresetMustBeNumeric(t *testing.T) {
-	h := newHarness(t)
-	if msg := h.mustFail(2, "abc"); !strings.Contains(msg, "preset must be numeric") {
-		t.Fatal(msg)
-	}
-	if msg := h.mustFail(2, "1"); msg != "Use: c3po gcal <preset> list limit <n>\n" {
-		t.Fatal(msg)
-	}
-}
-
-func TestMissingConfig(t *testing.T) {
-	h := newHarness(t)
-	msg := h.mustFail(2, "1", "list", "limit", "5")
-	if !strings.HasPrefix(msg, "Config not found: "+h.configPath()) {
-		t.Fatal(msg)
-	}
-}
-
-func TestUnknownPreset(t *testing.T) {
-	h := newHarness(t)
-	h.writeConfig("UTC")
-	if msg := h.mustFail(2, "7", "list", "limit", "1"); msg != "Preset `7` not found. Available presets: 1\n" {
-		t.Fatal(msg)
 	}
 }
 
@@ -176,27 +128,6 @@ func TestListOutputJSON(t *testing.T) {
 	}
 }
 
-func TestListRequiresCount(t *testing.T) {
-	h := newHarness(t)
-	h.writeConfig("UTC")
-	h.validToken()
-	cases := []struct {
-		want string
-		args []string
-	}{
-		{listShape + "\n", []string{"1", "list"}},
-		{"limit must be a positive integer\n", []string{"1", "list", "limit", "x"}},
-		{"limit must be > 0\n", []string{"1", "list", "limit", "0"}},
-		{listShape + "\n", []string{"1", "list", "limit", "5", "output", "text"}},
-	}
-	for _, tc := range cases {
-		if msg := h.mustFail(2, tc.args...); msg != tc.want {
-			t.Errorf("%v: %q", tc.args, msg)
-		}
-	}
-	h.mustRun("1", "list", "limit", " +1_0 ")
-}
-
 func TestCreateEventCommand(t *testing.T) {
 	h := newHarness(t)
 	h.writeConfig("Asia/Kolkata")
@@ -213,27 +144,6 @@ func TestCreateEventCommand(t *testing.T) {
 	want := `{"attendees":[{"email":"a@example.com"},{"email":"b@example.com"}],"conferenceData":{"createRequest":{"conferenceSolutionKey":{"type":"hangoutsMeet"},"requestId":"req-1"}},"end":{"dateTime":"2026-03-10T15:00:00+05:30","timeZone":"Asia/Kolkata"},"start":{"dateTime":"2026-03-10T14:00:00+05:30","timeZone":"Asia/Kolkata"},"summary":"Interview"}`
 	if string(raw) != want {
 		t.Fatalf("body %s", raw)
-	}
-}
-
-func TestCreateValidatesBeforeWriting(t *testing.T) {
-	h := newHarness(t)
-	h.writeConfig("+05:30")
-	h.validToken()
-	cases := map[string][]string{
-		"event end must be after event start\n":         {"1", "create", "event", "X", "from", "2026-03-10 14:00:00", "to", "2026-03-10 14:00:00", "invite", "a@x"},
-		"time must use YYYY-MM-DD HH:MM:SS\n":           {"1", "create", "event", "X", "from", "2026-02-30 14:00:00", "to", "2026-03-10 14:00:00", "invite", "a@x"},
-		"invitees_csv must include at least one email\n": {"1", "create", "event", "X", "from", "2026-03-10 14:00:00", "to", "2026-03-10 15:00:00", "invite", " , "},
-		createShape + "\n":                               {"1", "create", "event", "X"},
-		actionShape + "\n":                               {"1", "frobnicate"},
-	}
-	for want, args := range cases {
-		if msg := h.mustFail(2, args...); msg != want {
-			t.Errorf("%v: %q", args, msg)
-		}
-	}
-	if n := len(h.google.find("POST", "/calendar/calendars/primary/events")); n != 0 {
-		t.Fatalf("%d creates", n)
 	}
 }
 
@@ -383,49 +293,30 @@ func TestAccountsListAndSetupCheck(t *testing.T) {
 	}
 }
 
-func TestConfigOpensEditor(t *testing.T) {
-	h := newHarness(t)
-	h.vars["EDITOR"] = "nvim -u 'my init.vim'"
-	h.mustRun("config")
-	got, _ := os.ReadFile(h.configPath())
-	if string(got) != emptyConfig {
-		t.Fatalf("config %q", got)
-	}
-	want := []string{"nvim", "-u", "my init.vim", h.configPath()}
-	if strings.Join(h.edited[0], "|") != strings.Join(want, "|") {
-		t.Fatalf("argv %q", h.edited[0])
-	}
-	h.vars["VISUAL"] = "code -w"
-	h.mustRun("config")
-	if h.edited[1][0] != "code" {
-		t.Fatalf("argv %q", h.edited[1])
-	}
-	h.vars["VISUAL"] = "   "
-	if msg := h.mustFail(2, "config"); msg != "Editor command is empty. Set VISUAL or EDITOR.\n" {
-		t.Fatal(msg)
-	}
-	h.mustFail(2, "config", "extra")
-}
-
+// TestEditorErrors runs the real editor adapter: a missing command and a
+// nonzero exit reach the user as the desk editor messages.
 func TestEditorErrors(t *testing.T) {
-	if err := editorError(nil, "vim"); err != nil {
+	if err := editorFailure(nil); err != nil {
 		t.Fatal(err)
 	}
-	err := editorError(runEditor([]string{"/nonexistent/editor-xyz"}, os.Stdout, os.Stderr), "/nonexistent/editor-xyz")
-	if err == nil || err.Error() != "Editor not found: /nonexistent/editor-xyz. Set VISUAL or EDITOR." {
+	err := editorFailure(runEditor([]string{"/nonexistent/editor-xyz"}, os.Stdout, os.Stderr))
+	if !errors.Is(err, desk.ErrEditorNotFound) {
 		t.Fatalf("got %v", err)
 	}
-	err = editorError(runEditor([]string{"false"}, os.Stdout, os.Stderr), "false")
-	if err == nil || err.Error() != "Editor exited with code 1" {
+	var exitErr *desk.EditorExitError
+	if err := editorFailure(runEditor([]string{"false"}, os.Stdout, os.Stderr)); !errors.As(err, &exitErr) || exitErr.Code != 1 {
 		t.Fatalf("got %v", err)
 	}
-}
-
-func TestFormatEventTime(t *testing.T) {
-	if got := formatEventTime("2026-03-10", "2026-03-11", "UTC"); got != "2026-03-10 -> 2026-03-11" {
-		t.Fatal(got)
+	h := newHarness(t)
+	h.editor = func(argv []string) error { return editorFailure(runEditor(argv, os.Stdout, os.Stderr)) }
+	h.vars["VISUAL"] = "true"
+	h.mustRun("config")
+	h.vars["VISUAL"] = "/nonexistent/editor-xyz"
+	if msg := h.mustFail(2, "config"); msg != "Editor not found: /nonexistent/editor-xyz. Set VISUAL or EDITOR.\n" {
+		t.Fatalf("got %q", msg)
 	}
-	if got := formatEventTime("2026-03-10T14:00:00+05:30", "2026-03-10T15:00:00Z", "UTC"); got != "2026-03-10 08:30:00 -> 2026-03-10 15:00:00" {
-		t.Fatal(got)
+	h.vars["VISUAL"] = "false"
+	if msg := h.mustFail(2, "config"); msg != "Editor exited with code 1\n" {
+		t.Fatalf("got %q", msg)
 	}
 }

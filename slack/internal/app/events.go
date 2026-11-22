@@ -1,9 +1,8 @@
 package app
 
 import (
-	"database/sql"
 	"fmt"
-	"os"
+	"strconv"
 )
 
 func (rt *Runtime) dispatchEvents(account Account, preset string, args Args) error {
@@ -36,7 +35,7 @@ func (rt *Runtime) eventsSyncOnce(account Account, preset string, quiet bool) (i
 	if err != nil {
 		return 0, err
 	}
-	selfUserID := str(auth["user_id"])
+	selfUserID := auth.UserID
 	if selfUserID == "" {
 		return 0, UsageError{Message: "Unable to determine the current Slack user."}
 	}
@@ -47,7 +46,7 @@ func (rt *Runtime) eventsSyncOnce(account Account, preset string, quiet bool) (i
 	}
 	stored := 0
 	for _, row := range rows {
-		_, _ = eventCacheStoreConversationRow(cachePath, row, row.HistoryLoaded)
+		_, _ = rt.Cache.StoreConversation(cachePath, row, row.HistoryLoaded)
 	}
 	limit := accountInt(account, "events_sync_conversation_limit", eventSyncConversationLimit)
 	for index, row := range rows {
@@ -60,16 +59,10 @@ func (rt *Runtime) eventsSyncOnce(account Account, preset string, quiet bool) (i
 		}
 		row.Messages = entries
 		row.HistoryLoaded = true
-		count, _ := eventCacheStoreConversationRow(cachePath, row, true)
+		count, _ := rt.Cache.StoreConversation(cachePath, row, true)
 		stored += count
 	}
-	db, err := eventCacheConnect(cachePath)
-	if err == nil {
-		_ = eventCacheSetState(db, "last_sync_at", eventCacheNow())
-		_ = eventCacheSetState(db, "last_sync_conversations", fmt.Sprintf("%d", len(rows)))
-		_ = eventCacheSetState(db, "last_sync_messages", fmt.Sprintf("%d", stored))
-		db.Close()
-	}
+	_ = rt.Cache.RecordSync(cachePath, len(rows), stored)
 	if !quiet {
 		fmt.Fprintf(rt.Stdout, "events_sync conversations=%d messages=%d cache=%s\n", len(rows), stored, cachePath)
 	}
@@ -84,30 +77,21 @@ func (rt *Runtime) eventsStatus(account Account, preset string) error {
 		"has_user_token": hasToken(account, "user") || readTokenFile(defaultUserTokenFile) != "",
 	}
 	if fileExists(paths.DBFile) {
-		db, err := eventCacheConnect(paths.DBFile)
+		status, err := rt.Cache.Status(paths.DBFile)
 		if err == nil {
-			state["conversations"] = countRows(db, "conversations")
-			state["messages"] = countRows(db, "messages")
-			state["last_sync_at"] = eventCacheGetState(db, "last_sync_at", "")
-			state["last_sync_conversations"] = eventCacheGetState(db, "last_sync_conversations", "0")
-			state["last_sync_messages"] = eventCacheGetState(db, "last_sync_messages", "0")
-			db.Close()
+			state["conversations"] = status.Conversations
+			state["messages"] = status.Messages
+			state["last_sync_at"] = status.LastSyncAt
+			state["last_sync_conversations"] = strconv.Itoa(status.LastSyncConversations)
+			state["last_sync_messages"] = strconv.Itoa(status.LastSyncMessages)
 		}
 	}
 	return rt.printJSON(state)
 }
 
-func countRows(db *sql.DB, table string) int {
-	var count int
-	_ = db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&count)
-	return count
-}
-
 func (rt *Runtime) eventsResetCache(account Account, preset string) error {
 	paths := eventCachePaths(account, preset)
-	for _, path := range []string{paths.DBFile, paths.DBFile + "-wal", paths.DBFile + "-shm"} {
-		_ = os.Remove(path)
-	}
+	rt.Cache.Reset(paths.DBFile)
 	fmt.Fprintf(rt.Stdout, "cache reset: %s\n", paths.DBFile)
 	return nil
 }

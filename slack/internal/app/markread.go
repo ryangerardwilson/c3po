@@ -1,13 +1,10 @@
 package app
 
 import (
-	"database/sql"
+	"errors"
 	"fmt"
-	"net/http"
-	"os"
 	"sort"
 	"strconv"
-	"strings"
 )
 
 type MarkResult struct {
@@ -19,7 +16,7 @@ func notificationUnreadCount(row ConversationRow) int {
 	return maxInt(row.Unread, maxInt(intValue(row.Info["unread_count_display"], 0), intValue(row.Info["unread_count"], 0)))
 }
 
-func unreadNotificationTotals(client SlackClient) (int, int, error) {
+func unreadNotificationTotals(client ConversationDirectory) (int, int, error) {
 	candidates, err := liveNotificationCandidates(client)
 	if err != nil {
 		return 0, 0, err
@@ -35,7 +32,7 @@ func unreadNotificationTotals(client SlackClient) (int, int, error) {
 	return count, len(candidates), nil
 }
 
-func (rt *Runtime) unreadCountReport(client SlackClient, outputJSON bool) error {
+func (rt *Runtime) unreadCountReport(client ConversationDirectory, outputJSON bool) error {
 	count, conversations, err := unreadNotificationTotals(client)
 	if err != nil {
 		return err
@@ -91,56 +88,6 @@ func mergeNotification(existing, candidate ConversationRow) ConversationRow {
 	return existing
 }
 
-func eventCacheUnreadNotificationCandidates(cachePath string) ([]ConversationRow, error) {
-	if cachePath == "" {
-		return nil, nil
-	}
-	if _, err := os.Stat(cachePath); err != nil {
-		return nil, nil
-	}
-	db, err := eventCacheConnect(cachePath)
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
-	rows, err := db.Query(`
-SELECT channel_id, surface, conversation, name, email, members, user_id,
-       last_read, info_json, latest_ts, unread_ts
-FROM conversations
-WHERE unread_ts > 0
-ORDER BY unread_ts DESC`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []ConversationRow
-	for rows.Next() {
-		var row ConversationRow
-		var infoJSON string
-		var latest, unread float64
-		if err := rows.Scan(&row.ChannelID, &row.Surface, &row.Conversation, &row.Name, &row.Email, &row.Members, &row.UserID, &row.LastRead, &infoJSON, &latest, &unread); err != nil {
-			return nil, err
-		}
-		row.Info = jsonMap(infoJSON)
-		row.LatestTS = cacheMessageTSForSort(db, row.ChannelID, maxFloat(latest, unread))
-		if row.LatestTS == "" && unread > 0 {
-			row.LatestTS = fmt.Sprintf("%.6f", unread)
-		}
-		row.Unread = 1
-		out = append(out, row)
-	}
-	return out, rows.Err()
-}
-
-func cacheMessageTSForSort(db *sql.DB, channelID string, sortTS float64) string {
-	var ts string
-	err := db.QueryRow("SELECT ts FROM messages WHERE channel_id = ? ORDER BY abs(sort_ts - ?) ASC LIMIT 1", channelID, sortTS).Scan(&ts)
-	if err != nil {
-		return ""
-	}
-	return ts
-}
-
 func apiConversationCandidate(channel map[string]any) (ConversationRow, bool) {
 	channelID := str(channel["id"])
 	if channelID == "" {
@@ -166,12 +113,8 @@ func apiConversationCandidate(channel map[string]any) (ConversationRow, bool) {
 	}, true
 }
 
-func liveNotificationCandidates(client SlackClient) ([]ConversationRow, error) {
-	channels, err := listAPI(client, "users.conversations", map[string]string{
-		"types":            "im,mpim,public_channel,private_channel",
-		"exclude_archived": "true",
-		"limit":            "200",
-	}, "channels")
+func liveNotificationCandidates(client ConversationDirectory) ([]ConversationRow, error) {
+	channels, err := client.ListConversations("im,mpim,public_channel,private_channel")
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +127,7 @@ func liveNotificationCandidates(client SlackClient) ([]ConversationRow, error) {
 	return out, nil
 }
 
-func notificationCandidatesForMarkRead(client SlackClient, cachePath string) ([]ConversationRow, error) {
+func notificationCandidatesForMarkRead(client ConversationDirectory, cachePath string) ([]ConversationRow, error) {
 	live, err := liveNotificationCandidates(client)
 	if err != nil {
 		return nil, err
@@ -195,8 +138,8 @@ func notificationCandidatesForMarkRead(client SlackClient, cachePath string) ([]
 	return live, nil
 }
 
-func markReadError(row ConversationRow, data map[string]any) string {
-	errText := firstNonEmpty(str(data["error"]), "unknown_error")
+func markReadError(row ConversationRow, code string) string {
+	errText := firstNonEmpty(code, "unknown_error")
 	if errText == "missing_scope" {
 		switch row.Surface {
 		case "group_dm":
@@ -212,7 +155,7 @@ func markReadError(row ConversationRow, data map[string]any) string {
 	return errText
 }
 
-func (rt *Runtime) markAllUnreadNotificationsAsRead(client SlackClient, cachePath string, preset string) (MarkResult, error) {
+func (rt *Runtime) markAllUnreadNotificationsAsRead(client Session, cachePath string, preset string) (MarkResult, error) {
 	candidates, err := notificationCandidatesForMarkRead(client, cachePath)
 	if err != nil {
 		return MarkResult{}, err
@@ -230,17 +173,16 @@ func (rt *Runtime) markAllUnreadNotificationsAsRead(client SlackClient, cachePat
 			result.Failed++
 			action = "failed:missing_latest"
 		} else {
-			data, err := client.Request("conversations.mark", map[string]string{"channel": row.ChannelID, "ts": latestTS}, true, http.MethodPost, true)
-			if err != nil || data["ok"] != true {
+			var refused *APIError
+			if err := client.MarkRead(row.ChannelID, latestTS); errors.As(err, &refused) {
 				result.Failed++
-				if err != nil {
-					action = "failed:" + err.Error()
-				} else {
-					action = "failed:" + markReadError(row, data)
-				}
+				action = "failed:" + markReadError(row, refused.Code)
+			} else if err != nil {
+				result.Failed++
+				action = "failed:" + err.Error()
 			} else {
 				result.Marked++
-				_ = eventCacheMarkRead(cachePath, row.ChannelID, latestTS)
+				_ = rt.Cache.MarkRead(cachePath, row.ChannelID, latestTS)
 			}
 		}
 		out := []kv{}
@@ -324,17 +266,4 @@ func (rt *Runtime) markAllConfiguredNotificationsAsRead(cfg Config) error {
 		return fmt.Errorf("mark all read failed for %d preset/conversation item(s)", total.Failed)
 	}
 	return nil
-}
-
-func surfaceWriteScope(surface string) string {
-	switch strings.TrimSpace(surface) {
-	case "dm":
-		return "im:write"
-	case "group_dm":
-		return "mpim:write"
-	case "private_channel":
-		return "groups:write"
-	default:
-		return "channels:write"
-	}
 }

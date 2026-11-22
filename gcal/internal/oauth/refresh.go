@@ -16,12 +16,12 @@ import (
 var errRefresh = errors.New("token refresh refused")
 
 type tokenResponse struct {
-	AccessToken  string          `json:"access_token"`
-	RefreshToken string          `json:"refresh_token"`
-	ExpiresIn    json.Number     `json:"expires_in"`
-	Scope        string          `json:"scope"`
-	Error        string          `json:"error"`
-	ErrorDesc    string          `json:"error_description"`
+	AccessToken  string      `json:"access_token"`
+	RefreshToken string      `json:"refresh_token"`
+	ExpiresIn    json.Number `json:"expires_in"`
+	Scope        string      `json:"scope"`
+	Error        string      `json:"error"`
+	ErrorDesc    string      `json:"error_description"`
 }
 
 // expiry is now plus expires_in, or zero when the response has none.

@@ -8,15 +8,15 @@ import (
 	"strings"
 
 	"golang.org/x/term"
-)
 
-var stdinTerminal = stdinIsTerminal
+	"github.com/ryangerardwilson/c3po/idealake/internal/lake"
+)
 
 func (d *desk) add(args []string) int {
 	if len(args) < 1 {
 		return d.usage()
 	}
-	topic, err := cleanTopic(args[0])
+	topic, err := lake.CleanTopic(args[0])
 	if err != nil {
 		fmt.Fprintln(d.stderr, err.Error())
 		return 2
@@ -25,12 +25,12 @@ func (d *desk) add(args []string) int {
 	if code != 0 {
 		return code
 	}
-	texts, err := cleanIdeas(raw)
+	texts, err := lake.CleanIdeas(raw)
 	if err != nil {
 		fmt.Fprintln(d.stderr, err.Error())
 		return 2
 	}
-	existing, err := loadIdeas()
+	existing, err := d.store.Ideas()
 	if err != nil {
 		fmt.Fprintln(d.stderr, err.Error())
 		return 1
@@ -38,13 +38,14 @@ func (d *desk) add(args []string) int {
 	if len(texts) == 0 {
 		return d.addTopic(topic, existing)
 	}
-	vectors, embedded := embedPassages(texts)
-	ideas, err := assignIDs(existing, texts, topic, vectors)
+	vectors, embedded := lake.EmbedPassages(d.embed, texts)
+	last, err := d.store.LastIssued()
 	if err != nil {
 		fmt.Fprintln(d.stderr, err.Error())
 		return 1
 	}
-	if err := saveNew(ideas); err != nil {
+	ideas := lake.AssignIDs(last, existing, texts, topic, vectors, d.now())
+	if err := d.store.SaveNew(ideas); err != nil {
 		fmt.Fprintln(d.stderr, err.Error())
 		return 1
 	}
@@ -54,19 +55,19 @@ func (d *desk) add(args []string) int {
 	return d.printIdeas(ideas)
 }
 
-func (d *desk) addTopic(topic string, existing []Idea) int {
-	if err := ensureTopic(topic); err != nil {
+func (d *desk) addTopic(topic string, existing []lake.Idea) int {
+	if err := d.store.EnsureTopic(topic); err != nil {
 		fmt.Fprintln(d.stderr, err.Error())
 		return 1
 	}
-	return d.printTopics([]topicCount{{Topic: topic, N: countTopic(existing, topic)}})
+	return d.printTopics([]lake.TopicCount{{Topic: topic, N: lake.CountTopic(existing, topic)}})
 }
 
 func (d *desk) ideaArgs(args []string) ([]string, int) {
 	if len(args) > 0 {
 		return args, 0
 	}
-	if stdinTerminal(d.stdin) {
+	if d.terminal(d.stdin) {
 		return nil, 0
 	}
 	lines, err := readLines(d.stdin)

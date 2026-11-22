@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ryangerardwilson/c3po/cyclotree/score"
 	"github.com/ryangerardwilson/c3po/internal/gocyclo"
+	"github.com/ryangerardwilson/c3po/internal/score"
 )
 
 // Gated reports whether rel is a language the write gate scores.

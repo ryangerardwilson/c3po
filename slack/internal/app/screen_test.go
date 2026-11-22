@@ -1,8 +1,6 @@
 package app
 
 import (
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -24,21 +22,18 @@ func TestScreenPresetsOmitTheToken(t *testing.T) {
 }
 
 func TestScreenHistoryIsOldestFirst(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/users.info":
-			_, _ = w.Write([]byte(`{"ok":true,"user":{"id":"U2","real_name":"Ada"}}`))
-		case "/api/conversations.history":
-			_, _ = w.Write([]byte(`{"ok":true,"messages":[{"ts":"200.2","user":"U2","text":"later","thread_ts":"100.1"},{"ts":"100.1","user":"U2","text":"earlier"}]}`))
-		default:
-			t.Errorf("path %s", r.URL.Path)
-		}
-	}))
-	defer server.Close()
-	old := slackAPIBase
-	slackAPIBase = server.URL + "/api/"
-	defer func() { slackAPIBase = old }()
-	client := SlackClient{Token: "xoxp-user", HTTPClient: server.Client()}
+	slack := &fakeSlack{
+		t:     t,
+		users: map[string]map[string]any{"U2": {"id": "U2", "real_name": "Ada"}},
+		history: map[string][]map[string]any{"D1": {
+			{"ts": "200.2", "user": "U2", "text": "later", "thread_ts": "100.1"},
+			{"ts": "100.1", "user": "U2", "text": "earlier"},
+		}},
+	}
+	client, err := ScreenClient(slack, Account{"token": map[string]any{"user": "xoxp-user"}})
+	if err != nil {
+		t.Fatal(err)
+	}
 	rows, err := ScreenHistory(client, "D1")
 	if err != nil {
 		t.Fatal(err)
@@ -46,27 +41,21 @@ func TestScreenHistoryIsOldestFirst(t *testing.T) {
 	if len(rows) != 2 || rows[0].Text != "earlier" || rows[1].Text != "later" || rows[1].ThreadTS != "100.1" || rows[0].User != "Ada" {
 		t.Fatalf("%#v", rows)
 	}
+	if len(slack.tokens) != 1 || slack.tokens[0] != "xoxp-user" {
+		t.Fatalf("tokens %#v", slack.tokens)
+	}
 }
 
 func TestScreenConversationsSortUnreadFirst(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		types := r.URL.Query().Get("types")
-		switch {
-		case strings.Contains(types, "im"):
-			_, _ = w.Write([]byte(`{"ok":true,"channels":[{"id":"D1","is_im":true,"user":"U9"}]}`))
-		case strings.Contains(types, "public_channel"):
-			_, _ = w.Write([]byte(`{"ok":true,"channels":[{"id":"C1","name":"general","is_channel":true,"unread_count_display":4}]}`))
-		case r.URL.Path == "/api/users.info":
-			_, _ = w.Write([]byte(`{"ok":true,"user":{"id":"U9","profile":{"display_name":"Ada"}}}`))
-		default:
-			t.Errorf("path %s types %s", r.URL.Path, types)
-		}
-	}))
-	defer server.Close()
-	old := slackAPIBase
-	slackAPIBase = server.URL + "/api/"
-	defer func() { slackAPIBase = old }()
-	client := SlackClient{Token: "xoxp-user", HTTPClient: server.Client()}
+	slack := &fakeSlack{
+		t: t,
+		conversations: map[string][]map[string]any{
+			"im,mpim":                        {{"id": "D1", "is_im": true, "user": "U9"}},
+			"public_channel,private_channel": {{"id": "C1", "name": "general", "is_channel": true, "unread_count_display": float64(4)}},
+		},
+		users: map[string]map[string]any{"U9": {"id": "U9", "profile": map[string]any{"display_name": "Ada"}}},
+	}
+	client := Session{Token: "xoxp-user", Gateway: slack}
 	rows, err := ScreenConversations(client)
 	if err != nil {
 		t.Fatal(err)

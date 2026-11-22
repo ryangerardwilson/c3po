@@ -7,11 +7,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/ryangerardwilson/c3po/gmail/internal/errs"
+	"github.com/ryangerardwilson/c3po/gmail/internal/mailbox"
 )
 
 const defaultBase = "https://gmail.googleapis.com/gmail/v1/users/me"
@@ -82,7 +82,7 @@ func (c *Client) ListIDs(query string) ([]string, error) {
 }
 
 // List returns up to limit full messages. limit <= 0 lists every match.
-func (c *Client) List(query string, limit int) ([]Message, error) {
+func (c *Client) List(query string, limit int) ([]mailbox.Message, error) {
 	ids, err := c.listLimited(query, limit)
 	if err != nil {
 		return nil, err
@@ -116,7 +116,7 @@ func (c *Client) listLimited(query string, limit int) ([]string, error) {
 }
 
 // ListPage returns one page of full messages and the next page token.
-func (c *Client) ListPage(query string, limit int, page string) ([]Message, string, error) {
+func (c *Client) ListPage(query string, limit int, page string) ([]mailbox.Message, string, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -146,8 +146,8 @@ func (c *Client) ListPage(query string, limit int, page string) ([]Message, stri
 	return msgs, out.Next, err
 }
 
-func (c *Client) hydrate(ids []string) ([]Message, error) {
-	out := make([]Message, 0, len(ids))
+func (c *Client) hydrate(ids []string) ([]mailbox.Message, error) {
+	out := make([]mailbox.Message, 0, len(ids))
 	for _, id := range ids {
 		msg, err := c.Get(id)
 		if err != nil {
@@ -159,33 +159,33 @@ func (c *Client) hydrate(ids []string) ([]Message, error) {
 }
 
 // Get loads one message in full format.
-func (c *Client) Get(id string) (Message, error) {
+func (c *Client) Get(id string) (mailbox.Message, error) {
 	return c.getMessage(id, "full", nil)
 }
 
 // Meta loads From metadata for one message.
-func (c *Client) Meta(id string) (Message, error) {
+func (c *Client) Meta(id string) (mailbox.Message, error) {
 	return c.getMessage(id, "metadata", []string{"From"})
 }
 
-func (c *Client) getMessage(id, format string, headers []string) (Message, error) {
+func (c *Client) getMessage(id, format string, headers []string) (mailbox.Message, error) {
 	q := url.Values{"format": {format}}
 	for _, h := range headers {
 		q.Add("metadataHeaders", h)
 	}
 	body, err := c.getBytes("/messages/"+url.PathEscape(id), q)
 	if err != nil {
-		return Message{}, errs.API("Gmail get message '%s' failed: %s", id, err.Error())
+		return mailbox.Message{}, errs.API("Gmail get message '%s' failed: %s", id, err.Error())
 	}
 	msg, err := parseMessage(body)
 	if err != nil {
-		return Message{}, errs.API("Gmail get message '%s' failed: %s", id, err.Error())
+		return mailbox.Message{}, errs.API("Gmail get message '%s' failed: %s", id, err.Error())
 	}
 	return msg, nil
 }
 
 // Thread loads every message in a thread.
-func (c *Client) Thread(id string) ([]Message, error) {
+func (c *Client) Thread(id string) ([]mailbox.Message, error) {
 	body, err := c.getBytes("/threads/"+url.PathEscape(id), url.Values{"format": {"full"}})
 	if err != nil {
 		return nil, errs.API("Gmail thread '%s' failed: %s", id, err.Error())
@@ -196,7 +196,7 @@ func (c *Client) Thread(id string) ([]Message, error) {
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return nil, errs.API("Gmail thread '%s' failed: %s", id, err.Error())
 	}
-	out := make([]Message, 0, len(raw.Messages))
+	out := make([]mailbox.Message, 0, len(raw.Messages))
 	for _, item := range raw.Messages {
 		msg, err := parseMessage(item)
 		if err != nil {
@@ -302,35 +302,6 @@ func (c *Client) Attachment(msgID, attID string) ([]byte, error) {
 	return decodeRawURL(out.Data)
 }
 
-// UnreadSenders counts From addresses on unread non-gmail mail.
-func (c *Client) UnreadSenders(progress func(string, int, int)) (map[string]int, error) {
-	ids, err := c.ListIDs("is:unread -from:*@gmail.com")
-	if err != nil {
-		return nil, errs.API("Gmail unread sender scan failed: %s", err.Error())
-	}
-	if progress != nil {
-		progress("listed_unread_messages", len(ids), 0)
-	}
-	counts := map[string]int{}
-	for i, id := range ids {
-		msg, err := c.Meta(id)
-		if err != nil {
-			return nil, errs.API("Gmail unread sender scan failed: %s", err.Error())
-		}
-		sender := emailOf(header(msg, "from"))
-		if sender != "" && !strings.HasSuffix(sender, "@gmail.com") {
-			counts[sender]++
-		}
-		if progress != nil {
-			progress("counted_sender_messages", i+1, len(ids))
-		}
-	}
-	if progress != nil {
-		progress("unique_senders", len(counts), 0)
-	}
-	return counts, nil
-}
-
 func (c *Client) get(path string, q url.Values, dest any) error {
 	body, err := c.getBytes(path, q)
 	if err != nil || dest == nil {
@@ -395,19 +366,4 @@ func (c *Client) do(method, u string, payload []byte) ([]byte, error) {
 		return nil, fmt.Errorf("%s", strings.TrimSpace(resp.Status+" "+string(body)))
 	}
 	return body, nil
-}
-
-// SortedIDs returns ids in lexical order, matching Python sorted(set).
-func SortedIDs(ids []string) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, id := range ids {
-		if id == "" || seen[id] {
-			continue
-		}
-		seen[id] = true
-		out = append(out, id)
-	}
-	sort.Strings(out)
-	return out
 }

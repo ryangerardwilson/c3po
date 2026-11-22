@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ryangerardwilson/c3po/gcal/internal/errs"
+	"github.com/ryangerardwilson/c3po/gcal/internal/event"
 )
 
 // Default API roots.
@@ -116,15 +117,15 @@ func wrap(what string, err error) error {
 	return err
 }
 
-func decodeEvent(data []byte) (Event, error) {
-	var ev Event
+func decodeEvent(data []byte) (event.Event, error) {
+	var ev wireEvent
 	err := json.Unmarshal(data, &ev)
-	return ev, err
+	return ev.domain(), err
 }
 
 // ListUpcoming lists up to count single events from now on the primary
-// calendar, ordered by start, and keeps those passing mode.
-func (c Client) ListUpcoming(count int, mode string, now time.Time) ([]Event, error) {
+// calendar, ordered by start.
+func (c Client) ListUpcoming(count int, now time.Time) ([]event.Event, error) {
 	q := url.Values{
 		"timeMin":      {pyUTC(now)},
 		"maxResults":   {fmt.Sprint(count)},
@@ -137,16 +138,14 @@ func (c Client) ListUpcoming(count int, mode string, now time.Time) ([]Event, er
 		return nil, wrap("Calendar list", err)
 	}
 	var payload struct {
-		Items []Event `json:"items"`
+		Items []wireEvent `json:"items"`
 	}
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return nil, err
 	}
-	out := []Event{}
-	for _, ev := range payload.Items {
-		if ev.Matches(mode) {
-			out = append(out, ev)
-		}
+	out := make([]event.Event, len(payload.Items))
+	for i, ev := range payload.Items {
+		out[i] = ev.domain()
 	}
 	return out, nil
 }
@@ -166,10 +165,10 @@ func eventPath(id string) string {
 }
 
 // Get fetches one event from the primary calendar.
-func (c Client) Get(id string) (Event, error) {
+func (c Client) Get(id string) (event.Event, error) {
 	data, err := c.do(http.MethodGet, eventPath(id), url.Values{"alt": {"json"}}, nil)
 	if err != nil {
-		return Event{}, wrap("Calendar get", err)
+		return event.Event{}, wrap("Calendar get", err)
 	}
 	return decodeEvent(data)
 }
@@ -192,7 +191,7 @@ func TimePayload(t time.Time, timezone string) map[string]string {
 
 // Create inserts an event with invitees and a new Meet link, and
 // notifies attendees.
-func (c Client) Create(title string, start, end time.Time, timezone string, invitees []string, requestID string) (Event, error) {
+func (c Client) Create(title string, start, end time.Time, timezone string, invitees []string, requestID string) (event.Event, error) {
 	attendees := make([]map[string]string, len(invitees))
 	for i, email := range invitees {
 		attendees[i] = map[string]string{"email": email}
@@ -210,18 +209,18 @@ func (c Client) Create(title string, start, end time.Time, timezone string, invi
 	q := url.Values{"conferenceDataVersion": {"1"}, "sendUpdates": {"all"}, "alt": {"json"}}
 	data, err := c.do(http.MethodPost, "/calendars/primary/events", q, body)
 	if err != nil {
-		return Event{}, wrap("Calendar create", err)
+		return event.Event{}, wrap("Calendar create", err)
 	}
 	return decodeEvent(data)
 }
 
 // Reschedule moves an event and notifies attendees.
-func (c Client) Reschedule(id string, start, end time.Time, timezone string) (Event, error) {
+func (c Client) Reschedule(id string, start, end time.Time, timezone string) (event.Event, error) {
 	body := map[string]any{"start": TimePayload(start, timezone), "end": TimePayload(end, timezone)}
 	q := url.Values{"sendUpdates": {"all"}, "conferenceDataVersion": {"1"}, "alt": {"json"}}
 	data, err := c.do(http.MethodPatch, eventPath(id), q, body)
 	if err != nil {
-		return Event{}, wrap("Calendar reschedule", err)
+		return event.Event{}, wrap("Calendar reschedule", err)
 	}
 	return decodeEvent(data)
 }

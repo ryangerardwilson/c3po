@@ -58,6 +58,6 @@ func ListUsage() ([]UsageRow, error) {
 		return nil, err
 	}
 	var rows []UsageRow
-	err = queryJSON(db, `SELECT feature, actor, day, n, ok, last FROM usage`, &rows)
+	err = queryJSON(db, `SELECT feature, actor, date(day * 86400, 'unixepoch') AS day, n, ok, last FROM usage`, &rows)
 	return rows, err
 }

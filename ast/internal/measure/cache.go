@@ -16,6 +16,9 @@ import (
 
 const cacheMaxAge = 60 * time.Second
 
+// cacheEntry is a copy of Count for one root, derived and never edited. It is
+// valid while the fingerprint of the tree and config matches and for at most
+// cacheMaxAge; CountOpts.Refresh recounts and replaces it.
 type cacheEntry struct {
 	Root               string    `json:"root"`
 	Fingerprint        string    `json:"fingerprint"`

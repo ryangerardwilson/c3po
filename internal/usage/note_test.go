@@ -63,7 +63,7 @@ func TestNoteCountsDayActorAndSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(orm, []byte("model usage")) {
+	if !bytes.Contains(orm, []byte("CREATE TABLE IF NOT EXISTS usage")) {
 		t.Fatalf("orm\n%s", orm)
 	}
 }

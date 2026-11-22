@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ryangerardwilson/c3po/cyclotree/score"
+	"github.com/ryangerardwilson/c3po/internal/score"
 )
 
 // scoredFn is one scored function. File is relative to the directory

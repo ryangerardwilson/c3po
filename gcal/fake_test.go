@@ -13,17 +13,19 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ryangerardwilson/c3po/gcal/internal/desk"
 )
 
 // fakeGoogle serves the token, userinfo, Calendar, and Drive endpoints.
 type fakeGoogle struct {
-	t        *testing.T
-	srv      *httptest.Server
-	mu       sync.Mutex
-	requests []recorded
-	events   map[string]map[string]any
-	list     []map[string]any
-	email    string
+	t          *testing.T
+	srv        *httptest.Server
+	mu         sync.Mutex
+	requests   []recorded
+	events     map[string]map[string]any
+	list       []map[string]any
+	email      string
 	transcript string
 }
 
@@ -121,6 +123,7 @@ func (f *fakeGoogle) event(w http.ResponseWriter, rec recorded) {
 }
 
 // harness is a temp HOME with XDG dirs, a config, and a fake Google.
+// Tokens are files under the temp HOME, never the sqlx database.
 type harness struct {
 	t      *testing.T
 	home   string
@@ -133,6 +136,7 @@ type harness struct {
 	opened []string
 	edited [][]string
 	browse func(string) error
+	editor func(argv []string) error
 }
 
 func newHarness(t *testing.T) *harness {
@@ -144,13 +148,23 @@ func newHarness(t *testing.T) *harness {
 		"XDG_DATA_HOME":   filepath.Join(home, "data"),
 		"NO_COLOR":        "1",
 	}
+	for k, v := range h.vars {
+		t.Setenv(k, v)
+	}
+	t.Setenv("C3PO_SQLX", "off")
 	h.browse = h.approve("good-code")
+	h.editor = func(argv []string) error {
+		h.edited = append(h.edited, argv)
+		return nil
+	}
 	return h
 }
 
 func (h *harness) path(rel string) string { return filepath.Join(h.home, rel) }
 
-func (h *harness) configPath() string { return filepath.Join(h.home, "cfg", "c3po", "gcal", "config.json") }
+func (h *harness) configPath() string {
+	return filepath.Join(h.home, "cfg", "c3po", "gcal", "config.json")
+}
 
 func (h *harness) tokenPath(email string) string {
 	return filepath.Join(h.home, "data", "c3po", "gcal", "tokens", email+".json")
@@ -208,8 +222,8 @@ func (h *harness) approve(code string) func(string) error {
 	}
 }
 
-func (h *harness) env() *env {
-	return &env{
+func (h *harness) wiring() wiring {
+	return wiring{
 		lookup: func(k string) (string, bool) {
 			v, ok := h.vars[k]
 			return v, ok
@@ -223,16 +237,13 @@ func (h *harness) env() *env {
 		userinfoURL:  h.google.srv.URL + "/userinfo",
 		now:          func() time.Time { return h.now },
 		openBrowser:  func(u string) error { return h.browse(u) },
-		editor: func(argv []string) error {
-			h.edited = append(h.edited, argv)
-			return nil
-		},
-		newID: func() string { return "req-1" },
+		editor:       func(argv []string) error { return h.editor(argv) },
+		newID:        func() string { return "req-1" },
 	}
 }
 
 func (h *harness) run(args ...string) int {
 	h.stdout.Reset()
 	h.stderr.Reset()
-	return run(args, h.env())
+	return desk.Run(args, h.wiring().env())
 }

@@ -7,47 +7,39 @@ import (
 	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
 )
 
-func TestBodyDoesNotRepeatKey(t *testing.T) {
+func TestIdeaBelongsToItsTopic(t *testing.T) {
 	isolate(t)
 	if _, _, code := call(t, "add", "xyz", "a quiet ending"); code != 0 {
 		t.Fatal(code)
 	}
-	idea, ok, err := sqlxdb.Get(recordApp, recordKind, "1")
-	if err != nil || !ok || strings.Contains(string(idea), `"id"`) {
-		t.Fatalf("idea ok=%v err=%v %s", ok, err, idea)
-	}
 	if _, _, code := call(t, "add", "abc"); code != 0 {
 		t.Fatal(code)
 	}
-	topic, ok, err := sqlxdb.Get(recordApp, recordKindTopic, "abc")
-	if err != nil || !ok || strings.Contains(string(topic), `"topic"`) {
-		t.Fatalf("topic ok=%v err=%v %s", ok, err, topic)
+	var rows []struct {
+		ID    int    `json:"id"`
+		Topic string `json:"topic"`
 	}
-}
-
-func TestKeyMigrationDropsOldCopies(t *testing.T) {
-	isolate(t)
-	oldIdea := `{"id":"7","topic":"xyz","text":"an old idea","created":"2026-01-01T00:00:00Z"}`
-	oldTopic := `{"topic":"xyz","created":"2026-01-01T00:00:00Z"}`
-	if err := sqlxdb.Put(recordApp, recordKind, "7", []byte(oldIdea)); err != nil {
+	if err := sqlxdb.Query("SELECT i.id, t.name AS topic FROM idealake_idea i JOIN idealake_topic t ON t.id = i.topic_id", &rows); err != nil {
 		t.Fatal(err)
 	}
-	if err := sqlxdb.Put(recordApp, recordKindTopic, "xyz", []byte(oldTopic)); err != nil {
-		t.Fatal(err)
+	if len(rows) != 1 || rows[0].ID != 1 || rows[0].Topic != "xyz" {
+		t.Fatalf("ideas %+v", rows)
 	}
-	out, _, code := call(t, "show", "7")
-	if code != 0 || !strings.Contains(out, "an old idea") {
-		t.Fatalf("show %d %s", code, out)
+	names, err := testDeps().store.TopicNames()
+	if err != nil || strings.Join(names, ",") != "abc,xyz" {
+		t.Fatalf("topics %v %v", names, err)
 	}
-	if out, _, code := call(t, "topics"); code != 0 || !strings.Contains(out, "xyz") {
-		t.Fatalf("topics %d %s", code, out)
+	if err := sqlxdb.Exec("DELETE FROM idealake_topic WHERE name = 'xyz'"); err == nil {
+		t.Fatal("a topic with ideas was deleted")
 	}
-	idea, _, err := sqlxdb.Get(recordApp, recordKind, "7")
-	if err != nil || strings.Contains(string(idea), `"id"`) || !strings.Contains(string(idea), `"topic":"xyz"`) {
-		t.Fatalf("idea %v %s", err, idea)
+	if _, _, code := call(t, "remove", "1"); code != 0 {
+		t.Fatal(code)
 	}
-	topic, _, err := sqlxdb.Get(recordApp, recordKindTopic, "xyz")
-	if err != nil || strings.Contains(string(topic), `"topic"`) {
-		t.Fatalf("topic %v %s", err, topic)
+	if _, _, code := call(t, "add", "xyz", "another"); code != 0 {
+		t.Fatal(code)
+	}
+	ideas, err := testDeps().store.Ideas()
+	if err != nil || len(ideas) != 1 || ideas[0].ID != "2" {
+		t.Fatalf("a removed id was issued again: %+v %v", ideas, err)
 	}
 }

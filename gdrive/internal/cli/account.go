@@ -11,7 +11,7 @@ import (
 	"github.com/ryangerardwilson/c3po/gdrive/internal/auth"
 	"github.com/ryangerardwilson/c3po/gdrive/internal/config"
 	"github.com/ryangerardwilson/c3po/gdrive/internal/paths"
-	"github.com/ryangerardwilson/c3po/gdrive/internal/syncer"
+	"github.com/ryangerardwilson/c3po/gdrive/internal/syncstate"
 )
 
 func authAccount(clientSecretPath string, stdout, stderr io.Writer) error {
@@ -106,6 +106,11 @@ func runRegister(preset string, params []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// Registration ids are reused after a removal. A new registration starts
+	// with no sync state, whatever an older registration with its id left.
+	if err := syncstate.Delete(preset, reg.ID); err != nil {
+		return err
+	}
 	fmt.Fprintf(stdout, "registered\t%s\t%s\t%s\t%s\n", preset, reg.ID, reg.LocalDir, reg.DrivePath)
 	return nil
 }
@@ -124,11 +129,20 @@ func runRemoveRegistration(preset string, params []string, stdout io.Writer) err
 	if err := ensureSetup(preset, true, stdout); err != nil {
 		return err
 	}
-	reg, err := config.RemoveRegistration(preset, params[2])
+	// The sync state goes first: the config and the database cannot share a
+	// transaction, and state left behind would pass to the next registration
+	// that reuses this id. A failed config write leaves the registration with
+	// no state, as if it were new.
+	reg, err := config.GetRegistration(preset, params[2])
 	if err != nil {
 		return err
 	}
-	_ = syncer.DeleteState(preset, reg.ID)
+	if err := syncstate.Delete(preset, reg.ID); err != nil {
+		return err
+	}
+	if _, err := config.RemoveRegistration(preset, reg.ID); err != nil {
+		return err
+	}
 	fmt.Fprintf(stdout, "removed\t%s\t%s\t%s\n", preset, reg.ID, reg.LocalDir)
 	return nil
 }

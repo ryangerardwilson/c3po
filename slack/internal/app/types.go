@@ -2,10 +2,8 @@ package app
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -14,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ryangerardwilson/c3po/slack/internal/anyval"
 )
 
 const (
@@ -21,8 +21,6 @@ const (
 	legacyAppName              = "sluser"
 	defaultListLimit           = 10
 	defaultListHTTPTimeout     = 45 * time.Second
-	maxRateLimitRetries        = 3
-	eventCacheSchemaVersion    = 1
 	eventSyncConversationLimit = 20
 	conversationTypesDMs       = "im,mpim"
 	conversationTypesMember    = "im,mpim,public_channel,private_channel"
@@ -74,14 +72,23 @@ type Args struct {
 	Verbose       bool
 }
 
+// Runtime runs c3po slack. Slack and Cache are the ports to the outside;
+// the composition root fills them.
 type Runtime struct {
 	Stdout     io.Writer
 	Stderr     io.Writer
-	HTTPClient *http.Client
+	Slack      Connector
+	Cache      Cache
 	Now        func() time.Time
 	OpenEditor func(path string, bootstrap string) error
-	RunCommand func(name string, args ...string) error
-	IsTTY      func() bool
+	// RunEditor runs the editor command on path, attached to the process
+	// terminal, never to Stdout.
+	RunEditor func(editor, path string) error
+	// IsTTY decides whether config edit may run. Nil uses StdioIsTerminal.
+	IsTTY func() bool
+	// StdioIsTerminal reports whether the process stdin and stdout are real
+	// terminals. Nil means they are not.
+	StdioIsTerminal func() bool
 }
 
 type UsageError struct {
@@ -92,30 +99,16 @@ func (e UsageError) Error() string {
 	return e.Message
 }
 
+// NewRuntime writes to the process stdio. Slack, Cache, and the terminal
+// checks are left for the caller.
 func NewRuntime() *Runtime {
 	return &Runtime{
-		Stdout:     os.Stdout,
-		Stderr:     os.Stderr,
-		HTTPClient: &http.Client{Timeout: 60 * time.Second},
+		Stdout: os.Stdout,
+		Stderr: os.Stderr,
 		Now: func() time.Time {
 			return time.Now()
 		},
-		IsTTY: isInteractiveTTY,
 	}
-}
-
-func Main(argv []string) int {
-	rt := NewRuntime()
-	if err := rt.Run(argv); err != nil {
-		var usage UsageError
-		if errors.As(err, &usage) {
-			fmt.Fprintln(rt.Stderr, usage.Message)
-			return 2
-		}
-		fmt.Fprintln(rt.Stderr, err)
-		return 1
-	}
-	return 0
 }
 
 func getenv(name string) string {
@@ -336,81 +329,37 @@ func saveContact(cfg Config, preset, label, target string) error {
 }
 
 func asMap(value any) map[string]any {
-	if typed, ok := value.(map[string]any); ok {
-		return typed
-	}
-	return map[string]any{}
+	return anyval.Map(value)
 }
 
 func asList(value any) []any {
-	if typed, ok := value.([]any); ok {
-		return typed
-	}
-	return nil
+	return anyval.List(value)
 }
 
 func str(value any) string {
-	switch typed := value.(type) {
-	case string:
-		return typed
-	case fmt.Stringer:
-		return typed.String()
-	case float64:
-		if typed == float64(int64(typed)) {
-			return strconv.FormatInt(int64(typed), 10)
-		}
-		return strconv.FormatFloat(typed, 'f', -1, 64)
-	case int:
-		return strconv.Itoa(typed)
-	case int64:
-		return strconv.FormatInt(typed, 10)
-	case bool:
-		if typed {
-			return "true"
-		}
-		return "false"
-	default:
-		return ""
-	}
+	return anyval.Str(value)
 }
 
 func intValue(value any, fallback int) int {
-	switch typed := value.(type) {
-	case int:
-		return typed
-	case int64:
-		return int(typed)
-	case float64:
-		return int(typed)
-	case string:
-		parsed, err := strconv.Atoi(strings.TrimSpace(typed))
-		if err == nil {
-			return parsed
-		}
-	}
-	return fallback
+	return anyval.Int(value, fallback)
 }
 
 func boolValue(value any) bool {
-	switch typed := value.(type) {
-	case bool:
-		return typed
-	case string:
-		return typed == "true" || typed == "1"
-	case float64:
-		return typed != 0
-	case int:
-		return typed != 0
-	default:
-		return false
-	}
+	return anyval.Bool(value)
 }
 
 func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" && strings.TrimSpace(value) != "-" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
+	return anyval.FirstNonEmpty(values...)
+}
+
+func tsFloat(value string) float64 {
+	return anyval.TSFloat(value)
+}
+
+func maxFloat(values ...float64) float64 {
+	return anyval.MaxFloat(values...)
+}
+
+func maxInt(a, b int) int {
+	return anyval.MaxInt(a, b)
 }

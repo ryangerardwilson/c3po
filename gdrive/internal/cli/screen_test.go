@@ -27,6 +27,7 @@ func TestScreenReportsNoPresets(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "cfg"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, "data"))
 	t.Setenv("GDRIVE_CONFIG", filepath.Join(home, "gdrive.json"))
+	t.Setenv("SQLX_ROOT", filepath.Join(home, "sqlx"))
 	var stdout, stderr bytes.Buffer
 	code := Screen(&stdout, &stderr)
 	if code != 1 || !strings.Contains(stderr.String(), "no Drive presets") {

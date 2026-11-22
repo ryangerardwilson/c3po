@@ -51,7 +51,7 @@ func (s *screen) noteSession(dir, symbol string) {
 	}
 	mark := cursorMarkOf(s)
 	_ = s.session.Place(dir, mark.key)
-	_ = s.session.Note(tuisession.Body{Args: args})
+	_ = s.session.Note(tuisession.Place{Args: args})
 }
 
 // Key applies one motion. j and k move among visible rows. h moves to

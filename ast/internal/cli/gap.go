@@ -8,7 +8,7 @@ import (
 
 	"github.com/ryangerardwilson/c3po/ast/internal/config"
 	"github.com/ryangerardwilson/c3po/ast/internal/measure"
-	"github.com/ryangerardwilson/c3po/cyclotree/score"
+	"github.com/ryangerardwilson/c3po/internal/score"
 )
 
 // errGapOver is gap --check with a function at or above max_cc. Run exits 1

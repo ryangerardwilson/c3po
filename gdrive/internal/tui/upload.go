@@ -12,13 +12,29 @@ import (
 	"github.com/ryangerardwilson/c3po/o"
 )
 
-// driveUploader is the Drive surface the navigator uses.
-type driveUploader interface {
+// Lister lists one Drive folder.
+type Lister interface {
 	ListChildren(parentID string) ([]driveapi.NavEntry, error)
+}
+
+// Uploader puts a local file or folder into a Drive folder under a name
+// not yet taken there.
+type Uploader interface {
 	FindAvailableName(parentID, name string) (string, error)
 	CreateFolder(parentID, name string) (string, error)
 	UploadFile(parentID, name, filePath string) (string, error)
+}
+
+// Trasher moves a Drive file to the trash.
+type Trasher interface {
 	TrashEntry(fileID string) error
+}
+
+// Drive is the Drive surface the navigator uses.
+type Drive interface {
+	Lister
+	Uploader
+	Trasher
 }
 
 func pickLocal(term *terminal) (string, error) {
@@ -73,7 +89,7 @@ func (m *model) upload() bool {
 	return false
 }
 
-func uploadLocal(dest driveUploader, parentID, localPath string) error {
+func uploadLocal(dest Uploader, parentID, localPath string) error {
 	info, err := localInfo(localPath)
 	if err != nil {
 		return err
@@ -111,7 +127,7 @@ func localInfo(path string) (os.FileInfo, error) {
 	return resolved, nil
 }
 
-func uploadDir(dest driveUploader, parentID, dir string) error {
+func uploadDir(dest Uploader, parentID, dir string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err

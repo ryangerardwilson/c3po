@@ -3,28 +3,42 @@ package idealake
 import (
 	"encoding/json"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/ryangerardwilson/c3po/idealake/internal/lake"
+	"github.com/ryangerardwilson/c3po/idealake/internal/store"
 	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
 )
+
+// embedFn and stdinTerminal are the embedder and terminal check a test runs
+// the desk with. isolate resets them.
+var (
+	embedFn       func([]string) ([][]float64, error)
+	stdinTerminal func(io.Reader) bool
+)
+
+type funcEmbedder func([]string) ([][]float64, error)
+
+func (f funcEmbedder) Embed(inputs []string) ([][]float64, error) { return f(inputs) }
 
 func isolate(t *testing.T) {
 	t.Helper()
 	t.Setenv("SQLX_ROOT", t.TempDir())
-	prevEmbed := embedFn
-	prevTerm := stdinTerminal
-	embedFn = func(inputs []string) ([][]float64, error) {
-		return scriptedEmbed(inputs)
+	embedFn = scriptedEmbed
+	stdinTerminal = func(io.Reader) bool { return false }
+}
+
+func testDeps() deps {
+	return deps{
+		store:    store.SQL{Now: time.Now},
+		embed:    funcEmbedder(func(in []string) ([][]float64, error) { return embedFn(in) }),
+		now:      time.Now,
+		terminal: func(r io.Reader) bool { return stdinTerminal(r) },
 	}
-	t.Cleanup(func() {
-		embedFn = prevEmbed
-		stdinTerminal = prevTerm
-	})
 }
 
 func scriptedEmbed(inputs []string) ([][]float64, error) {
@@ -50,7 +64,7 @@ func call(t *testing.T, args ...string) (string, string, int) {
 func callIn(t *testing.T, in io.Reader, args ...string) (string, string, int) {
 	t.Helper()
 	var stdout, stderr strings.Builder
-	code := run(args, &stdout, &stderr, in)
+	code := run(args, &stdout, &stderr, in, testDeps())
 	return stdout.String(), stderr.String(), code
 }
 
@@ -288,9 +302,11 @@ func TestJSONOmitsVectors(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &doc); err != nil || len(doc.Ideas) != 1 || doc.Ideas[0].ID != "1" {
 		t.Fatalf("decode %v %s", err, out)
 	}
-	body, ok, err := sqlxdb.Get(recordApp, recordKind, "1")
-	if err != nil || !ok || !strings.Contains(string(body), `"embedding"`) {
-		t.Fatalf("record ok=%v err=%v %s", ok, err, body)
+	var rows []struct {
+		Embedding *string `json:"embedding"`
+	}
+	if err := sqlxdb.Query("SELECT embedding FROM idealake_idea WHERE id = 1", &rows); err != nil || len(rows) != 1 || rows[0].Embedding == nil {
+		t.Fatalf("stored embedding %+v %v", rows, err)
 	}
 	path := filepath.Join(os.Getenv("SQLX_ROOT"), "data", "c3po.sqlite")
 	if _, err := os.Stat(path); err != nil {
@@ -356,7 +372,7 @@ func TestSearchLimit(t *testing.T) {
 	}
 	out, _, code := call(t, "search", "xyz", "conclusion")
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if code != 0 || len(lines) != searchLimit {
+	if code != 0 || len(lines) != lake.SearchLimit {
 		t.Fatalf("code %d lines %d", code, len(lines))
 	}
 }
@@ -385,73 +401,5 @@ func TestApostropheAndDuplicate(t *testing.T) {
 	out, _, code := call(t, "add", "xyz", "a dog's idea", "a dog's idea")
 	if code != 0 || strings.Count(out, "a dog's idea") != 2 {
 		t.Fatalf("add %d %s", code, out)
-	}
-}
-
-func TestCosine(t *testing.T) {
-	if cosine([]float64{1, 0}, []float64{1, 0}) != 1 {
-		t.Fatal("same")
-	}
-	if cosine([]float64{1, 0}, []float64{0, 1}) != 0 {
-		t.Fatal("orthogonal")
-	}
-	if cosine([]float64{0, 0}, []float64{1, 0}) != 0 {
-		t.Fatal("zero")
-	}
-}
-
-func TestEmbedRemote(t *testing.T) {
-	var gotAuth, gotModel string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotAuth = r.Header.Get("Authorization")
-		var body embedRequest
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Error(err)
-			return
-		}
-		gotModel = body.Model
-		if body.EncodingFormat != "float" || len(body.Input) != 2 {
-			t.Errorf("body %#v", body)
-		}
-		_, _ = io.WriteString(w, `{"data":[{"index":1,"embedding":[0,1]},{"index":0,"embedding":[1,0]}]}`)
-	}))
-	t.Cleanup(srv.Close)
-	t.Setenv("XAI_API_KEY", "test-key")
-	prev := embedURL
-	embedURL = srv.URL
-	t.Cleanup(func() { embedURL = prev })
-	vectors, err := embedRemote([]string{"passage: a", "passage: b"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if gotAuth != "Bearer test-key" || gotModel != embedModel {
-		t.Fatalf("auth %s model %s", gotAuth, gotModel)
-	}
-	if len(vectors) != 2 || vectors[0][0] != 1 || vectors[1][1] != 1 {
-		t.Fatalf("vectors %#v", vectors)
-	}
-}
-
-func TestEmbedRemoteHidesTheKey(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = io.WriteString(w, "bad "+r.Header.Get("Authorization"))
-	}))
-	t.Cleanup(srv.Close)
-	t.Setenv("XAI_API_KEY", "test-key")
-	prev := embedURL
-	embedURL = srv.URL
-	t.Cleanup(func() { embedURL = prev })
-	_, err := embedRemote([]string{"passage: a"})
-	if err == nil || strings.Contains(err.Error(), "test-key") || strings.Contains(err.Error(), "Bearer") {
-		t.Fatal(err)
-	}
-}
-
-func TestEmbedRemoteNeedsKey(t *testing.T) {
-	t.Setenv("XAI_API_KEY", "")
-	_, err := embedRemote([]string{"passage: a"})
-	if err == nil || strings.Contains(err.Error(), "http") {
-		t.Fatal(err)
 	}
 }

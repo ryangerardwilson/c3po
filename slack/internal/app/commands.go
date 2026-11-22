@@ -1,10 +1,9 @@
 package app
 
 import (
+	"errors"
 	"fmt"
-	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -130,11 +129,11 @@ func (rt *Runtime) runListed(account Account, preset string, contacts Contacts, 
 	case "list-contacts":
 		return true, rt.listContactsReport(contacts, args.OutputJSON)
 	case "list-channels":
-		return true, rt.withListClient(account, args, func(client SlackClient, _ string) error {
+		return true, rt.withListClient(account, args, func(client Session, _ string) error {
 			return rt.listMemberChannelsReport(client, args.OutputJSON)
 		})
 	case "list-dms":
-		return true, rt.withListClient(account, args, func(client SlackClient, _ string) error {
+		return true, rt.withListClient(account, args, func(client Session, _ string) error {
 			return rt.listMemberDMsReport(client, args.OutputJSON)
 		})
 	case "ls":
@@ -142,7 +141,7 @@ func (rt *Runtime) runListed(account Account, preset string, contacts Contacts, 
 	case "unread-count":
 		return true, rt.runUnread(account, args)
 	case "thread":
-		return true, rt.withListClient(account, args, func(client SlackClient, _ string) error {
+		return true, rt.withListClient(account, args, func(client Session, _ string) error {
 			return rt.listThreadReplies(client, args)
 		})
 	case "su":
@@ -152,7 +151,7 @@ func (rt *Runtime) runListed(account Account, preset string, contacts Contacts, 
 	}
 }
 
-func (rt *Runtime) withListClient(account Account, args Args, fn func(SlackClient, string) error) error {
+func (rt *Runtime) withListClient(account Account, args Args, fn func(Session, string) error) error {
 	token, err := resolveListToken(account)
 	if err != nil {
 		return err
@@ -162,11 +161,11 @@ func (rt *Runtime) withListClient(account Account, args Args, fn func(SlackClien
 	if err != nil {
 		return err
 	}
-	return fn(client, str(auth["user_id"]))
+	return fn(client, auth.UserID)
 }
 
 func (rt *Runtime) runListMessages(account Account, preset string, contacts Contacts, args Args) error {
-	return rt.withListClient(account, args, func(client SlackClient, selfUserID string) error {
+	return rt.withListClient(account, args, func(client Session, selfUserID string) error {
 		if selfUserID == "" {
 			return UsageError{Message: "Unable to determine the current Slack user."}
 		}
@@ -244,7 +243,7 @@ func (rt *Runtime) runOpen(account Account, preset string, args Args) error {
 	case "inspect-message", "inspect-conversation":
 		return rt.inspectSlack(args, readClient)
 	case "o":
-		selfUserID := str(auth["user_id"])
+		selfUserID := auth.UserID
 		if selfUserID == "" {
 			return UsageError{Message: "Unable to determine the current Slack user."}
 		}
@@ -281,7 +280,7 @@ func (rt *Runtime) runWrite(account Account, contacts Contacts, args Args) error
 	}
 }
 
-func (rt *Runtime) runPost(account Account, token string, contacts Contacts, client SlackClient, args Args) error {
+func (rt *Runtime) runPost(account Account, token string, contacts Contacts, client Session, args Args) error {
 	directToken := resolveDirectPostToken(account, token)
 	lookupToken, err := resolveLookupToken(account, directToken)
 	if err != nil {
@@ -289,7 +288,7 @@ func (rt *Runtime) runPost(account Account, token string, contacts Contacts, cli
 	}
 	directClient := rt.slackClient(directToken)
 	lookupClient := rt.slackClient(lookupToken)
-	target, err := resolvePostTarget(rt, args.Recipient, contacts, client, lookupClient, directClient)
+	target, err := resolvePostTarget(args.Recipient, contacts, lookupClient, directClient)
 	if err != nil {
 		return err
 	}
@@ -309,7 +308,7 @@ func (rt *Runtime) runPost(account Account, token string, contacts Contacts, cli
 			return err
 		}
 	} else {
-		ts, err = sendPost(postClient, target.ChannelID, args.Message, "")
+		ts, err = postClient.PostMessage(target.ChannelID, args.Message, "")
 		if err != nil {
 			return err
 		}
@@ -324,7 +323,7 @@ func (rt *Runtime) runPost(account Account, token string, contacts Contacts, cli
 	}, []string{"posted", "target=" + args.Recipient, "kind=" + target.Kind, "channel=" + target.ChannelID}, ts, uploaded)
 }
 
-func (rt *Runtime) runReply(account Account, token string, client SlackClient, args Args) error {
+func (rt *Runtime) runReply(account Account, token string, client Session, args Args) error {
 	channelID, messageTS, ok := parseMessageID(args.Recipient)
 	if !ok {
 		return UsageError{Message: "Use: c3po slack <preset> reply to <message_id> body <message> [attach <path> ...]"}
@@ -334,7 +333,7 @@ func (rt *Runtime) runReply(account Account, token string, client SlackClient, a
 	if err != nil {
 		return err
 	}
-	ts, err := sendPost(writeClient, channelID, args.Message, threadTS)
+	ts, err := writeClient.PostMessage(channelID, args.Message, threadTS)
 	if err != nil {
 		return err
 	}
@@ -352,13 +351,13 @@ func (rt *Runtime) runReply(account Account, token string, client SlackClient, a
 	}, []string{"replied", "message_id=" + args.Recipient, "channel=" + channelID, "thread_ts=" + threadTS}, ts, uploaded)
 }
 
-func (rt *Runtime) runDelete(account Account, token string, client SlackClient, args Args) error {
+func (rt *Runtime) runDelete(account Account, token string, client Session, args Args) error {
 	channelID, messageTS, ok := parseMessageID(args.Recipient)
 	if !ok {
 		return UsageError{Message: "Use: c3po slack <preset> delete message <message_id>"}
 	}
 	writeClient := rt.writeClient(account, token)
-	if err := deleteMessage(writeClient, channelID, messageTS); err != nil {
+	if err := writeClient.DeleteMessage(channelID, messageTS); err != nil {
 		return err
 	}
 	return rt.printWriteResult(args.OutputJSON, map[string]any{
@@ -369,13 +368,13 @@ func (rt *Runtime) runDelete(account Account, token string, client SlackClient, 
 	}, []string{"deleted", "message_id=" + args.Recipient, "channel=" + channelID}, "", nil)
 }
 
-func (rt *Runtime) runEdit(account Account, token string, client SlackClient, args Args) error {
+func (rt *Runtime) runEdit(account Account, token string, client Session, args Args) error {
 	channelID, messageTS, ok := parseMessageID(args.Recipient)
 	if !ok {
 		return UsageError{Message: "Use: c3po slack <preset> edit message <message_id> body <message>"}
 	}
 	writeClient := rt.writeClient(account, token)
-	if err := editMessage(writeClient, channelID, messageTS, args.Message); err != nil {
+	if err := writeClient.UpdateMessage(channelID, messageTS, args.Message); err != nil {
 		return err
 	}
 	return rt.printWriteResult(args.OutputJSON, map[string]any{
@@ -411,7 +410,7 @@ func (rt *Runtime) printWriteResult(asJSON bool, payload map[string]any, base []
 	return nil
 }
 
-func (rt *Runtime) writeClient(account Account, fallbackToken string) SlackClient {
+func (rt *Runtime) writeClient(account Account, fallbackToken string) Session {
 	userToken := resolveDirectPostToken(account, fallbackToken)
 	if userToken != "" && tokenKind(userToken) == "user" {
 		return rt.slackClient(userToken)
@@ -419,12 +418,8 @@ func (rt *Runtime) writeClient(account Account, fallbackToken string) SlackClien
 	return rt.slackClient(fallbackToken)
 }
 
-func (rt *Runtime) slackClientVerbose(token string, verbose bool) SlackClient {
-	client := rt.slackClient(token)
-	if verbose {
-		client.Verbose = rt.Stderr
-	}
-	return client
+func (rt *Runtime) slackClientVerbose(token string, verbose bool) Session {
+	return rt.session(token, verbose, 0)
 }
 
 func (rt *Runtime) showConfigSummary(path string, cfg Config, outputJSON bool) error {
@@ -435,7 +430,7 @@ func (rt *Runtime) showConfigSummary(path string, cfg Config, outputJSON bool) e
 func (rt *Runtime) openConfig(path string, bootstrap string) error {
 	// Fail closed unless a real interactive terminal is available for the editor
 	// session. Do not trust FileMode alone; re-check process stdio FDs.
-	isTTY := isInteractiveTTY
+	isTTY := rt.stdioIsTerminal
 	if rt.IsTTY != nil {
 		isTTY = rt.IsTTY
 	}
@@ -444,7 +439,7 @@ func (rt *Runtime) openConfig(path string, bootstrap string) error {
 	}
 	// Defense in depth: even if a test hook says TTY, never launch the real
 	// editor unless the process stdio FDs are terminals.
-	if rt.OpenEditor == nil && !isInteractiveTTY() {
+	if rt.OpenEditor == nil && !rt.stdioIsTerminal() {
 		return UsageError{Message: "c3po slack config edit requires an interactive TTY on stdin and stdout. Use `c3po slack config` or `c3po slack setup check` for a redacted summary."}
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -462,13 +457,10 @@ func (rt *Runtime) openConfig(path string, bootstrap string) error {
 	if editor == "" {
 		return UsageError{Message: "No EDITOR/VISUAL set. Export EDITOR and re-run `c3po slack config edit`, or edit the redacted-safe config path after `c3po slack setup check`."}
 	}
-	cmd := exec.Command("sh", "-c", editor+" \"$1\"", "slack-editor", path)
-	// Attach only to the real process terminals — never to captured rt.Stdout
-	// buffers that could leak token-bearing file contents into agent logs.
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if rt.RunEditor == nil {
+		return errors.New("no editor runner is wired")
+	}
+	return rt.RunEditor(editor, path)
 }
 
 func (rt *Runtime) listAccountPresets(cfg Config, outputJSON bool) error {
@@ -581,7 +573,7 @@ func (rt *Runtime) configureAccount(configPath string, cfg Config, args Args) er
 	return nil
 }
 
-func (rt *Runtime) searchUsersAndContacts(contacts Contacts, client SlackClient, query string) error {
+func (rt *Runtime) searchUsersAndContacts(contacts Contacts, client Session, query string) error {
 	queryLower := strings.ToLower(query)
 	var rows [][]kv
 	for label, target := range contacts {
@@ -589,10 +581,9 @@ func (rt *Runtime) searchUsersAndContacts(contacts Contacts, client SlackClient,
 			rows = append(rows, []kv{{"type", "contact"}, {"label", label}, {"target", target}})
 		}
 	}
-	data, err := client.Request("users.list", map[string]string{"limit": "200"}, false, http.MethodGet, true)
-	if err == nil && data["ok"] == true {
-		for _, raw := range asList(data["members"]) {
-			user := asMap(raw)
+	members, err := client.ListUsers()
+	if err == nil {
+		for _, user := range members {
 			if boolValue(user["deleted"]) || boolValue(user["is_bot"]) {
 				continue
 			}
@@ -727,6 +718,12 @@ func (rt *Runtime) printPreview(asJSON bool, payload map[string]any, fields []kv
 	}
 	rt.printSections([][]kv{fields})
 	return nil
+}
+
+// stdioIsTerminal reports whether the process stdio is a real terminal. With
+// no check wired it is not, so config edit fails closed.
+func (rt *Runtime) stdioIsTerminal() bool {
+	return rt.StdioIsTerminal != nil && rt.StdioIsTerminal()
 }
 
 func fileExists(path string) bool {

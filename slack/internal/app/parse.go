@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const helpText = `c3po slack
@@ -649,7 +650,7 @@ func parseListFilters(args Args, remaining []string) (Args, error) {
 				return args, UsageError{Message: "since requires: <window> (examples: 4h, 2d, 1w, 2025-01-01)"}
 			}
 			window := remaining[i+1]
-			if _, ok := startTS(window); !ok {
+			if _, ok := startTS(window, time.Time{}); !ok {
 				return args, UsageError{Message: "invalid since window " + strconv.Quote(window) + "; use 4h, 2d, 1w, 3m, 1y, YYYY-MM-DD, YYYY-MM, or \"jan 2025\""}
 			}
 			args.ListTimeLimit = window

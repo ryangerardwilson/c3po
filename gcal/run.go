@@ -1,13 +1,15 @@
 // Package gcal is the c3po for Google Calendar: numbered account
 // presets that list, create, preview, delete, reschedule, and export
-// transcripts of events on the primary calendar.
+// transcripts of events on the primary calendar. It is the composition
+// root: it builds the HTTP client, the Google adapters, the token store,
+// and the browser, editor, and terminal hooks, and hands them to desk.
 package gcal
 
 import (
 	"bufio"
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -16,19 +18,12 @@ import (
 	"time"
 
 	"github.com/ryangerardwilson/c3po/gcal/internal/calendar"
-	"github.com/ryangerardwilson/c3po/gcal/internal/errs"
+	"github.com/ryangerardwilson/c3po/gcal/internal/desk"
 	"github.com/ryangerardwilson/c3po/gcal/internal/oauth"
-	"github.com/ryangerardwilson/c3po/gcal/internal/paths"
-	"github.com/ryangerardwilson/c3po/internal/version"
 )
 
-const (
-	ansiGray  = "\x1b[38;5;245m"
-	ansiReset = "\x1b[0m"
-)
-
-// env is everything a command touches outside its arguments.
-type env struct {
+// wiring is the outside world a gcal process is built from.
+type wiring struct {
 	lookup       func(string) (string, bool)
 	stdin        *bufio.Reader
 	stdout       io.Writer
@@ -44,23 +39,9 @@ type env struct {
 	tty          bool
 }
 
-func (e *env) getenv(key string) string {
-	v, _ := e.lookup(key)
-	return v
-}
-
-func (e *env) dirs() paths.Dirs { return paths.Resolve(e.getenv) }
-
-func (e *env) oauth() oauth.Options {
-	return oauth.Options{
-		HTTP: e.http, Dirs: e.dirs(), UserinfoURL: e.userinfoURL,
-		Now: e.now, OpenBrowser: e.openBrowser, Out: e.stdout,
-	}
-}
-
 // Run runs c3po gcal with the arguments after "gcal".
 func Run(args []string, stdout, stderr io.Writer) int {
-	e := &env{
+	w := wiring{
 		lookup:       os.LookupEnv,
 		stdin:        bufio.NewReader(os.Stdin),
 		stdout:       stdout,
@@ -74,53 +55,25 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		newID:        uuidHex,
 		tty:          isTerminal(stdout),
 	}
-	e.editor = func(argv []string) error { return runEditor(argv, stdout, stderr) }
-	return run(args, e)
+	w.editor = func(argv []string) error { return editorFailure(runEditor(argv, stdout, stderr)) }
+	return desk.Run(args, w.env())
 }
 
-func run(args []string, e *env) int {
-	err := dispatchTop(args, e)
-	if err == nil {
-		return 0
+// env hands the wiring to desk through its ports.
+func (w wiring) env() *desk.Env {
+	g := google{
+		getenv: func(key string) string {
+			v, _ := w.lookup(key)
+			return v
+		},
+		http: w.http, calendarBase: w.calendarBase, driveBase: w.driveBase,
+		userinfoURL: w.userinfoURL, now: w.now, openBrowser: w.openBrowser, out: w.stdout,
 	}
-	if ge, ok := errs.As(err); ok {
-		fmt.Fprintln(e.stderr, ge.Msg)
-		return ge.Code
+	return &desk.Env{
+		Lookup: w.lookup, Stdin: w.stdin, Stdout: w.stdout, Stderr: w.stderr,
+		Now: w.now, NewID: w.newID, TTY: w.tty, Editor: desk.EditorFunc(w.editor),
+		Google: g, Authorizer: g, Tokens: g,
 	}
-	fmt.Fprintf(e.stderr, "gcal: %s\n", err.Error())
-	return 1
-}
-
-func dispatchTop(args []string, e *env) error {
-	if len(args) == 0 || (len(args) == 1 && isHelp(args[0])) {
-		printHelp(e)
-		return nil
-	}
-	if len(args) == 1 && args[0] == "version" {
-		fmt.Fprintln(e.stdout, version.String())
-		return nil
-	}
-	if args[0] == "upgrade" {
-		return errs.Usage("upgrade is not part of c3po gcal; upgrade c3po itself")
-	}
-	if isHelp(args[0]) || args[0] == "version" {
-		return errs.Usage("Use: c3po gcal " + args[0])
-	}
-	if len(args) == 1 && args[0] == "config" {
-		return openConfig(e)
-	}
-	return dispatch(args, e)
-}
-
-func isHelp(s string) bool { return s == "help" || s == "-h" || s == "--help" }
-
-func printHelp(e *env) {
-	_, noColor := e.lookup("NO_COLOR")
-	if !e.tty || noColor {
-		fmt.Fprint(e.stdout, Help)
-		return
-	}
-	fmt.Fprint(e.stdout, ansiGray+Help[:len(Help)-1]+ansiReset+"\n")
 }
 
 func isTerminal(w io.Writer) bool {
@@ -159,4 +112,20 @@ func runEditor(argv []string, stdout, stderr io.Writer) error {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, stdout, stderr
 	return cmd.Run()
+}
+
+// editorFailure turns a process error into the desk editor errors: a
+// nonzero exit, or a command that does not exist.
+func editorFailure(err error) error {
+	var exitErr *exec.ExitError
+	switch {
+	case err == nil:
+		return nil
+	case errors.As(err, &exitErr):
+		return &desk.EditorExitError{Code: exitErr.ExitCode()}
+	case errors.Is(err, exec.ErrNotFound) || errors.Is(err, os.ErrNotExist):
+		return desk.ErrEditorNotFound
+	default:
+		return err
+	}
 }

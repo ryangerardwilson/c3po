@@ -1,123 +1,71 @@
-// Package gmail is c3po gmail, the Gmail desk.
+// Package gmail is c3po gmail, the Gmail desk. It wires the Gmail REST
+// client, the OAuth flow, the token store, the terminal, systemd, and the
+// editor into the commands in package desk.
 package gmail
 
 import (
-	"fmt"
 	"io"
-	"net/http"
 	"os"
-	"time"
+	"os/exec"
+	"path/filepath"
+
+	"golang.org/x/term"
 
 	"github.com/ryangerardwilson/c3po/gmail/internal/api"
 	"github.com/ryangerardwilson/c3po/gmail/internal/config"
-	"github.com/ryangerardwilson/c3po/gmail/internal/errs"
-	"github.com/ryangerardwilson/c3po/internal/version"
+	"github.com/ryangerardwilson/c3po/gmail/internal/desk"
+	"github.com/ryangerardwilson/c3po/gmail/internal/oauth"
+	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
 )
-
-// Service is the mailbox the commands call. *api.Client implements it.
-type Service interface {
-	List(query string, limit int) ([]api.Message, error)
-	ListIDs(query string) ([]string, error)
-	ListPage(query string, limit int, page string) ([]api.Message, string, error)
-	Get(id string) (api.Message, error)
-	Meta(id string) (api.Message, error)
-	Thread(id string) ([]api.Message, error)
-	Send(raw []byte, threadID string) (string, string, error)
-	TrashIDs(ids []string) (int, error)
-	TrashOne(id string) error
-	Modify(id string, add, remove []string) (string, string, error)
-	BatchModify(ids, add, remove []string) (int, error)
-	Attachment(msgID, attID string) ([]byte, error)
-	UnreadSenders(progress func(string, int, int)) (map[string]int, error)
-}
-
-// Env is one invocation. Tests replace Box and Systemctl.
-type Env struct {
-	Stdout, Stderr io.Writer
-	Stdin          io.Reader
-	Paths          config.Paths
-	Home           string
-	Dir            string
-	Now            func() time.Time
-	OpenBrowser    func(string) error
-	Systemctl      func(args []string) (string, error)
-	Editor         func(path string) error
-	Box            func(config.Account) (Service, error)
-	Ask            func(prompt string) (string, error)
-	HTTP           *http.Client
-}
 
 // Run runs c3po gmail and returns the exit code.
 func Run(args []string, stdout, stderr io.Writer) int {
-	return Env{Stdout: stdout, Stderr: stderr, Stdin: os.Stdin}.runCode(args)
+	return wire(desk.Env{Stdout: stdout, Stderr: stderr, Stdin: os.Stdin}).RunCode(args)
 }
 
-func (e Env) runCode(args []string) int {
-	if e.Stdout == nil {
-		e.Stdout = io.Discard
+func wire(e desk.Env) desk.Env {
+	opt := oauth.Options{Paths: config.DefaultPaths(), Out: e.Stdout}
+	e.Box = func(acct config.Account) (desk.Service, error) {
+		return &api.Client{Access: func() (string, error) {
+			return opt.AccessToken(acct.Email, acct.ClientSecretFile)
+		}}, nil
 	}
-	if e.Stderr == nil {
-		e.Stderr = io.Discard
+	e.Authorize = func(clientSecretFile string) (string, error) {
+		authorized, err := opt.Authorize(clientSecretFile)
+		return authorized.Email, err
 	}
-	code, err := e.run(args)
-	if err == nil {
-		return code
+	e.TokenExists = func(tokenPath string) (bool, error) {
+		return sqlxdb.TokenExists("gmail", tokenPath)
 	}
-	msg, exit := errs.Report(err)
-	fmt.Fprintln(e.Stderr, msg)
-	return exit
+	e.Terminal = writerTerminal
+	e.Systemctl = systemctlUser
+	e.Editor = func(argv []string) error {
+		proc := exec.Command(argv[0], argv[1:]...)
+		proc.Stdin, proc.Stdout, proc.Stderr = e.Stdin, e.Stdout, e.Stderr
+		return proc.Run()
+	}
+	e.C3po = c3poBin()
+	return e
 }
 
-func (e Env) run(args []string) (int, error) {
-	switch {
-	case len(args) == 0, one(args, "help"), one(args, "--help"), one(args, "-h"):
-		fmt.Fprint(e.Stdout, Help)
-		return 0, nil
-	case one(args, "version"), one(args, "--version"), one(args, "-v"):
-		fmt.Fprintln(e.Stdout, "c3po "+version.String())
-		return 0, nil
-	case one(args, "upgrade"):
-		fmt.Fprintln(e.Stderr, "upgrade is not part of c3po gmail. Upgrade c3po instead.")
-		return 1, nil
-	case len(args) > 0 && word(args[0], "help", "version", "upgrade"):
-		return 0, errs.Usage("Use: c3po gmail %s", args[0])
-	default:
-		return e.dispatch(args)
-	}
+// systemctlUser runs systemctl --user and returns its combined output.
+func systemctlUser(args []string) (string, error) {
+	out, err := exec.Command("systemctl", append([]string{"--user"}, args...)...).CombinedOutput()
+	return string(out), err
 }
 
-func (e Env) paths() config.Paths {
-	if e.Paths.Getenv != nil || e.Paths.Home != "" {
-		return e.Paths
+// c3poBin is the running c3po, else the c3po on PATH, else "c3po".
+func c3poBin() string {
+	if exe, err := os.Executable(); err == nil && filepath.Base(exe) == "c3po" {
+		return exe
 	}
-	return config.DefaultPaths()
+	if path, err := exec.LookPath("c3po"); err == nil {
+		return path
+	}
+	return "c3po"
 }
 
-func (e Env) load() (*config.App, error) {
-	p := e.paths()
-	return p.Load(p.ConfigPath())
-}
-
-func (e Env) home() string {
-	if e.Home != "" {
-		return e.Home
-	}
-	if e.Paths.Home != "" {
-		return e.Paths.Home
-	}
-	home, _ := os.UserHomeDir()
-	return home
-}
-
-func one(args []string, word string) bool {
-	return len(args) == 1 && args[0] == word
-}
-
-func word(got string, words ...string) bool {
-	for _, w := range words {
-		if got == w {
-			return true
-		}
-	}
-	return false
+func writerTerminal(out io.Writer) bool {
+	file, ok := out.(*os.File)
+	return ok && term.IsTerminal(int(file.Fd()))
 }

@@ -34,19 +34,18 @@ func TestSessionRoundTrip(t *testing.T) {
 	if err := sess.Place("", "job-a"); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Note(Body{Args: []string{"-a"}}); err != nil {
+	if err := sess.Note(Place{Args: []string{"-a"}}); err != nil {
 		t.Fatal(err)
 	}
 	id := sess.ID()
-	raw, ok, err := sqlxdb.Get(appName, kindActive, id)
-	if err != nil || !ok || len(raw) == 0 {
-		t.Fatalf("active %v %v %s", ok, err, raw)
+	if n := activeRows(t, id); n != 1 {
+		t.Fatalf("active rows %d", n)
 	}
 	if err := sess.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok, err := sqlxdb.Get(appName, kindActive, id); err != nil || ok {
-		t.Fatalf("active after close ok %v err %v", ok, err)
+	if n := activeRows(t, id); n != 0 {
+		t.Fatalf("active rows after close %d", n)
 	}
 	again, err := Open("looptab", id)
 	if err != nil {
@@ -76,7 +75,7 @@ func TestNilSessionIsQuiet(t *testing.T) {
 	if err := sess.Place("p", "c"); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Note(Body{Cursor: "x"}); err != nil {
+	if err := sess.Note(Place{Cursor: "x"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := sess.Index([]string{"x"}); ok {
@@ -84,5 +83,33 @@ func TestNilSessionIsQuiet(t *testing.T) {
 	}
 	if err := sess.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func activeRows(t *testing.T, id string) int {
+	t.Helper()
+	var rows []struct {
+		N int `json:"n"`
+	}
+	if err := sqlxdb.Query("SELECT count(*) AS n FROM tui_active WHERE session_id = "+sqlxdb.Quote(id)+" AND pid > 0", &rows); err != nil {
+		t.Fatal(err)
+	}
+	return rows[0].N
+}
+
+func TestArgsStayNilUntilNoted(t *testing.T) {
+	t.Setenv("SQLX_ROOT", t.TempDir())
+	sess, err := Open("l", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess.Close()
+	again, err := Open("l", sess.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer again.Close()
+	if body, _ := again.Restored(); body.Args != nil {
+		t.Fatalf("args %#v", body.Args)
 	}
 }

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
 	"github.com/ryangerardwilson/c3po/internal/tuisession"
 )
 
@@ -379,7 +378,7 @@ func TestResumeRestoresTheRowAndOmitsTheToken(t *testing.T) {
 	if err := first.Place("2", "D9:9"); err != nil {
 		t.Fatal(err)
 	}
-	if err := first.Note(tuisession.Body{}); err != nil {
+	if err := first.Note(tuisession.Place{}); err != nil {
 		t.Fatal(err)
 	}
 	id := first.ID()
@@ -398,11 +397,14 @@ func TestResumeRestoresTheRowAndOmitsTheToken(t *testing.T) {
 	if !strings.Contains(selected(frame), "Dee") || !strings.Contains(frame, "ade note") || strings.Contains(frame, "need the numbers") {
 		t.Fatalf("restored\n%s", frame)
 	}
-	raw, ok, err := sqlxdb.Get("tui", "session", id)
-	if err != nil || !ok {
-		t.Fatalf("session %v %s", err, raw)
+	stored, err := tuisession.Open("slack", id)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(string(raw), "xoxp-") || !strings.Contains(string(raw), `"screen":"slack"`) || !strings.Contains(string(raw), `"path":"2"`) {
-		t.Fatalf("body %s", raw)
+	defer stored.Close()
+	body, ok := stored.Restored()
+	raw := strings.Join(append([]string{body.CWD, body.Path, body.Cursor}, body.Args...), " ")
+	if !ok || strings.Contains(raw, "xoxp-") || body.Screen != "slack" || body.Path != "2" {
+		t.Fatalf("body %+v", body)
 	}
 }

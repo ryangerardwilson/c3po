@@ -1,9 +1,6 @@
 package app
 
-import (
-	"net/http"
-	"sort"
-)
+import "sort"
 
 // Preset is one Slack workspace the screen can open. It has no token.
 type Preset struct {
@@ -55,19 +52,19 @@ func AccountFor(cfg Config, preset string) (Account, error) {
 }
 
 // ScreenClient is a Slack client for one account. The token stays on the client.
-func ScreenClient(account Account) (SlackClient, error) {
+func ScreenClient(slack Connector, account Account) (Session, error) {
 	token, err := resolveToken(account)
 	if err != nil {
-		return SlackClient{}, err
+		return Session{}, err
 	}
-	return SlackClient{
-		Token:      token,
-		HTTPClient: &http.Client{Timeout: defaultListHTTPTimeout},
+	return Session{
+		Token:   token,
+		Gateway: slack.Connect(ConnectOptions{Token: token, Timeout: defaultListHTTPTimeout}),
 	}, nil
 }
 
 // ScreenConversations lists direct messages and channels the user is in.
-func ScreenConversations(client SlackClient) ([]Conversation, error) {
+func ScreenConversations(client Session) ([]Conversation, error) {
 	dms, err := listMemberDMs(client)
 	if err != nil {
 		return nil, err
@@ -83,7 +80,7 @@ func ScreenConversations(client SlackClient) ([]Conversation, error) {
 	return rows, nil
 }
 
-func mapConversations(client SlackClient, channels []map[string]any) []Conversation {
+func mapConversations(client Session, channels []map[string]any) []Conversation {
 	rows := make([]Conversation, 0, len(channels))
 	for _, channel := range channels {
 		id := str(channel["id"])
@@ -101,7 +98,7 @@ func mapConversations(client SlackClient, channels []map[string]any) []Conversat
 	return rows
 }
 
-func conversationLabel(client SlackClient, channel map[string]any, id string) string {
+func conversationLabel(client Session, channel map[string]any, id string) string {
 	name := channelName(channel, id)
 	if !userIDRE.MatchString(name) {
 		return name
@@ -152,24 +149,21 @@ func surfaceRank(surface string) int {
 }
 
 // ScreenHistory returns the newest messages, oldest first.
-func ScreenHistory(client SlackClient, channelID string) ([]ChatMessage, error) {
-	data, err := client.Request("conversations.history", map[string]string{
-		"channel": channelID,
-		"limit":   "40",
-	}, false, http.MethodGet, false)
+func ScreenHistory(client Session, channelID string) ([]ChatMessage, error) {
+	page, err := client.History(HistoryQuery{ChannelID: channelID, Limit: 40})
 	if err != nil {
 		return nil, err
 	}
-	raw := asList(data["messages"])
+	raw := page.Messages
 	rows := make([]ChatMessage, 0, len(raw))
 	cache := map[string]map[string]any{}
 	for i := len(raw) - 1; i >= 0; i-- {
-		rows = append(rows, chatMessage(client, asMap(raw[i]), cache))
+		rows = append(rows, chatMessage(client, raw[i], cache))
 	}
 	return rows, nil
 }
 
-func chatMessage(client SlackClient, message map[string]any, cache map[string]map[string]any) ChatMessage {
+func chatMessage(client Session, message map[string]any, cache map[string]map[string]any) ChatMessage {
 	sender := senderInfo(client, message, cache)
 	text := messageText(message)
 	if text == "" || text == "-" {
@@ -184,16 +178,12 @@ func chatMessage(client SlackClient, message map[string]any, cache map[string]ma
 }
 
 // ScreenSend posts text. An empty threadTS is a new message, not a reply.
-func ScreenSend(client SlackClient, channelID, text, threadTS string) error {
-	_, err := sendPost(client, channelID, text, threadTS)
+func ScreenSend(client Session, channelID, text, threadTS string) error {
+	_, err := client.PostMessage(channelID, text, threadTS)
 	return err
 }
 
 // ScreenMark marks one conversation read through the given timestamp.
-func ScreenMark(client SlackClient, channelID, ts string) error {
-	_, err := client.Request("conversations.mark", map[string]string{
-		"channel": channelID,
-		"ts":      ts,
-	}, true, http.MethodPost, false)
-	return err
+func ScreenMark(client Session, channelID, ts string) error {
+	return client.MarkRead(channelID, ts)
 }

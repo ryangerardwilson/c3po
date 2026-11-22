@@ -8,12 +8,14 @@ import (
 
 	"github.com/ryangerardwilson/c3po/gdrive/internal/config"
 	"github.com/ryangerardwilson/c3po/gdrive/internal/driveapi"
+	"github.com/ryangerardwilson/c3po/gdrive/internal/localfs"
 	"github.com/ryangerardwilson/c3po/gdrive/internal/syncer"
+	"github.com/ryangerardwilson/c3po/gdrive/internal/syncstate"
 	"github.com/ryangerardwilson/c3po/gdrive/internal/tui"
 	"github.com/ryangerardwilson/c3po/internal/tuisession"
 )
 
-func presetClient(preset string) (driveapi.Client, error) {
+func presetClient(preset string) (*driveapi.DriveClient, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, err
@@ -30,7 +32,7 @@ func presetClient(preset string) (driveapi.Client, error) {
 
 // accountClient checks the account setup and returns its Drive client and
 // backup root name.
-func accountClient(account *config.Account) (driveapi.Client, string, error) {
+func accountClient(account *config.Account) (*driveapi.DriveClient, string, error) {
 	if _, err := config.RequireClientSecret(account); err != nil {
 		return nil, "", err
 	}
@@ -88,7 +90,7 @@ func syncAccount(preset string, account *config.Account, stdout io.Writer) error
 	}
 	for idx := range account.Registrations {
 		reg := account.Registrations[idx]
-		summary, err := syncer.SyncRegistration(preset, &reg, client, root)
+		summary, err := syncRegistration(preset, &reg, client, root)
 		if err != nil {
 			return err
 		}
@@ -166,13 +168,13 @@ func selectRegistrations(account *config.Account, preset, registrationID string)
 	return []config.Registration{reg}, nil
 }
 
-func restoreRegistrations(preset string, regs []config.Registration, client driveapi.Client, root string, stdout io.Writer) (bool, error) {
+func restoreRegistrations(preset string, regs []config.Registration, client *driveapi.DriveClient, root string, stdout io.Writer) (bool, error) {
 	didWork := false
 	for _, reg := range regs {
 		if !reg.Enabled {
 			continue
 		}
-		summary, err := syncer.RestoreRegistrationFromRemote(preset, &reg, client, root)
+		summary, err := restoreRegistration(preset, &reg, client, root)
 		if err != nil {
 			return false, err
 		}
@@ -183,4 +185,26 @@ func restoreRegistrations(preset string, regs []config.Registration, client driv
 		fmt.Fprintf(stdout, "%s:%s\tdownloaded=%d\tdirs_created=%d\tskipped_existing=%d\tstate_entries=%d\n", preset, reg.ID, summary.Downloaded, summary.DirsCreated, summary.SkippedExisting, summary.StateEntries)
 	}
 	return didWork, nil
+}
+
+// syncRegistration syncs one registered folder and keeps the remote root
+// the syncer found on reg.
+func syncRegistration(preset string, reg *config.Registration, client *driveapi.DriveClient, root string) (syncer.SyncSummary, error) {
+	target := syncTarget(reg)
+	summary, err := syncer.SyncRegistration(preset, &target, localfs.Tree{Root: reg.LocalDir}, syncDrive{client}, syncstate.Store{}, root)
+	reg.RemoteRootID = target.RemoteRootID
+	return summary, err
+}
+
+// restoreRegistration restores one registered folder and keeps the remote
+// root the syncer found on reg.
+func restoreRegistration(preset string, reg *config.Registration, client *driveapi.DriveClient, root string) (syncer.RestoreSummary, error) {
+	target := syncTarget(reg)
+	summary, err := syncer.RestoreRegistrationFromRemote(preset, &target, localfs.Tree{Root: reg.LocalDir}, syncDrive{client}, syncstate.Store{}, root)
+	reg.RemoteRootID = target.RemoteRootID
+	return summary, err
+}
+
+func syncTarget(reg *config.Registration) syncer.Registration {
+	return syncer.Registration{ID: reg.ID, DrivePath: reg.DrivePath, RemoteRootID: reg.RemoteRootID}
 }

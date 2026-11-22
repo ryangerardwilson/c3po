@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ryangerardwilson/c3po/gcal/internal/calendar"
 	"github.com/ryangerardwilson/c3po/gcal/internal/errs"
+	"github.com/ryangerardwilson/c3po/gcal/internal/event"
 )
 
 // GoogleDocMIME is the Drive MIME type of a Google Doc.
@@ -22,7 +22,7 @@ type Attachment struct {
 	Title  string
 }
 
-func looksLikeTranscript(a calendar.Attachment) bool {
+func looksLikeTranscript(a event.Attachment) bool {
 	title := strings.ToLower(strings.TrimSpace(a.Title))
 	if !strings.Contains(title, "transcript") {
 		return false
@@ -34,7 +34,7 @@ func looksLikeTranscript(a calendar.Attachment) bool {
 }
 
 // Find returns the first transcript-like attachment with a file id.
-func Find(ev calendar.Event) (Attachment, error) {
+func Find(ev event.Event) (Attachment, error) {
 	for _, a := range ev.Attachments {
 		if !looksLikeTranscript(a) {
 			continue

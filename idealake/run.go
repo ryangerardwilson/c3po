@@ -5,20 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
+	"github.com/ryangerardwilson/c3po/idealake/internal/lake"
+	"github.com/ryangerardwilson/c3po/idealake/internal/store"
+	"github.com/ryangerardwilson/c3po/idealake/internal/xai"
 	"github.com/ryangerardwilson/c3po/internal/version"
-)
-
-const (
-	maxIdea         = 300
-	maxTopic        = 80
-	searchLimit     = 20
-	embedModel      = "v1"
-	passagePrefix   = "passage: "
-	queryPrefix     = "query: "
-	recordApp       = "idealake"
-	recordKind      = "idea"
-	recordKindTopic = "topic"
 )
 
 // Help is the text for c3po idealake and c3po help -f idealake.
@@ -58,18 +50,32 @@ Set XAI_API_KEY. The key is not printed. An idea is still stored when the
 embedding cannot be made.
 `
 
-// Run serves c3po idealake. args are the words after idealake.
-func Run(args []string, stdout, stderr io.Writer) int {
-	return run(args, stdout, stderr, os.Stdin)
+// deps are the outside world the desk uses: where ideas are kept, how texts
+// are embedded, the clock, and whether stdin is a terminal.
+type deps struct {
+	store    lake.Store
+	embed    lake.Embedder
+	now      func() time.Time
+	terminal func(io.Reader) bool
 }
 
-func run(args []string, stdout, stderr io.Writer, stdin io.Reader) int {
+// Run serves c3po idealake. args are the words after idealake.
+func Run(args []string, stdout, stderr io.Writer) int {
+	return run(args, stdout, stderr, os.Stdin, deps{
+		store:    store.SQL{Now: time.Now},
+		embed:    xai.Client{URL: xai.URL},
+		now:      time.Now,
+		terminal: stdinIsTerminal,
+	})
+}
+
+func run(args []string, stdout, stderr io.Writer, stdin io.Reader, with deps) int {
 	asJSON := false
 	if len(args) > 0 && args[0] == "--json" {
 		asJSON = true
 		args = args[1:]
 	}
-	desk := &desk{stdout: stdout, stderr: stderr, stdin: stdin, json: asJSON}
+	desk := &desk{stdout: stdout, stderr: stderr, stdin: stdin, json: asJSON, deps: with}
 	if len(args) == 0 {
 		fmt.Fprint(stdout, Help)
 		return 0
@@ -114,6 +120,7 @@ type desk struct {
 	stderr io.Writer
 	stdin  io.Reader
 	json   bool
+	deps
 }
 
 func (d *desk) usage() int {

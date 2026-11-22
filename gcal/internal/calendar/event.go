@@ -1,115 +1,70 @@
 // Package calendar calls the Google Calendar v3 and Drive v3 REST APIs.
 package calendar
 
-import "strings"
+import "github.com/ryangerardwilson/c3po/gcal/internal/event"
 
-// Event is the subset of a Calendar event gcal reads.
-type Event struct {
-	ID               string       `json:"id"`
-	Summary          *string      `json:"summary"`
-	Start            EventTime    `json:"start"`
-	End              EventTime    `json:"end"`
-	Attendees        []Attendee   `json:"attendees"`
-	HangoutLink      string       `json:"hangoutLink"`
-	ConferenceData   *Conference  `json:"conferenceData"`
-	RecurringEventID string       `json:"recurringEventId"`
-	Recurrence       []string     `json:"recurrence"`
-	Attachments      []Attachment `json:"attachments"`
+// wireEvent is the JSON shape of the Calendar event fields gcal reads.
+type wireEvent struct {
+	ID               string           `json:"id"`
+	Summary          *string          `json:"summary"`
+	Start            wireTime         `json:"start"`
+	End              wireTime         `json:"end"`
+	Attendees        []wireAttendee   `json:"attendees"`
+	HangoutLink      string           `json:"hangoutLink"`
+	ConferenceData   *wireConference  `json:"conferenceData"`
+	RecurringEventID string           `json:"recurringEventId"`
+	Recurrence       []string         `json:"recurrence"`
+	Attachments      []wireAttachment `json:"attachments"`
 }
 
-// EventTime is a timed or all-day boundary.
-type EventTime struct {
+type wireTime struct {
 	DateTime string `json:"dateTime"`
 	Date     string `json:"date"`
 }
 
-// Value is dateTime, or date for an all-day event.
-func (t EventTime) Value() string {
-	if t.DateTime != "" {
-		return t.DateTime
-	}
-	return t.Date
-}
-
-// Attendee is one invitee.
-type Attendee struct {
+type wireAttendee struct {
 	Email string `json:"email"`
 }
 
-// Conference holds the Meet entry points.
-type Conference struct {
-	EntryPoints []EntryPoint `json:"entryPoints"`
+type wireConference struct {
+	EntryPoints []wireEntryPoint `json:"entryPoints"`
 }
 
-// EntryPoint is one way to join a conference.
-type EntryPoint struct {
+type wireEntryPoint struct {
 	EntryPointType string `json:"entryPointType"`
 	URI            string `json:"uri"`
 }
 
-// Attachment is a Drive file attached to the event.
-type Attachment struct {
+type wireAttachment struct {
 	FileID   string `json:"fileId"`
 	Title    string `json:"title"`
 	MimeType string `json:"mimeType"`
 	FileURL  string `json:"fileUrl"`
 }
 
-// Title is the summary, or fallback when the event has none.
-func (e Event) Title(fallback string) string {
-	if e.Summary == nil {
-		return fallback
+// domain translates the API event into the gcal event.
+func (w wireEvent) domain() event.Event {
+	ev := event.Event{
+		ID:               w.ID,
+		Summary:          w.Summary,
+		Start:            event.Time(w.Start),
+		End:              event.Time(w.End),
+		HangoutLink:      w.HangoutLink,
+		RecurringEventID: w.RecurringEventID,
+		Recurrence:       w.Recurrence,
 	}
-	return *e.Summary
-}
-
-// MeetingURL is the hangout link, else the first video entry point,
-// else "-".
-func (e Event) MeetingURL() string {
-	if link := strings.TrimSpace(e.HangoutLink); link != "" {
-		return link
+	for _, a := range w.Attendees {
+		ev.Attendees = append(ev.Attendees, event.Attendee(a))
 	}
-	if e.ConferenceData != nil {
-		for _, ep := range e.ConferenceData.EntryPoints {
-			if strings.TrimSpace(ep.EntryPointType) == "video" {
-				return strings.TrimSpace(ep.URI)
-			}
+	if w.ConferenceData != nil {
+		conf := &event.Conference{}
+		for _, ep := range w.ConferenceData.EntryPoints {
+			conf.EntryPoints = append(conf.EntryPoints, event.EntryPoint(ep))
 		}
+		ev.ConferenceData = conf
 	}
-	return "-"
-}
-
-// AttendeeEmails lists the non-empty attendee emails.
-func (e Event) AttendeeEmails() []string {
-	out := []string{}
-	for _, a := range e.Attendees {
-		if email := strings.TrimSpace(a.Email); email != "" {
-			out = append(out, email)
-		}
+	for _, a := range w.Attachments {
+		ev.Attachments = append(ev.Attachments, event.Attachment(a))
 	}
-	return out
-}
-
-// Recurring reports an instance of a series or a series itself.
-func (e Event) Recurring() bool {
-	return e.RecurringEventID != "" || len(e.Recurrence) > 0
-}
-
-// Recurrence filters for listing.
-const (
-	All          = "all"
-	RecurringOn  = "recurring"
-	NonRecurring = "non_recurring"
-)
-
-// Matches reports whether e passes the recurrence filter mode.
-func (e Event) Matches(mode string) bool {
-	switch mode {
-	case All:
-		return true
-	case RecurringOn:
-		return e.Recurring()
-	default:
-		return !e.Recurring()
-	}
+	return ev
 }

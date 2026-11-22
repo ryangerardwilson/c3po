@@ -149,7 +149,7 @@ func LookupEmail(ctx context.Context, client *http.Client) (string, error) {
 // ReadToken reads a token file. It accepts the "token" key the Python app
 // wrote as well as "access_token".
 func ReadToken(path string) (*Token, error) {
-	data, err := sqlxdb.Read("gdrive", "token", sqlxdb.Key(path), path)
+	data, err := sqlxdb.ReadToken("gdrive", path)
 	if err != nil {
 		return nil, err
 	}
@@ -187,7 +187,7 @@ func WriteToken(path string, token *Token) error {
 		return err
 	}
 	data = append(data, '\n')
-	return sqlxdb.Write("gdrive", "token", sqlxdb.Key(path), path, data, 0o600)
+	return sqlxdb.WriteToken("gdrive", path, data)
 }
 
 func completeOAuth(oauthConfig *OAuthConfig, stdin io.Reader, stdout, stderr io.Writer) (*Token, error) {

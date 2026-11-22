@@ -40,8 +40,20 @@ func schedulePath() (string, error) {
 	return filepath.Join(home, ".config", "looptab", "looptab"), nil
 }
 
+// loadCatalog reads the registered jobs files in the order they were added.
+// A production record path reads looptab_file; another path is a JSON file.
 func loadCatalog(path string) (catalog, error) {
-	body, err := sqlxdb.Read("looptab", "files", "files", path)
+	if sqlxdb.UsesDB(path) {
+		var rows []registered
+		if err := sqlxdb.Query("SELECT name, path FROM looptab_file ORDER BY id", &rows); err != nil {
+			return catalog{}, err
+		}
+		if rows == nil {
+			rows = []registered{}
+		}
+		return catalog{Files: rows}, nil
+	}
+	body, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return catalog{Files: []registered{}}, nil
 	}
@@ -58,16 +70,31 @@ func loadCatalog(path string) (catalog, error) {
 	return cat, nil
 }
 
+// saveCatalog makes the stored jobs files match cat in one transaction. A
+// file that stays keeps its row.
 func saveCatalog(path string, cat catalog) error {
 	if cat.Files == nil {
 		cat.Files = []registered{}
+	}
+	if sqlxdb.UsesDB(path) {
+		names := []string{"''"}
+		var b strings.Builder
+		for _, file := range cat.Files {
+			names = append(names, sqlxdb.Quote(file.Name))
+			b.WriteString(";\nINSERT INTO looptab_file(name, path) VALUES (" + sqlxdb.Quote(file.Name) + ", " +
+				sqlxdb.Quote(file.Path) + ") ON CONFLICT(name) DO UPDATE SET path = excluded.path")
+		}
+		return sqlxdb.Exec("DELETE FROM looptab_file WHERE name NOT IN (" + strings.Join(names, ", ") + ")" + b.String())
 	}
 	body, err := json.MarshalIndent(cat, "", "  ")
 	if err != nil {
 		return err
 	}
 	body = append(body, '\n')
-	return sqlxdb.Write("looptab", "files", "files", path, body, 0o600)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(path, body, 0o600)
 }
 
 func installJobs(schedule string, files []registered) error {

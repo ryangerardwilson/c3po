@@ -3,18 +3,8 @@
 package syncer
 
 import (
-	"crypto/sha1"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
-	"io"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/ryangerardwilson/c3po/gdrive/internal/paths"
-	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
 )
 
 type LocalEntry struct {
@@ -35,90 +25,11 @@ type StateEntry struct {
 	SHA1          string `json:"sha1,omitempty"`
 }
 
-type statePayload struct {
-	Entries []StateEntry `json:"entries"`
-}
-
-// StateFile is <data>/state/<preset>-<id>.json. For preset 1 a legacy
-// <data>/state/<id>.json is renamed into place.
-func StateFile(preset, regID string) string {
-	_ = paths.EnsureDirs()
-	path := filepath.Join(paths.StateDir(), preset+"-"+regID+".json")
-	legacy := filepath.Join(paths.StateDir(), regID+".json")
-	if preset == "1" && !exists(path) && exists(legacy) {
-		_ = os.Rename(legacy, path)
-	}
-	return path
-}
-
-func exists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}
-
-// parentOnce names the migration that drops parent_relpath from stored
-// state. LoadState derives it from relpath.
-const parentOnce = "gdrive-state-parent-1"
-
-const parentSQL = "UPDATE record SET body = json_set(body, '$.entries', " +
-	"(SELECT json_group_array(json_remove(value, '$.parent_relpath')) FROM json_each(record.body, '$.entries'))) " +
-	"WHERE app = 'gdrive' AND kind = 'state' AND json_valid(body) AND json_type(body, '$.entries') = 'array'"
-
-func LoadState(preset, regID string) (map[string]StateEntry, error) {
-	path := StateFile(preset, regID)
-	if err := sqlxdb.OnceFor(path, parentOnce, parentSQL); err != nil {
-		return nil, err
-	}
-	data, err := sqlxdb.Read("gdrive", "state", sqlxdb.Key(path), path)
-	if errors.Is(err, os.ErrNotExist) {
-		return map[string]StateEntry{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	payload := statePayload{}
-	if err := json.Unmarshal(data, &payload); err != nil {
-		return nil, err
-	}
-	result := map[string]StateEntry{}
-	for _, entry := range payload.Entries {
-		entry.ParentRelPath = ParentRelPath(entry.RelPath)
-		result[entry.RelPath] = entry
-	}
-	return result, nil
-}
-
-func SaveState(preset, regID string, entries map[string]StateEntry) error {
-	path := StateFile(preset, regID)
-	keys := sortedMapKeys(entries)
-	payload := statePayload{Entries: make([]StateEntry, 0, len(keys))}
-	for _, key := range keys {
-		payload.Entries = append(payload.Entries, entries[key])
-	}
-	data, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	return sqlxdb.Write("gdrive", "state", sqlxdb.Key(path), path, data, 0o600)
-}
-
-func DeleteState(preset, regID string) error {
-	path := StateFile(preset, regID)
-	return sqlxdb.Remove("gdrive", "state", sqlxdb.Key(path), path)
-}
-
-func SHA1File(path string) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-	digest := sha1.New()
-	if _, err := io.Copy(digest, file); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(digest.Sum(nil)), nil
+// StateStore keeps one registration's sync entries. Saving replaces the
+// stored set with entries.
+type StateStore interface {
+	Load(preset, regID string) (map[string]StateEntry, error)
+	Save(preset, regID string, entries map[string]StateEntry) error
 }
 
 func ParentRelPath(relpath string) string {
@@ -128,54 +39,30 @@ func ParentRelPath(relpath string) string {
 	return relpath[:strings.LastIndex(relpath, "/")]
 }
 
-func ScanLocalTree(root string, previous map[string]StateEntry) (map[string]LocalEntry, error) {
-	result := map[string]LocalEntry{}
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+// scanLocal lists the local folder and hashes each file, reusing the
+// recorded hash when size and mtime are unchanged.
+func scanLocal(local LocalSource, previous map[string]StateEntry) (map[string]LocalEntry, error) {
+	entries, err := local.Scan()
+	if err != nil {
+		return nil, err
+	}
+	for _, relpath := range sortPathsDeep(filterLocalKind(entries, "file"), false) {
+		entry := entries[relpath]
+		hash, err := fileHash(local, entry, previous[relpath])
 		if err != nil {
-			return err
+			return nil, err
 		}
-		if path == root {
-			return nil
-		}
-		return scanEntry(root, path, d, previous, result)
-	})
-	return result, err
+		entry.SHA1 = hash
+		entries[relpath] = entry
+	}
+	return entries, nil
 }
 
-func scanEntry(root, path string, d os.DirEntry, previous map[string]StateEntry, result map[string]LocalEntry) error {
-	info, err := d.Info()
-	if err != nil {
-		return err
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		if d.IsDir() {
-			return filepath.SkipDir
-		}
-		return nil
-	}
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return err
-	}
-	rel = filepath.ToSlash(rel)
-	if d.IsDir() {
-		result[rel] = LocalEntry{RelPath: rel, Kind: "dir", MTimeNS: info.ModTime().UnixNano()}
-		return nil
-	}
-	hash, err := fileHash(path, info, previous[rel])
-	if err != nil {
-		return err
-	}
-	result[rel] = LocalEntry{RelPath: rel, Kind: "file", Size: info.Size(), MTimeNS: info.ModTime().UnixNano(), SHA1: hash}
-	return nil
-}
-
-// fileHash reuses the recorded hash when size and mtime are unchanged.
-func fileHash(path string, info os.FileInfo, old StateEntry) (string, error) {
-	if old.Kind == "file" && old.Size == info.Size() && old.MTimeNS == info.ModTime().UnixNano() && old.SHA1 != "" {
+func fileHash(local LocalFiles, entry LocalEntry, old StateEntry) (string, error) {
+	if old.Kind == "file" && old.Size == entry.Size && old.MTimeNS == entry.MTimeNS && old.SHA1 != "" {
 		return old.SHA1, nil
 	}
-	return SHA1File(path)
+	return local.Hash(entry.RelPath)
 }
 
 type fileSig struct {
@@ -225,15 +112,6 @@ func sortPathsDeep(paths []string, reverse bool) []string {
 		return out[i] < out[j]
 	})
 	return out
-}
-
-func sortedMapKeys(entries map[string]StateEntry) []string {
-	keys := make([]string, 0, len(entries))
-	for key := range entries {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
 }
 
 func mapKeys(values map[string]bool) []string {

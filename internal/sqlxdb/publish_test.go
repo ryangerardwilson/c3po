@@ -21,7 +21,7 @@ func TestRestoreFailureLeavesTheFileMissing(t *testing.T) {
 		return "connection timed out", errors.New("exit status 1")
 	}
 	t.Cleanup(func() { runS3 = old })
-	err := prepareAppDB(path, "c3po", ormText())
+	err := prepareAppDB(path, "c3po")
 	if err == nil {
 		t.Fatal("expected restore error")
 	}
@@ -39,7 +39,7 @@ func TestRestoreNotFoundCreatesADatabase(t *testing.T) {
 		return "s3://backups/c3po.sqlite not found", errors.New("exit status 1")
 	}
 	t.Cleanup(func() { runS3 = old })
-	if err := prepareAppDB(path, "c3po", ormText()); err != nil {
+	if err := prepareAppDB(path, "c3po"); err != nil {
 		t.Fatal(err)
 	}
 	n, err := countRows(path, "record")
@@ -65,7 +65,7 @@ func TestPublishSkipsAnEmptyDatabaseAndUploadsACopy(t *testing.T) {
 		return "", nil
 	}
 	t.Cleanup(func() { runS3 = old })
-	if err := prepareAppDB(path, "c3po", ormText()); err != nil {
+	if err := prepareAppDB(path, "c3po"); err != nil {
 		t.Fatal(err)
 	}
 	if err := publishFile(path, "c3po"); err != nil {
@@ -112,39 +112,28 @@ func TestPublishLeavesAMissingFileMissing(t *testing.T) {
 	}
 }
 
-func TestPutLocalDoesNotPublish(t *testing.T) {
+func TestExecLocalDoesNotPublish(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("SQLX_ROOT", root)
 	n := 0
 	old := publishAfterWrite
 	publishAfterWrite = func(string, string) { n++ }
 	t.Cleanup(func() { publishAfterWrite = old })
-	if err := PutLocal("tui", "session", "1", []byte(`{"screen":"slack"}`)); err != nil {
+	session := "INSERT INTO tui_session(id, screen) VALUES ('01a17622-5fd9-7bc2-81ff-3e200a8c16b7', 'slack')"
+	if err := ExecLocal(session); err != nil {
 		t.Fatal(err)
 	}
 	if n != 0 {
 		t.Fatalf("local %d", n)
 	}
-	if err := Put("tui", "session", "1", []byte(`{"screen":"slack"}`)); err != nil {
-		t.Fatal(err)
-	}
-	if err := DeleteLocal("tui", "session", "1"); err != nil {
-		t.Fatal(err)
-	}
-	if n != 1 {
-		t.Fatalf("after local delete %d", n)
-	}
-	if err := Delete("tui", "session", "gone"); err != nil {
+	if err := Exec("DELETE FROM tui_session"); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "c3po", "gmail", "tokens", "user.json")
-	if err := Write("gmail", "token", "user", path, []byte("x"), 0o600); err != nil {
+	if err := WriteToken("gmail", path, []byte(`{"refresh_token":"x"}`)); err != nil {
 		t.Fatal(err)
 	}
-	if err := Remove("gmail", "token", "user", path); err != nil {
-		t.Fatal(err)
-	}
-	if n != 4 {
+	if n != 2 {
 		t.Fatalf("durable writes %d", n)
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/ryangerardwilson/c3po/gmail"
 	"github.com/ryangerardwilson/c3po/idealake"
 	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
+	"github.com/ryangerardwilson/c3po/internal/tuisession"
 	"github.com/ryangerardwilson/c3po/internal/usage"
 	"github.com/ryangerardwilson/c3po/internal/version"
 	"github.com/ryangerardwilson/c3po/internal/xdg"
@@ -56,6 +57,8 @@ func Main(args []string) int {
 		case "__usage-restore":
 			usage.RestoreRuntime()
 			return 0
+		case "__session":
+			return tuisession.Command(args[2:], os.Stdout, os.Stderr)
 		case "__snapshot":
 			if err := sqlxdb.Publish(); err != nil {
 				fmt.Fprintf(os.Stderr, "c3po: snapshot: %s\n", err)

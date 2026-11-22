@@ -25,7 +25,7 @@ type screen interface {
 }
 
 type model struct {
-	client      driveUploader
+	client      Drive
 	parentStack []stackItem
 	parentID    string
 	pathLabel   string
@@ -47,23 +47,23 @@ type stackItem struct {
 	Label string
 }
 
-func Browse(client driveapi.Client) (int, error) {
+func Browse(client Drive) (int, error) {
 	return browse(client, nil)
 }
 
 // BrowseSession opens Drive and restores the saved folder when sess is set.
-func BrowseSession(client driveapi.Client, sess *tuisession.Session) (int, error) {
+func BrowseSession(client Drive, sess *tuisession.Session) (int, error) {
 	return browse(client, sess)
 }
 
-func browse(client driveapi.Client, sess *tuisession.Session) (int, error) {
+func browse(client Drive, sess *tuisession.Session) (int, error) {
 	if err := run(client, sess); err != nil {
 		return 1, err
 	}
 	return 0, nil
 }
 
-func run(client driveapi.Client, sess *tuisession.Session) error {
+func run(client Drive, sess *tuisession.Session) error {
 	term, err := openTerminal()
 	if err != nil {
 		return err
@@ -80,7 +80,7 @@ func run(client driveapi.Client, sess *tuisession.Session) error {
 	return m.loop(term)
 }
 
-func newModel(client driveapi.Client) *model {
+func newModel(client Drive) *model {
 	return &model{client: client, parentID: "root", pathLabel: "My Drive", open: openBrowser}
 }
 

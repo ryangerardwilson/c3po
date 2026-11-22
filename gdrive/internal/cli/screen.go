@@ -47,7 +47,7 @@ func screen(stdout, stderr io.Writer, id string) int {
 			return finish(stderr, err)
 		}
 	}
-	if err := sess.Note(tuisession.Body{Args: []string{preset}}); err != nil {
+	if err := sess.Note(tuisession.Place{Args: []string{preset}}); err != nil {
 		return finish(stderr, err)
 	}
 	return finish(stderr, runBrowse(preset, sess))

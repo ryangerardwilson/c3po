@@ -62,7 +62,7 @@ func toAny(ss []string) []any {
 // ReadToken loads a token file. It fails like google-auth when
 // refresh_token, client_id, or client_secret is missing.
 func ReadToken(path string) (*Token, error) {
-	raw, err := sqlxdb.Read("gmail", "token", sqlxdb.Key(path), path)
+	raw, err := sqlxdb.ReadToken("gmail", path)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +203,7 @@ func (t *Token) Write(path string) error {
 		obj.Set(k, plain(t.fields[k]))
 	}
 	body := []byte(pyjson.Dumps(obj, -1, false))
-	return sqlxdb.Write("gmail", "token", sqlxdb.Key(path), path, body, 0o600)
+	return sqlxdb.WriteToken("gmail", path, body)
 }
 
 // plain turns decoded JSON numbers into values pyfmt can print.

@@ -1,13 +1,8 @@
 package syncer
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
-
-	"github.com/ryangerardwilson/c3po/gdrive/internal/config"
-	"github.com/ryangerardwilson/c3po/gdrive/internal/driveapi"
+	"errors"
+	"io/fs"
 )
 
 type RestoreSummary struct {
@@ -18,18 +13,17 @@ type RestoreSummary struct {
 }
 
 type restoreRun struct {
-	drive     driveapi.Client
-	localRoot string
-	remote    map[string]driveapi.RemoteEntry
-	current   map[string]StateEntry
-	summary   RestoreSummary
+	drive   RestoreRemote
+	local   LocalTarget
+	remote  map[string]RemoteEntry
+	current map[string]StateEntry
+	summary RestoreSummary
 }
 
 // RestoreRegistrationFromRemote downloads remote content that is missing
 // locally, never deletes, and seeds the sync state from the result.
-func RestoreRegistrationFromRemote(preset string, registration *config.Registration, drive driveapi.Client, backupRootName string) (RestoreSummary, error) {
-	localRoot := registration.LocalDir
-	if err := os.MkdirAll(localRoot, 0o755); err != nil {
+func RestoreRegistrationFromRemote(preset string, registration *Registration, local LocalTarget, drive RestoreRemote, state StateStore, backupRootName string) (RestoreSummary, error) {
+	if err := local.MakeDir(""); err != nil {
 		return RestoreSummary{}, err
 	}
 	remoteRootID, err := ensureRemoteRoot(registration, drive, backupRootName)
@@ -40,7 +34,7 @@ func RestoreRegistrationFromRemote(preset string, registration *config.Registrat
 	if err != nil {
 		return RestoreSummary{}, err
 	}
-	run := &restoreRun{drive: drive, localRoot: localRoot, remote: remoteEntries, current: map[string]StateEntry{}}
+	run := &restoreRun{drive: drive, local: local, remote: remoteEntries, current: map[string]StateEntry{}}
 	if err := run.restoreDirs(); err != nil {
 		return RestoreSummary{}, err
 	}
@@ -48,7 +42,7 @@ func RestoreRegistrationFromRemote(preset string, registration *config.Registrat
 		return RestoreSummary{}, err
 	}
 	run.summary.StateEntries = len(run.current)
-	if err := SaveState(preset, registration.ID, run.current); err != nil {
+	if err := state.Save(preset, registration.ID, run.current); err != nil {
 		return RestoreSummary{}, err
 	}
 	return run.summary, nil
@@ -56,21 +50,20 @@ func RestoreRegistrationFromRemote(preset string, registration *config.Registrat
 
 func (r *restoreRun) restoreDirs() error {
 	for _, relpath := range sortPathsDeep(filterRemoteKind(r.remote, true), false) {
-		target := filepath.Join(r.localRoot, filepath.FromSlash(relpath))
-		if _, err := os.Stat(target); os.IsNotExist(err) {
-			if err := os.MkdirAll(target, 0o755); err != nil {
+		if _, err := r.local.Stat(relpath); errors.Is(err, fs.ErrNotExist) {
+			if err := r.local.MakeDir(relpath); err != nil {
 				return err
 			}
 			r.summary.DirsCreated++
 		}
-		info, err := os.Stat(target)
+		info, err := r.local.Stat(relpath)
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() {
-			return fmt.Errorf("cannot restore directory over file: %s", target)
+		if info.Kind != "dir" {
+			return errors.New("cannot restore directory over file: " + r.local.Locate(relpath))
 		}
-		r.current[relpath] = StateEntry{RelPath: relpath, Kind: "dir", DriveID: r.remote[relpath].ID, ParentRelPath: ParentRelPath(relpath), MTimeNS: info.ModTime().UnixNano()}
+		r.current[relpath] = StateEntry{RelPath: relpath, Kind: "dir", DriveID: r.remote[relpath].ID, ParentRelPath: ParentRelPath(relpath), MTimeNS: info.MTimeNS}
 	}
 	return nil
 }
@@ -86,41 +79,40 @@ func (r *restoreRun) restoreFiles() error {
 
 func (r *restoreRun) restoreFile(relpath string) error {
 	entry := r.remote[relpath]
-	target := filepath.Join(r.localRoot, filepath.FromSlash(relpath))
-	if info, err := os.Stat(target); err == nil {
-		if info.IsDir() {
-			return fmt.Errorf("cannot restore file over directory: %s", target)
+	target := r.local.Locate(relpath)
+	if info, err := r.local.Stat(relpath); err == nil {
+		if info.Kind == "dir" {
+			return errors.New("cannot restore file over directory: " + target)
 		}
 		r.summary.SkippedExisting++
 		return nil
 	}
-	downloaded, err := r.drive.DownloadEntry(driveapi.NavEntry{ID: entry.ID, Name: entry.Name, MimeType: entry.MimeType, ParentID: entry.ParentID}, target)
+	downloaded, err := r.drive.Download(entry, target)
 	if err != nil {
 		return err
 	}
-	rel, err := filepath.Rel(r.localRoot, downloaded)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return fmt.Errorf("download escaped local root: %s", downloaded)
+	rel, ok := r.local.RelPath(downloaded)
+	if !ok {
+		return errors.New("download escaped local root: " + downloaded)
 	}
-	rel = filepath.ToSlash(rel)
-	info, err := os.Stat(downloaded)
+	info, err := r.local.Stat(rel)
 	if err != nil {
 		return err
 	}
-	hash, err := SHA1File(downloaded)
+	hash, err := r.local.Hash(rel)
 	if err != nil {
 		return err
 	}
-	r.current[rel] = StateEntry{RelPath: rel, Kind: "file", DriveID: entry.ID, ParentRelPath: ParentRelPath(rel), Size: info.Size(), MTimeNS: info.ModTime().UnixNano(), SHA1: hash}
+	r.current[rel] = StateEntry{RelPath: rel, Kind: "file", DriveID: entry.ID, ParentRelPath: ParentRelPath(rel), Size: info.Size, MTimeNS: info.MTimeNS, SHA1: hash}
 	r.summary.Downloaded++
 	return nil
 }
 
-func filterRemoteKind(entries map[string]driveapi.RemoteEntry, dirs bool) []string {
+func filterRemoteKind(entries map[string]RemoteEntry, dirs bool) []string {
 	paths := []string{}
-	for path, entry := range entries {
-		if entry.IsDir() == dirs {
-			paths = append(paths, path)
+	for rel, entry := range entries {
+		if entry.IsDir == dirs {
+			paths = append(paths, rel)
 		}
 	}
 	return paths
