@@ -43,7 +43,7 @@ const appText = `apps:
   gdrive    local-first Google Drive sync
   gmail     Gmail send, list, spam clean, and the hourly timer
   idealake  ideas by topic, ranked by meaning
-  looptab   registered jobs files, edited in vim
+  looptab   registered jobs files, installed onto looptab
   mess      linked worktrees to tidy, and what is blocked until then
   notify    send an omarchy-shell toast
   pass      1Password vaults and items

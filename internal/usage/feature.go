@@ -137,14 +137,15 @@ func tunnelFeature(args []string) string {
 
 func looptabFeature(args []string) string {
 	if len(args) == 0 {
-		return "looptab"
+		return "help"
 	}
 	switch args[0] {
 	case "help", "-h", "--help":
 		return "help"
 	case "version", "--version", "-v":
 		return "version"
-	case "list", "register", "remove", "show", "edit":
+	case "list", "register", "remove", "show":
+
 		return "looptab " + args[0]
 	default:
 		return "looptab"

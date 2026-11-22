@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -118,16 +117,4 @@ func installJobs(schedule string, files []registered) error {
 		return err
 	}
 	return os.WriteFile(schedule, []byte(b.String()), 0o644)
-}
-
-func openVim(path string) error {
-	bin, err := exec.LookPath("vim")
-	if err != nil {
-		return errors.New("vim is not on PATH")
-	}
-	cmd := exec.Command(bin, path)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }

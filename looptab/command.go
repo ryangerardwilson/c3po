@@ -1,6 +1,10 @@
+// Package looptab is c3po looptab. It registers jobs files and installs them
+// onto the Looptab scheduler file. The r2d2 looptab screen calls JobsFile and
+// Install and does not write the scheduler file itself.
 package looptab
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -12,12 +16,8 @@ import (
 
 // CommandHelp is the help for c3po looptab.
 const CommandHelp = `c3po looptab
-register jobs files and edit them in vim
+register jobs files and install them onto looptab
 
-  c3po looptab
-    open the first registered jobs file in vim, then install it onto looptab
-  c3po looptab edit [name]
-    open one registered file in vim, then install
   c3po looptab list
     list registered jobs files
   c3po looptab register <path>
@@ -32,7 +32,8 @@ register jobs files and edit them in vim
     print the c3po version
 
 A jobs file is a crontab-like looptab document. Registrations are stored in
-the sqlx database c3po. r2d2 looptab runs one job now.
+the sqlx database c3po. The jobs file is edited with r2d2 looptab, which
+installs it when the editor exits. r2d2 looptab also runs one job now.
 `
 
 const jobsTemplate = `# Schedules: now, hourly, hourly at <minute>, daily <time>, weekdays <time>
@@ -43,43 +44,112 @@ const jobsTemplate = `# Schedules: now, hourly, hourly at <minute>, daily <time>
 # : c3po notify heading "gmail" body "morning inbox review failed"
 `
 
-// Command serves c3po looptab. args are the arguments after the app name.
-func Command(args []string, stdout, stderr io.Writer) int {
+// paths are the catalog record, the installed scheduler file, and the jobs
+// file created when nothing is registered.
+type paths struct {
+	record, schedule string
+	jobs             string
+}
+
+func defaultPaths() (paths, error) {
 	record, err := recordPath()
 	if err != nil {
-		fmt.Fprintf(stderr, "looptab: %s\n", err.Error())
-		return 1
+		return paths{}, err
 	}
 	schedule, err := schedulePath()
 	if err != nil {
-		fmt.Fprintf(stderr, "looptab: %s\n", err.Error())
-		return 1
+		return paths{}, err
 	}
 	home, err := os.UserHomeDir()
+	if err != nil {
+		return paths{}, err
+	}
+	return paths{
+		record:   record,
+		schedule: schedule,
+		jobs:     filepath.Join(home, ".config", "c3po", "looptab", "jobs"),
+	}, nil
+}
+
+// JobsFile returns the jobs file r2d2 looptab edits, the first registered
+// file. With no registered file, it creates ~/.config/c3po/looptab/jobs from
+// the comment template, registers it as jobs, and installs it.
+func JobsFile() (string, error) {
+	p, err := defaultPaths()
+	if err != nil {
+		return "", err
+	}
+	return p.first()
+}
+
+// Install writes every registered jobs file onto the Looptab scheduler file
+// and returns how many files it installed.
+func Install() (int, error) {
+	p, err := defaultPaths()
+	if err != nil {
+		return 0, err
+	}
+	return p.installAll()
+}
+
+func (p paths) first() (string, error) {
+	cat, err := loadCatalog(p.record)
+	if err != nil {
+		return "", err
+	}
+	if len(cat.Files) > 0 {
+		return cat.Files[0].Path, nil
+	}
+	if err := os.MkdirAll(filepath.Dir(p.jobs), 0o755); err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(p.jobs); errors.Is(err, os.ErrNotExist) {
+		if err := os.WriteFile(p.jobs, []byte(jobsTemplate), 0o644); err != nil {
+			return "", err
+		}
+	} else if err != nil {
+		return "", err
+	}
+	cat.Files = []registered{{Name: fileName(p.jobs), Path: p.jobs}}
+	if err := saveCatalog(p.record, cat); err != nil {
+		return "", err
+	}
+	if err := installJobs(p.schedule, cat.Files); err != nil {
+		return "", err
+	}
+	return p.jobs, nil
+}
+
+func (p paths) installAll() (int, error) {
+	cat, err := loadCatalog(p.record)
+	if err != nil {
+		return 0, err
+	}
+	if err := installJobs(p.schedule, cat.Files); err != nil {
+		return 0, err
+	}
+	return len(cat.Files), nil
+}
+
+// Command serves c3po looptab. args are the arguments after the app name.
+func Command(args []string, stdout, stderr io.Writer) int {
+	p, err := defaultPaths()
 	if err != nil {
 		fmt.Fprintf(stderr, "looptab: %s\n", err.Error())
 		return 1
 	}
-	return (&desk{
-		stdout:   stdout,
-		stderr:   stderr,
-		record:   record,
-		schedule: schedule,
-		jobs:     filepath.Join(home, ".config", "c3po", "looptab", "jobs"),
-		edit:     openVim,
-	}).run(args)
+	return (&desk{stdout: stdout, stderr: stderr, paths: p}).run(args)
 }
 
 type desk struct {
-	stdout, stderr   io.Writer
-	record, schedule string
-	jobs             string
-	edit             func(path string) error
+	stdout, stderr io.Writer
+	paths
 }
 
 func (d *desk) run(args []string) int {
 	if len(args) == 0 {
-		return d.editFirst()
+		fmt.Fprint(d.stdout, CommandHelp)
+		return 0
 	}
 	switch args[0] {
 	case "help", "-h", "--help":
@@ -114,15 +184,6 @@ func (d *desk) run(args []string) int {
 			return d.usage()
 		}
 		return d.show(args[1])
-	case "edit":
-		if len(args) > 2 {
-			return d.usage()
-		}
-		name := ""
-		if len(args) == 2 {
-			name = args[1]
-		}
-		return d.editNamed(name)
 	default:
 		return d.usage()
 	}
@@ -237,66 +298,6 @@ func (d *desk) show(name string) int {
 	}
 	fmt.Fprintf(d.stderr, "looptab: unknown jobs file %s\n", name)
 	return 2
-}
-
-func (d *desk) editFirst() int {
-	cat, err := loadCatalog(d.record)
-	if err != nil {
-		return d.fail(err)
-	}
-	if len(cat.Files) == 0 {
-		if err := os.MkdirAll(filepath.Dir(d.jobs), 0o755); err != nil {
-			return d.fail(err)
-		}
-		if _, err := os.Stat(d.jobs); os.IsNotExist(err) {
-			if err := os.WriteFile(d.jobs, []byte(jobsTemplate), 0o644); err != nil {
-				return d.fail(err)
-			}
-		} else if err != nil {
-			return d.fail(err)
-		}
-		name := fileName(d.jobs)
-		cat.Files = []registered{{Name: name, Path: d.jobs}}
-		if err := saveCatalog(d.record, cat); err != nil {
-			return d.fail(err)
-		}
-		if code := d.install(cat); code != 0 {
-			return code
-		}
-	}
-	return d.open(cat.Files[0].Path, cat)
-}
-
-func (d *desk) editNamed(name string) int {
-	if name == "" {
-		return d.editFirst()
-	}
-	cat, err := loadCatalog(d.record)
-	if err != nil {
-		return d.fail(err)
-	}
-	for _, file := range cat.Files {
-		if file.Name == name {
-			return d.open(file.Path, cat)
-		}
-	}
-	fmt.Fprintf(d.stderr, "looptab: unknown jobs file %s\n", name)
-	return 2
-}
-
-func (d *desk) open(path string, cat catalog) int {
-	if d.edit == nil {
-		fmt.Fprintln(d.stderr, "vim is not on PATH")
-		return 1
-	}
-	if err := d.edit(path); err != nil {
-		if err.Error() == "vim is not on PATH" {
-			fmt.Fprintln(d.stderr, err.Error())
-			return 1
-		}
-		return d.fail(err)
-	}
-	return d.install(cat)
 }
 
 func (d *desk) install(cat catalog) int {

@@ -95,18 +95,20 @@ func TestSlackHelp(t *testing.T) {
 	}
 }
 
-func TestLooptabHelp(t *testing.T) {
-	out, _, code := run("looptab", "help")
-	if code != 0 || !bytes.Contains(out, []byte("enter runs the selected job now")) || !bytes.Contains(out, []byte("r2d2 looptab")) {
-		t.Fatalf("help %d\n%s", code, out)
+func TestLooptabIsNotAC3poScreen(t *testing.T) {
+	_, errb, code := run("looptab", "help")
+	if code != 2 || !bytes.Contains(errb, []byte(`unknown screen "looptab"`)) {
+		t.Fatalf("looptab %d\n%s", code, errb)
 	}
-	out, _, code = run("looptab", "version")
-	if code != 0 || !bytes.Contains(out, []byte("c3po 0.5.0")) {
-		t.Fatalf("version %d\n%s", code, out)
+}
+
+func TestTakeResumeRemovesTheID(t *testing.T) {
+	id, rest, err := TakeResume([]string{"--resume", "01a17622-5fd9-7bc2-81ff-3e200a8c16b7", "help"})
+	if err != nil || id != "01a17622-5fd9-7bc2-81ff-3e200a8c16b7" || len(rest) != 1 || rest[0] != "help" {
+		t.Fatalf("id %q rest %v err %v", id, rest, err)
 	}
-	_, errb, code := run("looptab", "extra")
-	if code != 2 || !bytes.Contains(errb, []byte("r2d2 looptab")) {
-		t.Fatalf("extra %d\n%s", code, errb)
+	if _, _, err := TakeResume([]string{"--resume"}); err == nil {
+		t.Fatal("bare --resume")
 	}
 }
 

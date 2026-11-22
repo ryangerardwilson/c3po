@@ -221,9 +221,9 @@ func TestXLIsNotACommand(t *testing.T) {
 	}
 }
 
-func TestLooptabCommandNamesVim(t *testing.T) {
+func TestLooptabCommandNamesTheScreen(t *testing.T) {
 	out, code := call("c3po", "looptab", "help")
-	if code != 0 || !bytes.Contains(out, []byte("in vim")) {
+	if code != 0 || bytes.Contains(out, []byte("vim")) || !bytes.Contains(out, []byte("edited with r2d2 looptab")) {
 		t.Fatalf("command %d\n%s", code, out)
 	}
 }

@@ -115,7 +115,6 @@ var Catalog = []string{
 	"looptab register",
 	"looptab remove",
 	"looptab show",
-	"looptab edit",
 
 	"mess",
 	"mess tidy",

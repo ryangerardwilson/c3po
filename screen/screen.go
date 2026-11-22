@@ -1,5 +1,6 @@
 // Package screen opens one terminal screen by name.
-// c3po does not dispatch these names. r2d2 calls Run.
+// c3po does not dispatch these names. r2d2 calls Run. A screen r2d2 owns,
+// such as looptab, is not here; it keeps its place through OpenSession.
 package screen
 
 import (
@@ -11,7 +12,6 @@ import (
 	"github.com/ryangerardwilson/c3po/gdrive"
 	"github.com/ryangerardwilson/c3po/internal/tuisession"
 	"github.com/ryangerardwilson/c3po/l"
-	"github.com/ryangerardwilson/c3po/looptab"
 	"github.com/ryangerardwilson/c3po/o"
 	"github.com/ryangerardwilson/c3po/pass"
 	"github.com/ryangerardwilson/c3po/slack"
@@ -30,7 +30,6 @@ var screens = map[string]runFunc{
 	"pass":      passScreen,
 	"deport":    deportScreen,
 	"xl":        xl.Run,
-	"looptab":   looptab.Run,
 	"slack":     slack.Screen,
 }
 
@@ -42,6 +41,21 @@ func Run(name string, args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	return run(args, stdout, stderr)
+}
+
+// Session is the place one screen keeps in the sqlx database c3po. A nil
+// Session ignores Place and Close.
+type Session = tuisession.Session
+
+// TakeResume removes one --resume <id> or --resume=<id> from args.
+func TakeResume(args []string) (string, []string, error) {
+	return tuisession.TakeResume(args)
+}
+
+// OpenSession opens the session of the named screen, or restores id. The
+// active row records this process until Close.
+func OpenSession(name, id string) (*Session, error) {
+	return tuisession.Open(name, id)
 }
 
 func tunnelScreen(args []string, stdout, stderr io.Writer) int {
