@@ -3,10 +3,9 @@ package sqlxdb
 import (
 	"fmt"
 	"os"
-	"sync"
+	"path/filepath"
+	"syscall"
 )
-
-var publishMu sync.Mutex
 
 // Publish uploads the runtime database when it exists and has a record.
 // A missing file stays missing. SQLX_ROOT does not upload.
@@ -22,12 +21,20 @@ func Publish() error {
 	return publishFile(path, DatabaseName)
 }
 
+// publishFile holds the publish lock from before the copy until the put has
+// returned and the copy is removed, so a publisher in another process waits.
 func publishFile(path, name string) error {
 	if path == "" {
 		return nil
 	}
-	publishMu.Lock()
-	defer publishMu.Unlock()
+	lock, err := publishLock(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
 	if !canPublish(path) {
 		return nil
 	}
@@ -51,6 +58,20 @@ func publishFile(path, name string) error {
 		return fmt.Errorf("s3 put s3://backups/%s.sqlite: %s", name, s3Text(msg, err))
 	}
 	return nil
+}
+
+// publishLock takes the exclusive publish flock beside the database.
+// Closing the file releases it.
+func publishLock(path string) (*os.File, error) {
+	file, err := os.OpenFile(path+".publish.lock", os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	return file, nil
 }
 
 // canPublish refuses a c3po database that holds no data, so an empty file
@@ -88,9 +109,16 @@ func countRows(path, table string) (int, error) {
 	return rows[0].N, nil
 }
 
+// snapshotCopy writes a consistent copy to a new name beside the database.
+// VACUUM INTO needs the destination absent, so the reserved file is removed.
 func snapshotCopy(path string) (string, error) {
-	dest := path + ".snapshot"
-	if err := os.Remove(dest); err != nil && !os.IsNotExist(err) {
+	file, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.snapshot")
+	if err != nil {
+		return "", err
+	}
+	dest := file.Name()
+	_ = file.Close()
+	if err := os.Remove(dest); err != nil {
 		return "", err
 	}
 	if err := sqliteExec(path, "VACUUM INTO "+quote(dest)+";\n"); err != nil {
