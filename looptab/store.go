@@ -31,12 +31,29 @@ func recordPath() (string, error) {
 	return filepath.Join(base, "c3po", "looptab", "files.json"), nil
 }
 
-func schedulePath() (string, error) {
+// configDir is <config>/c3po/looptab, where <config> is XDG_CONFIG_HOME when it
+// is absolute and ~/.config otherwise. The scheduler file, the Looptab
+// timezone file config.json, and the jobs files sit there.
+func configDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".config", "looptab", "looptab"), nil
+	base := filepath.Join(home, ".config")
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); filepath.IsAbs(xdg) {
+		base = xdg
+	}
+	return filepath.Join(base, "c3po", "looptab"), nil
+}
+
+// schedulePath is the scheduler file c3po installs. The looptab binary opens
+// ~/.config/looptab/looptab, which the workstation links to this directory.
+func schedulePath() (string, error) {
+	dir, err := configDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "looptab"), nil
 }
 
 // loadCatalog reads the registered jobs files in the order they were added.

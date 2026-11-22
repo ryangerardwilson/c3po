@@ -60,20 +60,17 @@ func defaultPaths() (paths, error) {
 	if err != nil {
 		return paths{}, err
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return paths{}, err
-	}
 	return paths{
 		record:   record,
 		schedule: schedule,
-		jobs:     filepath.Join(home, ".config", "c3po", "looptab", "jobs"),
+		jobs:     filepath.Join(filepath.Dir(schedule), "jobs"),
 	}, nil
 }
 
 // JobsFile returns the jobs file r2d2 looptab edits, the first registered
-// file. With no registered file, it creates ~/.config/c3po/looptab/jobs from
-// the comment template, registers it as jobs, and installs it.
+// file. With no registered file, it creates jobs beside the scheduler file
+// (~/.config/c3po/looptab/jobs) from the comment template, registers it as
+// jobs, and installs it.
 func JobsFile() (string, error) {
 	p, err := defaultPaths()
 	if err != nil {
@@ -209,6 +206,17 @@ func (d *desk) list() int {
 	return 0
 }
 
+// sameFile reports whether a and b open one file, so a symlink to the
+// scheduler file is refused like the file itself.
+func sameFile(a, b string) bool {
+	ai, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	bi, err := os.Stat(b)
+	return err == nil && os.SameFile(ai, bi)
+}
+
 func (d *desk) register(path string) int {
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -218,7 +226,7 @@ func (d *desk) register(path string) int {
 	if err != nil {
 		return d.fail(err)
 	}
-	if abs == sched {
+	if abs == sched || sameFile(abs, sched) {
 		fmt.Fprintln(d.stderr, "looptab: the scheduler file is installed from registered jobs files")
 		return 2
 	}

@@ -173,6 +173,38 @@ func TestSchedulerFileIsNotASource(t *testing.T) {
 	if code := d.run([]string{"register", d.schedule}); code != 2 || !strings.Contains(err.String(), "scheduler file") {
 		t.Fatalf("register schedule %d %s", code, err.String())
 	}
+	link := filepath.Join(t.TempDir(), "looptab")
+	if err := os.Symlink(d.schedule, link); err != nil {
+		t.Fatal(err)
+	}
+	err.Reset()
+	if code := d.run([]string{"register", link}); code != 2 || !strings.Contains(err.String(), "scheduler file") {
+		t.Fatalf("register link %d %s", code, err.String())
+	}
+	cat, loadErr := loadCatalog(d.record)
+	if loadErr != nil || len(cat.Files) != 0 {
+		t.Fatalf("catalog %v %v", cat, loadErr)
+	}
+}
+
+// The scheduler file and the template sit in <config>/c3po/looptab, and only
+// an absolute XDG_CONFIG_HOME moves <config> off ~/.config.
+func TestSchedulerFileIsUnderC3poConfig(t *testing.T) {
+	home := t.TempDir()
+	xdg := t.TempDir()
+	t.Setenv("HOME", home)
+	for _, tc := range []struct{ env, base string }{
+		{xdg, xdg},
+		{"relative/config", filepath.Join(home, ".config")},
+		{"", filepath.Join(home, ".config")},
+	} {
+		t.Setenv("XDG_CONFIG_HOME", tc.env)
+		p, err := defaultPaths()
+		dir := filepath.Join(tc.base, "c3po", "looptab")
+		if err != nil || p.schedule != filepath.Join(dir, "looptab") || p.jobs != filepath.Join(dir, "jobs") {
+			t.Fatalf("XDG_CONFIG_HOME=%q paths %+v %v", tc.env, p, err)
+		}
+	}
 }
 
 func testDesk(t *testing.T) *desk {
