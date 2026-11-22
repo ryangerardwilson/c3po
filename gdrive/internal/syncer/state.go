@@ -29,7 +29,7 @@ type StateEntry struct {
 	RelPath       string `json:"relpath"`
 	Kind          string `json:"kind"`
 	DriveID       string `json:"drive_id"`
-	ParentRelPath string `json:"parent_relpath"`
+	ParentRelPath string `json:"-"` // derived from RelPath on load; not stored
 	Size          int64  `json:"size"`
 	MTimeNS       int64  `json:"mtime_ns"`
 	SHA1          string `json:"sha1,omitempty"`
@@ -56,8 +56,19 @@ func exists(path string) bool {
 	return err == nil
 }
 
+// parentOnce names the migration that drops parent_relpath from stored
+// state. LoadState derives it from relpath.
+const parentOnce = "gdrive-state-parent-1"
+
+const parentSQL = "UPDATE record SET body = json_set(body, '$.entries', " +
+	"(SELECT json_group_array(json_remove(value, '$.parent_relpath')) FROM json_each(record.body, '$.entries'))) " +
+	"WHERE app = 'gdrive' AND kind = 'state' AND json_valid(body) AND json_type(body, '$.entries') = 'array'"
+
 func LoadState(preset, regID string) (map[string]StateEntry, error) {
 	path := StateFile(preset, regID)
+	if err := sqlxdb.OnceFor(path, parentOnce, parentSQL); err != nil {
+		return nil, err
+	}
 	data, err := sqlxdb.Read("gdrive", "state", sqlxdb.Key(path), path)
 	if errors.Is(err, os.ErrNotExist) {
 		return map[string]StateEntry{}, nil
@@ -71,6 +82,7 @@ func LoadState(preset, regID string) (map[string]StateEntry, error) {
 	}
 	result := map[string]StateEntry{}
 	for _, entry := range payload.Entries {
+		entry.ParentRelPath = ParentRelPath(entry.RelPath)
 		result[entry.RelPath] = entry
 	}
 	return result, nil

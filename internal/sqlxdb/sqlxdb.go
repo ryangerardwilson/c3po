@@ -396,6 +396,33 @@ func DeleteLocal(app, kind, key string) error {
 	return execSQL(db, "DELETE FROM record WHERE app = "+quote(app)+" AND kind = "+quote(kind)+" AND item_key = "+quote(key))
 }
 
+// Once runs a data migration one time in the c3po database. id names it in
+// app_once, and the sql and that id commit together. The database is
+// published only when the migration ran.
+func Once(id, sql string) error {
+	db, err := open()
+	if err != nil {
+		return err
+	}
+	ran, err := runOnce(db, id, sql)
+	if err != nil {
+		return err
+	}
+	if ran {
+		publishAfterWrite(db, DatabaseName)
+	}
+	return nil
+}
+
+// OnceFor runs Once when path is a production record path. Other paths stay
+// files and run nothing.
+func OnceFor(path, id, sql string) error {
+	if !useDB(path) {
+		return nil
+	}
+	return Once(id, sql)
+}
+
 // List returns every record of one app and kind.
 func List(app, kind string) ([]Record, error) {
 	db, err := open()

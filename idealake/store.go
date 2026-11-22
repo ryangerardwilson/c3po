@@ -11,8 +11,9 @@ import (
 )
 
 // Idea is one stored line. Embedding is kept in sqlite and is not printed.
+// ID is the record key and is not stored in the body.
 type Idea struct {
-	ID        string    `json:"id"`
+	ID        string    `json:"-"`
 	Topic     string    `json:"topic"`
 	Text      string    `json:"text"`
 	Created   string    `json:"created"`
@@ -22,10 +23,28 @@ type Idea struct {
 
 var clock = time.Now
 
-func loadIdeas() ([]Idea, error) {
-	rows, err := sqlxdb.List(recordApp, recordKind)
+// keyOnce names the migration that drops the copies of the record key an
+// idea body kept as id and a topic body kept as topic. The key is the one place.
+const keyOnce = "idealake-body-key-1"
+
+const keySQL = "UPDATE record SET body = json_remove(body, '$.id') WHERE app = '" + recordApp + "' AND kind = '" + recordKind + "' AND json_valid(body);\n" +
+	"UPDATE record SET body = json_remove(body, '$.topic') WHERE app = '" + recordApp + "' AND kind = '" + recordKindTopic + "' AND json_valid(body)"
+
+func listRecords(kind string) ([]sqlxdb.Record, error) {
+	if err := sqlxdb.Once(keyOnce, keySQL); err != nil {
+		return nil, fmt.Errorf("idealake: %s", err)
+	}
+	rows, err := sqlxdb.List(recordApp, kind)
 	if err != nil {
 		return nil, fmt.Errorf("idealake: %s", err)
+	}
+	return rows, nil
+}
+
+func loadIdeas() ([]Idea, error) {
+	rows, err := listRecords(recordKind)
+	if err != nil {
+		return nil, err
 	}
 	ideas := make([]Idea, 0, len(rows))
 	for _, row := range rows {
@@ -33,9 +52,7 @@ func loadIdeas() ([]Idea, error) {
 		if err := json.Unmarshal(row.Body, &idea); err != nil {
 			return nil, fmt.Errorf("idealake: record %s", row.Key)
 		}
-		if idea.ID == "" {
-			idea.ID = row.Key
-		}
+		idea.ID = row.Key
 		ideas = append(ideas, idea)
 	}
 	sort.Slice(ideas, func(i, j int) bool {
@@ -173,8 +190,8 @@ func idLess(a, b string) bool {
 	return a < b
 }
 
+// topicRecord is a topic's body. The topic name is the record key.
 type topicRecord struct {
-	Topic   string `json:"topic"`
 	Created string `json:"created"`
 }
 
@@ -186,7 +203,7 @@ func ensureTopic(topic string) error {
 	if ok {
 		return nil
 	}
-	body, err := json.Marshal(topicRecord{Topic: topic, Created: clock().UTC().Format(time.RFC3339)})
+	body, err := json.Marshal(topicRecord{Created: clock().UTC().Format(time.RFC3339)})
 	if err != nil {
 		return err
 	}
@@ -197,17 +214,17 @@ func ensureTopic(topic string) error {
 }
 
 func loadTopicNames() ([]string, error) {
-	rows, err := sqlxdb.List(recordApp, recordKindTopic)
+	rows, err := listRecords(recordKindTopic)
 	if err != nil {
-		return nil, fmt.Errorf("idealake: %s", err)
+		return nil, err
 	}
 	names := make([]string, 0, len(rows))
 	for _, row := range rows {
 		var topic topicRecord
-		if err := json.Unmarshal(row.Body, &topic); err != nil || topic.Topic == "" {
+		if err := json.Unmarshal(row.Body, &topic); err != nil || row.Key == "" {
 			return nil, fmt.Errorf("idealake: record %s", row.Key)
 		}
-		names = append(names, topic.Topic)
+		names = append(names, row.Key)
 	}
 	return names, nil
 }

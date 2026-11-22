@@ -449,21 +449,26 @@ func sqlQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
 }
 
-func runOnce(path, id, sql string) error {
+// runOnce applies sql and records id in app_once in one transaction. ran is
+// false when id was already recorded. An error stops the script, so the sql
+// and the id commit together or not at all. Two processes can both see id
+// missing, so sql must be safe to apply twice.
+func runOnce(path, id, sql string) (bool, error) {
 	if err := sqliteExec(path, "CREATE TABLE IF NOT EXISTS app_once (id TEXT PRIMARY KEY)"); err != nil {
-		return err
+		return false, err
 	}
 	var rows []struct {
 		N int `json:"n"`
 	}
 	if err := sqliteQueryJSON(path, "SELECT COUNT(*) AS n FROM app_once WHERE id = "+sqlQuote(id), &rows); err != nil {
-		return err
+		return false, err
 	}
 	if len(rows) > 0 && rows[0].N > 0 {
-		return nil
+		return false, nil
 	}
-	if err := sqliteExec(path, sql); err != nil {
-		return err
+	script := ".bail on\nBEGIN IMMEDIATE;\n" + sql + ";\nINSERT OR IGNORE INTO app_once(id) VALUES (" + sqlQuote(id) + ");\nCOMMIT;\n"
+	if err := sqliteExec(path, script); err != nil {
+		return false, err
 	}
-	return sqliteExec(path, "INSERT INTO app_once(id) VALUES ("+sqlQuote(id)+")")
+	return true, nil
 }
