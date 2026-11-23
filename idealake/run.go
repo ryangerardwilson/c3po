@@ -42,7 +42,7 @@ An idea is one line of at most 300 characters. A topic is one line of at most
 
   c3po idealake --json add xyz "a short idea"
 
-Ideas are stored in the c3po sqlite file. nebula s3 backs that file up.
+Ideas are stored in the c3po sqlite file. nebula keep backs that file up.
 Search ranks ideas in one topic by meaning, using the xAI embeddings API,
 model v1. An idea can rank high even when it does not contain the query.
 contains is the lowercase text match and does not use embeddings.

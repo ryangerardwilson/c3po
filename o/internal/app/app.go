@@ -3,6 +3,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -91,6 +92,8 @@ type model struct {
 	visualAt     int
 	deleteArmed  bool
 	marks        map[string]bool
+	running      string             // the : command still running; empty when none
+	cancelRun    context.CancelFunc // cancels that command
 	status       string
 	showHelp     bool
 	result       Result
@@ -171,6 +174,8 @@ func (m model) Update(msg tui.Msg) (tui.Model, tui.Cmd) {
 		m.status = openedStatus(msg)
 	case shellDoneMsg:
 		return m.finishShell(msg)
+	case fileCommandDoneMsg:
+		return m.finishFileCommand(msg)
 	case tui.KeyMsg:
 		next, cmd := m.updateKey(msg)
 		if updated, ok := next.(model); ok {
@@ -180,6 +185,22 @@ func (m model) Update(msg tui.Msg) (tui.Model, tui.Cmd) {
 		return next, cmd
 	}
 	return m, nil
+}
+
+// finishFileCommand applies a finished : command: the listing is read again
+// from the directory, the owner of those files.
+func (m model) finishFileCommand(msg fileCommandDoneMsg) (tui.Model, tui.Cmd) {
+	animationGeneration, watchGeneration := m.animationGeneration, m.watchGeneration
+	m.running = ""
+	m.cancelRun = nil
+	if msg.err != nil {
+		m.status = msg.err.Error()
+		return m, nil
+	}
+	m.reload()
+	m.selectPath(msg.path)
+	m.status = msg.status
+	return m.withAnimation(m, nil, animationGeneration, watchGeneration)
 }
 
 func (m model) noteSession() {

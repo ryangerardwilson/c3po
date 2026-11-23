@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
@@ -34,13 +35,27 @@ type Place struct {
 
 // Session is one open screen. A nil Session ignores Note, Place, and Close
 // so model tests that never open a session stay quiet.
+//
+// Note and Place only change the place in memory. A writer goroutine stores
+// the latest place, and only when it differs from the last one stored, so a
+// key never waits on the database. The place is overwrite state: writing
+// the latest one is enough. Close stores the last place before it returns.
 type Session struct {
 	id       string
 	screen   string
-	body     Place
 	restored bool
 	pid      int
+
+	mu      sync.Mutex
+	body    Place
+	written string // key of the place last stored
+	err     error  // last failed background write, reported once
+	wake    chan struct{}
+	done    chan struct{}
 }
+
+// closeWait bounds how long Close waits for a background write.
+const closeWait = 2 * time.Second
 
 // TakeResume removes one --resume <id> or --resume=<id> from args.
 // A bare --resume is an error. The id must be a session UUID.
@@ -94,7 +109,7 @@ func open(screen, id string, pid int) (*Session, error) {
 			return nil, err
 		}
 		sess := &Session{id: next, screen: screen, body: Place{Screen: screen}, pid: pid}
-		if err := sess.write(); err != nil {
+		if err := sess.store(); err != nil {
 			return nil, err
 		}
 		return sess, nil
@@ -114,7 +129,7 @@ func open(screen, id string, pid int) (*Session, error) {
 	}
 	body.Screen = screen
 	sess := &Session{id: id, screen: screen, body: body, restored: true, pid: pid}
-	if err := sess.write(); err != nil {
+	if err := sess.store(); err != nil {
 		return nil, err
 	}
 	return sess, nil
@@ -125,6 +140,8 @@ func (s *Session) Restored() (Place, bool) {
 	if s == nil || !s.restored {
 		return Place{}, false
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.body, true
 }
 
@@ -136,35 +153,123 @@ func (s *Session) ID() string {
 	return s.id
 }
 
-// Note merges non-empty fields into the session and writes it.
-// A non-nil Args slice replaces the saved args, including an empty slice.
+// Note merges non-empty fields into the session and queues it for the
+// writer. A non-nil Args slice replaces the saved args, including an empty
+// slice. The error is a background write that failed since the last call.
 func (s *Session) Note(note Place) error {
 	if s == nil {
 		return nil
 	}
-	if note.CWD != "" {
-		s.body.CWD = note.CWD
-	}
-	if note.Path != "" {
-		s.body.Path = note.Path
-	}
-	if note.Cursor != "" {
-		s.body.Cursor = note.Cursor
-	}
-	if note.Args != nil {
-		s.body.Args = append([]string(nil), note.Args...)
-	}
-	return s.write()
+	return s.change(func(body *Place) {
+		if note.CWD != "" {
+			body.CWD = note.CWD
+		}
+		if note.Path != "" {
+			body.Path = note.Path
+		}
+		if note.Cursor != "" {
+			body.Cursor = note.Cursor
+		}
+		if note.Args != nil {
+			body.Args = append([]string(nil), note.Args...)
+		}
+	})
 }
 
-// Place sets the path and cursor even when they are empty, then writes.
+// Place sets the path and cursor even when they are empty, then queues the
+// place for the writer.
 func (s *Session) Place(path, cursor string) error {
 	if s == nil {
 		return nil
 	}
-	s.body.Path = path
-	s.body.Cursor = cursor
-	return s.write()
+	return s.change(func(body *Place) {
+		body.Path = path
+		body.Cursor = cursor
+	})
+}
+
+// change edits the place under the lock and wakes the writer when the
+// place now differs from the one last stored.
+func (s *Session) change(edit func(*Place)) error {
+	s.mu.Lock()
+	edit(&s.body)
+	s.body.CWD = workingDir(s.body.CWD)
+	changed := placeKey(s.body) != s.written
+	err := s.err
+	s.err = nil
+	if changed && s.wake == nil {
+		s.wake = make(chan struct{}, 1)
+		s.done = make(chan struct{})
+		go s.writer(s.wake, s.done)
+	}
+	wake := s.wake
+	s.mu.Unlock()
+	if changed {
+		select {
+		case wake <- struct{}{}:
+		default: // a wake is already queued; it stores the latest place
+		}
+	}
+	return err
+}
+
+func (s *Session) writer(wake <-chan struct{}, done chan<- struct{}) {
+	defer close(done)
+	for range wake {
+		s.flush()
+	}
+}
+
+// flush stores the current place unless it is already stored.
+func (s *Session) flush() {
+	s.mu.Lock()
+	body := s.body
+	body.Args = append([]string(nil), s.body.Args...)
+	if s.body.Args == nil {
+		body.Args = nil
+	}
+	key := placeKey(body)
+	if key == s.written {
+		s.mu.Unlock()
+		return
+	}
+	s.mu.Unlock()
+	err := s.write(body)
+	s.mu.Lock()
+	if err == nil {
+		s.written = key
+	} else {
+		s.err = err
+	}
+	s.mu.Unlock()
+}
+
+// store writes the place now. Open uses it, so the session exists before the
+// screen paints.
+func (s *Session) store() error {
+	s.mu.Lock()
+	s.body.CWD = workingDir(s.body.CWD)
+	body := s.body
+	s.mu.Unlock()
+	if err := s.write(body); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.written = placeKey(body)
+	s.mu.Unlock()
+	return nil
+}
+
+func placeKey(body Place) string {
+	raw, _ := json.Marshal(body)
+	return string(raw)
+}
+
+func workingDir(fallback string) string {
+	if cwd, err := os.Getwd(); err == nil && cwd != "" {
+		return cwd
+	}
+	return fallback
 }
 
 // Index returns the row whose key matches the restored cursor.
@@ -180,12 +285,39 @@ func (s *Session) Index(keys []string) (int, bool) {
 	return 0, false
 }
 
-// Close removes the active row and keeps the session body.
+// Close stores the last place, waiting up to closeWait for a write already
+// running, then removes the active row and keeps the session body.
 func (s *Session) Close() error {
 	if s == nil {
 		return nil
 	}
-	return sqlxdb.ExecLocal("DELETE FROM tui_active WHERE session_id = " + sqlxdb.Quote(s.id))
+	err := s.sync()
+	if derr := sqlxdb.Exec("DELETE FROM tui_active WHERE session_id = " + sqlxdb.Quote(s.id)); derr != nil {
+		return derr
+	}
+	return err
+}
+
+// sync stops the writer and stores the last changed place now. A session
+// with no change since Open stores nothing.
+func (s *Session) sync() error {
+	s.mu.Lock()
+	wake, done := s.wake, s.done
+	s.wake = nil
+	s.mu.Unlock()
+	if wake != nil {
+		close(wake)
+		select {
+		case <-done:
+		case <-time.After(closeWait):
+		}
+		s.flush()
+	}
+	s.mu.Lock()
+	err := s.err
+	s.err = nil
+	s.mu.Unlock()
+	return err
 }
 
 func load(id string) (Place, bool, error) {
@@ -212,15 +344,12 @@ func load(id string) (Place, bool, error) {
 	return body, true, nil
 }
 
-// write stores the session and its active row in one transaction.
-func (s *Session) write() error {
-	if cwd, err := os.Getwd(); err == nil && cwd != "" {
-		s.body.CWD = cwd
-	}
-	s.body.Screen = s.screen
+// write stores one place and the active row in one transaction.
+func (s *Session) write(body Place) error {
+	body.Screen = s.screen
 	args := "NULL"
-	if s.body.Args != nil {
-		raw, err := json.Marshal(s.body.Args)
+	if body.Args != nil {
+		raw, err := json.Marshal(body.Args)
 		if err != nil {
 			return err
 		}
@@ -228,9 +357,9 @@ func (s *Session) write() error {
 	}
 	ticks, _ := processStartTicks(s.pid)
 	id := sqlxdb.Quote(s.id)
-	return sqlxdb.ExecLocal("INSERT INTO tui_session(id, screen, cwd, path, cursor, args) VALUES (" +
-		id + ", " + sqlxdb.Quote(s.screen) + ", " + sqlxdb.Quote(s.body.CWD) + ", " + sqlxdb.Quote(s.body.Path) + ", " +
-		sqlxdb.Quote(s.body.Cursor) + ", " + args + ") ON CONFLICT(id) DO UPDATE SET screen = excluded.screen, " +
+	return sqlxdb.Exec("INSERT INTO tui_session(id, screen, cwd, path, cursor, args) VALUES (" +
+		id + ", " + sqlxdb.Quote(s.screen) + ", " + sqlxdb.Quote(body.CWD) + ", " + sqlxdb.Quote(body.Path) + ", " +
+		sqlxdb.Quote(body.Cursor) + ", " + args + ") ON CONFLICT(id) DO UPDATE SET screen = excluded.screen, " +
 		"cwd = excluded.cwd, path = excluded.path, cursor = excluded.cursor, args = excluded.args;\n" +
 		"INSERT INTO tui_active(session_id, pid, pid_start) VALUES (" + id + ", " + strconv.Itoa(s.pid) + ", " +
 		strconv.FormatInt(ticks, 10) + ") ON CONFLICT(session_id) DO UPDATE SET pid = excluded.pid, pid_start = excluded.pid_start")

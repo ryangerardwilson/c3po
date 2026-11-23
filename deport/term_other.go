@@ -2,7 +2,9 @@
 
 package deport
 
-import "errors"
+import (
+	"errors"
+)
 
 func enterRaw(fd int) (func(), error) {
 	return nil, errors.New("raw mode is unavailable")

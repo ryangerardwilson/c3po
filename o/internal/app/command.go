@@ -1,17 +1,45 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/ryangerardwilson/c3po/o/internal/tui"
 )
+
+// fileCommandWait bounds one : command. A cp or rm -rf of a large tree may
+// take a while; esc cancels it sooner.
+const fileCommandWait = 10 * time.Minute
+
+// fileCommandDoneMsg is a : command that finished, failed, or was cancelled.
+type fileCommandDoneMsg struct {
+	status string
+	path   string
+	err    error
+}
+
+// runFileCommand is the : command as a Cmd: the screen paints "running"
+// and keeps its keys while the process works.
+func runFileCommand(ctx context.Context, cancel context.CancelFunc, dir, line string) tui.Cmd {
+	return func() tui.Msg {
+		defer cancel()
+		status, path, err := applyFileCommand(ctx, dir, line)
+		if ctx.Err() == context.Canceled {
+			err = errors.New("cancelled " + line)
+		}
+		return fileCommandDoneMsg{status: status, path: path, err: err}
+	}
+}
 
 // applyFileCommand runs mv, rm, cp, touch, or mkdir in dir. rm may take
 // -rf. Any other command or flag is refused before a process starts.
-func applyFileCommand(dir, line string) (status, selectPath string, err error) {
+func applyFileCommand(ctx context.Context, dir, line string) (status, selectPath string, err error) {
 	fields, err := splitCommand(line)
 	if err != nil {
 		return "", "", err
@@ -46,7 +74,7 @@ func applyFileCommand(dir, line string) (status, selectPath string, err error) {
 		}
 		return "", "", fmt.Errorf("%s needs a path", name)
 	}
-	cmd := exec.Command(name, args...)
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	out, runErr := cmd.CombinedOutput()
 	text := strings.TrimSpace(string(out))

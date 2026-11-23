@@ -7,11 +7,9 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
 )
 
-// fakeSQLX installs a nebula that logs each s3 put and sleeps delay seconds.
+// fakeSQLX installs a nebula that logs each keep mark and sleeps delay seconds.
 // The runtime file is a real sqlite database, because the app writes it.
 func fakeSQLX(t *testing.T, delay string) string {
 	t.Helper()
@@ -84,14 +82,11 @@ func TestRuntimeIncrementOnlyAppendsTheJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(log)
-	if strings.Count(text, "s3 put") != 1 || strings.Contains(text, "remote") || !strings.Contains(text, "s3://backups/c3po.sqlite") {
+	if strings.Count(text, "keep mark c3po ") != 1 || strings.Contains(text, "remote") || strings.Contains(text, "s3 put") {
 		t.Fatalf("worker backup %q", log)
 	}
 	if rows, err := localRows(); err != nil || len(rows) != 0 {
 		t.Fatalf("journal after the worker %#v %v", rows, err)
-	}
-	if script, err := takeQueue(); err != nil || script != "" {
-		t.Fatalf("backup queue after the worker %q %v", script, err)
 	}
 }
 
@@ -121,7 +116,7 @@ func TestOneWorkerDrainsIncrementsThatArriveWhileItWorks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := strings.Count(string(log), "s3 put"); n != 2 {
+	if n := strings.Count(string(log), "keep mark c3po "); n != 2 {
 		t.Fatalf("backups %d: %q", n, log)
 	}
 	if rows, err := localRows(); err != nil || len(rows) != 0 {
@@ -170,31 +165,37 @@ func TestMissingRuntimeCopyStaysLocal(t *testing.T) {
 	}
 }
 
-func TestFailedJournalRemovalDoesNotReapply(t *testing.T) {
-	logPath := fakeSQLX(t, "0")
+func TestABatchCommittedByADeadWorkerIsNotAppliedAgain(t *testing.T) {
+	fakeSQLX(t, "0")
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("C3PO_ACTOR", "agent")
 	oldBackup := wakeBackup
 	wakeBackup = func() {}
-	oldSub := subtractJournal
-	subtractJournal = func([]sqlxdb.UsageRow) error { return os.ErrPermission }
+	oldFinish := finishBatch
+	finishBatch = func(string) error { return os.ErrPermission }
 	t.Cleanup(func() {
 		wakeBackup = oldBackup
-		subtractJournal = oldSub
+		finishBatch = oldFinish
 	})
 
 	Note(0, []string{"c3po", "version"})
+	FlushBackup() // commits the batch, then dies before it drops it
+	finishBatch = oldFinish
+	Note(0, []string{"c3po", "help"})
 	FlushBackup()
 
-	_ = logPath
-	out, err := exec.Command("/usr/bin/sqlite3", filepath.Join(os.Getenv("SQLX_RUNTIME"), "c3po.sqlite"), "select count(*) from usage").CombinedOutput()
+	out, err := exec.Command("/usr/bin/sqlite3", filepath.Join(os.Getenv("SQLX_RUNTIME"), "c3po.sqlite"), "select feature || '=' || n from usage order by feature").CombinedOutput()
 	if err != nil {
 		t.Fatalf("usage rows: %v %s", err, out)
 	}
-	if strings.TrimSpace(string(out)) != "1" {
-		t.Fatalf("usage rows %q", out)
+	if got := strings.Fields(string(out)); len(got) != 2 || got[0] != "help=1" || got[1] != "version=1" {
+		t.Fatalf("usage rows %q", got)
 	}
-	if rows, err := localRows(); err != nil || len(rows) != 1 || rows[0].N != 1 {
+	path, _ := journalPath()
+	if left, _ := filepath.Glob(path + ".batch.*"); len(left) != 0 {
+		t.Fatalf("batch left: %q", left)
+	}
+	if rows, err := localRows(); err != nil || len(rows) != 0 {
 		t.Fatalf("journal %#v %v", rows, err)
 	}
 }

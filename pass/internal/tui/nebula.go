@@ -2,10 +2,12 @@ package tui
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // Nebula reaches 1Password through nebula crypt.
@@ -24,17 +26,21 @@ type itemLine struct {
 	Username string `json:"username"`
 }
 
-// runCrypt runs nebula crypt. Tests replace it.
-var runCrypt = func(args ...string) ([]byte, []byte, error) {
+// runCrypt runs nebula crypt until ctx ends. Tests replace it.
+var runCrypt = func(ctx context.Context, args ...string) ([]byte, []byte, error) {
 	path, err := exec.LookPath("nebula")
 	if err != nil {
 		return nil, nil, errors.New("nebula is not installed")
 	}
-	cmd := exec.Command(path, append([]string{"crypt"}, args...)...)
+	cmd := exec.CommandContext(ctx, path, append([]string{"crypt"}, args...)...)
+	cmd.WaitDelay = time.Second
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
 	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return nil, errb.Bytes(), errors.New("nebula crypt timed out")
+		}
 		message := strings.TrimSpace(errb.String())
 		if message == "" {
 			message = "nebula crypt failed"
@@ -45,8 +51,8 @@ var runCrypt = func(args ...string) ([]byte, []byte, error) {
 }
 
 // Vaults lists vaults.
-func (Nebula) Vaults() ([]Vault, error) {
-	out, _, err := runCrypt("vaults")
+func (Nebula) Vaults(ctx context.Context) ([]Vault, error) {
+	out, _, err := runCrypt(ctx, "vaults")
 	if err != nil {
 		return nil, err
 	}
@@ -65,8 +71,8 @@ func (Nebula) Vaults() ([]Vault, error) {
 }
 
 // Items lists items in one vault. A concealed value is not in the output.
-func (Nebula) Items(vault string) ([]Item, error) {
-	out, _, err := runCrypt("items", vault)
+func (Nebula) Items(ctx context.Context, vault string) ([]Item, error) {
+	out, _, err := runCrypt(ctx, "items", vault)
 	if err != nil {
 		return nil, err
 	}
@@ -85,14 +91,14 @@ func (Nebula) Items(vault string) ([]Item, error) {
 }
 
 // Copy asks nebula crypt to copy one item. The secret is not returned.
-func (Nebula) Copy(vault, id string) error {
-	_, _, err := runCrypt("copy", vault, id)
+func (Nebula) Copy(ctx context.Context, vault, id string) error {
+	_, _, err := runCrypt(ctx, "copy", vault, id)
 	return err
 }
 
 // Delete asks nebula crypt to delete one item id.
-func (Nebula) Delete(vault, id string) error {
-	_, _, err := runCrypt("delete", vault, "item", id)
+func (Nebula) Delete(ctx context.Context, vault, id string) error {
+	_, _, err := runCrypt(ctx, "delete", vault, "item", id)
 	return err
 }
 

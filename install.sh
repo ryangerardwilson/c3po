@@ -131,42 +131,22 @@ install_from_source() {
   remove_retired_notify
   install_notify_plugin "$source_path"
   "$INSTALL_DIR/$APP" version
-  write_snapshot_units
-  activate_snapshot_timer
+  retire_snapshot_timer
 }
 
-write_snapshot_units() {
+# retire_snapshot_timer removes c3po-snapshot.timer. nebula keep backs the
+# c3po database up after each commit, and nebula-keep.timer, which nebula
+# installs, is the sweep that catches a missed change.
+retire_snapshot_timer() {
   local dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-  mkdir -p "$dir"
-  cat > "$dir/c3po-snapshot.service" <<'EOF'
-[Unit]
-Description=Save the c3po database backup
-
-[Service]
-Type=oneshot
-ExecStart=%h/.local/bin/c3po __snapshot
-EOF
-  cat > "$dir/c3po-snapshot.timer" <<'EOF'
-[Unit]
-Description=Periodically save the c3po database backup
-
-[Timer]
-OnActiveSec=10min
-OnUnitActiveSec=10min
-AccuracySec=5s
-Unit=c3po-snapshot.service
-
-[Install]
-WantedBy=timers.target
-EOF
-}
-
-activate_snapshot_timer() {
-  [[ "${C3PO_INSTALL_ACTIVATE_SYSTEMD:-1}" == "1" ]] || return 0
-  command -v systemctl >/dev/null 2>&1 || return 0
-  systemctl --user daemon-reload >/dev/null 2>&1 || return 0
-  systemctl --user enable c3po-snapshot.timer >/dev/null 2>&1 || true
-  systemctl --user start c3po-snapshot.timer >/dev/null 2>&1 || true
+  [[ -f "$dir/c3po-snapshot.timer" || -f "$dir/c3po-snapshot.service" ]] || return 0
+  if [[ "${C3PO_INSTALL_ACTIVATE_SYSTEMD:-1}" == "1" ]] && command -v systemctl >/dev/null 2>&1; then
+    systemctl --user disable --now c3po-snapshot.timer >/dev/null 2>&1 || true
+  fi
+  rm -f "$dir/c3po-snapshot.timer" "$dir/c3po-snapshot.service"
+  if [[ "${C3PO_INSTALL_ACTIVATE_SYSTEMD:-1}" == "1" ]] && command -v systemctl >/dev/null 2>&1; then
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+  fi
 }
 
 case "${1:-install}" in

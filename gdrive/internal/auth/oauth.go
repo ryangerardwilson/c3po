@@ -220,6 +220,11 @@ func NewTokenSource(ctx context.Context, conf *OAuthConfig, token *Token) *Token
 
 // Token returns the current token, refreshing it first when needed.
 func (s *TokenSource) Token() (*Token, error) {
+	return s.tokenWithin(s.ctx)
+}
+
+// tokenWithin is Token with a refresh that ends when ctx does.
+func (s *TokenSource) tokenWithin(ctx context.Context) (*Token, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.token.Valid() {
@@ -228,7 +233,7 @@ func (s *TokenSource) Token() (*Token, error) {
 	if s.token == nil || s.token.RefreshToken == "" {
 		return nil, errors.New("oauth2: token expired and refresh token is not set")
 	}
-	refreshed, err := s.conf.refresh(s.ctx, s.token.RefreshToken)
+	refreshed, err := s.conf.refresh(ctx, s.token.RefreshToken)
 	if err != nil {
 		return nil, err
 	}
@@ -241,8 +246,10 @@ type transport struct {
 	base   http.RoundTripper
 }
 
+// RoundTrip refreshes the token, when it must, within the request's
+// context.
 func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
-	token, err := t.source.Token()
+	token, err := t.source.tokenWithin(req.Context())
 	if err != nil {
 		if req.Body != nil {
 			_ = req.Body.Close()

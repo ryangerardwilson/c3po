@@ -8,21 +8,60 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func settle(s *screen, dir, query, stamp, pending string) (*screen, string, string) {
+	fresh, stamp, pending := rescore(dir, query, stamp, pending)
+	if fresh == nil {
+		return s, stamp, pending
+	}
+	return adoptScreen(s, fresh), stamp, pending
+}
+
+// rescore scores dir again once its sources changed and then held still
+// for one more look. It returns nil while nothing is ready.
+func rescore(dir, query, stamp, pending string) (*screen, string, string) {
 	next := sourceStamp(dir)
 	if next == "" || next == stamp {
-		return s, stamp, ""
+		return nil, stamp, ""
 	}
 	if next != pending {
-		return s, stamp, next
+		return nil, stamp, next
 	}
 	fresh, err := openTree(dir, query)
 	if err != nil {
-		return s, next, ""
+		return nil, next, ""
 	}
-	return adoptScreen(s, fresh), next, ""
+	return fresh, next, ""
+}
+
+// watchTree walks and scores dir off the key loop, every interval, and
+// sends each freshly scored tree. The loop adopts it, so a rescan of a
+// large tree never delays a key. It stops when stop closes.
+func watchTree(dir, query string, every time.Duration, stop <-chan struct{}) <-chan *screen {
+	out := make(chan *screen, 1)
+	go func() {
+		stamp, pending := sourceStamp(dir), ""
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(every):
+			}
+			var fresh *screen
+			fresh, stamp, pending = rescore(dir, query, stamp, pending)
+			if fresh == nil {
+				continue
+			}
+			select {
+			case out <- fresh:
+			case <-stop:
+				return
+			}
+		}
+	}()
+	return out
 }
 
 func sourceStamp(root string) string {

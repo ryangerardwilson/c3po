@@ -1,19 +1,17 @@
 package sqlxdb
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
+	"sync"
 )
 
 // The application owns this sqlite file. Nebula sql is the Postgres
-// interface and is not called. Nebula s3 backs the file up.
+// interface and is not called. nebula keep backs the file up (keep.go).
 
 func dbFile(name string) string {
 	if root := os.Getenv("SQLX_ROOT"); root != "" {
@@ -50,14 +48,29 @@ func prepareAppDB(path, name string) error {
 	if err := loadMissing(path, name); err != nil {
 		return err
 	}
+	if _, ok := migrated.Load(path); ok {
+		return nil
+	}
 	if err := migrate(path); err != nil {
 		return err
 	}
 	if err := writeSchemaFile(name, schemaText()); err != nil {
 		return err
 	}
-	return os.Chmod(path, 0o600)
+	if err := os.Chmod(path, 0o600); err != nil {
+		return err
+	}
+	migrated.Store(path, true)
+	return nil
 }
+
+// migrated remembers, for this process, the files already at the current
+// schema. Migrations only run forward, so the answer stays true while the
+// file stays; loadMissing drops it when it brings a file back. It is package
+// state on purpose (statute 2.11, 8.1): a cache of one fact about one file
+// for one short process. It can go when sqlxdb holds an open handle per
+// process, which would carry the same fact.
+var migrated sync.Map
 
 func writeSchemaFile(name, models string) error {
 	root := os.Getenv("SQLX_ROOT")
@@ -74,29 +87,6 @@ func writeSchemaFile(name, models string) error {
 	return os.WriteFile(filepath.Join(dir, name), []byte(models), 0o600)
 }
 
-func copyLegacyRuntime(path, name string) error {
-	if os.Getenv("SQLX_ROOT") != "" {
-		return nil
-	}
-	base := os.Getenv("XDG_RUNTIME_DIR")
-	if base == "" {
-		return nil
-	}
-	src := filepath.Join(base, "sqlx", name+".sqlite")
-	if src == path {
-		return nil
-	}
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return nil
-	}
-	return os.WriteFile(path, data, 0o600)
-}
-
-var errNotFound = errors.New("not found")
-
-var runS3 = defaultRunS3
-
 func fileMissing(path string) (bool, error) {
 	_, err := os.Stat(path)
 	if err == nil {
@@ -108,84 +98,28 @@ func fileMissing(path string) (bool, error) {
 	return false, err
 }
 
+// loadMissing fills a missing runtime file through nebula keep, the one
+// restore path. A restore that fails leaves no file, so an empty database is
+// never made while the backup is out of reach. SQLX_ROOT is the local test
+// tree and starts empty. A file it makes is migrated again even if this
+// process migrated an older file at that path.
 func loadMissing(path, name string) error {
 	gone, err := fileMissing(path)
 	if err != nil || !gone {
 		return err
 	}
-	_ = copyLegacyRuntime(path, name)
-	gone, err = fileMissing(path)
-	if err != nil || !gone {
-		return err
-	}
-	rerr := restoreObject(path, name)
-	if rerr != nil && !errors.Is(rerr, errNotFound) {
-		_ = os.Remove(path)
-		return rerr
-	}
-	if errors.Is(rerr, errNotFound) {
-		_ = os.Remove(path)
-	}
-	gone, err = fileMissing(path)
-	if err != nil || !gone {
-		return err
-	}
-	return os.WriteFile(path, nil, 0o600)
-}
-
-func restoreObject(path, name string) error {
+	migrated.Delete(path)
 	if os.Getenv("SQLX_ROOT") != "" {
-		return nil
+		return os.WriteFile(path, nil, 0o600)
 	}
-	bin, args, err := s3Args("get", "s3://backups/"+name+".sqlite", path)
-	if err != nil {
+	if err := keepRestore(path, name); err != nil {
+		_ = os.Remove(path)
 		return err
 	}
-	msg, err := runS3(bin, args)
-	if err == nil {
-		return nil
+	if gone, err = fileMissing(path); err != nil || gone {
+		return fmt.Errorf("nebula keep restore %s: no file", name)
 	}
-	if strings.Contains(msg, "not found") || strings.Contains(err.Error(), "not found") {
-		return errNotFound
-	}
-	return fmt.Errorf("s3 get s3://backups/%s.sqlite: %s", name, s3Text(msg, err))
-}
-
-func publishObject(path, name string) {
-	if os.Getenv("SQLX_ROOT") != "" || path == "" {
-		return
-	}
-	_ = publishFile(path, name)
-}
-
-func defaultRunS3(bin string, args []string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, args...)
-	out, err := cmd.CombinedOutput()
-	return string(out), err
-}
-
-func s3Text(msg string, err error) string {
-	text := strings.TrimSpace(msg)
-	if text == "" && err != nil {
-		return strings.TrimSpace(err.Error())
-	}
-	return text
-}
-
-func s3Args(action string, rest ...string) (string, []string, error) {
-	if bin := os.Getenv("NEBULA_BIN"); bin != "" {
-		return bin, append([]string{"s3", action}, rest...), nil
-	}
-	if bin, err := exec.LookPath("s3"); err == nil {
-		return bin, append([]string{action}, rest...), nil
-	}
-	bin, err := exec.LookPath("nebula")
-	if err != nil {
-		return "", nil, err
-	}
-	return bin, append([]string{"s3", action}, rest...), nil
+	return nil
 }
 
 func adoptSQLite(dir, legacy, destPath string) error {

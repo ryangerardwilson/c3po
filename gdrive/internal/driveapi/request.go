@@ -23,7 +23,7 @@ func (c *DriveClient) doJSON(method, endpoint string, params url.Values, body, o
 		}
 		reader = bytes.NewReader(data)
 	}
-	req, err := http.NewRequest(method, endpoint+"?"+params.Encode(), reader)
+	req, err := http.NewRequestWithContext(c.requestContext(), method, endpoint+"?"+params.Encode(), reader)
 	if err != nil {
 		return err
 	}

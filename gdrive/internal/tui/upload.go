@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -14,23 +15,24 @@ import (
 
 // Lister lists one Drive folder.
 type Lister interface {
-	ListChildren(parentID string) ([]driveapi.NavEntry, error)
+	ListChildren(ctx context.Context, parentID string) ([]driveapi.NavEntry, error)
 }
 
 // Uploader puts a local file or folder into a Drive folder under a name
 // not yet taken there.
 type Uploader interface {
-	FindAvailableName(parentID, name string) (string, error)
-	CreateFolder(parentID, name string) (string, error)
-	UploadFile(parentID, name, filePath string) (string, error)
+	FindAvailableName(ctx context.Context, parentID, name string) (string, error)
+	CreateFolder(ctx context.Context, parentID, name string) (string, error)
+	UploadFile(ctx context.Context, parentID, name, filePath string) (string, error)
 }
 
 // Trasher moves a Drive file to the trash.
 type Trasher interface {
-	TrashEntry(fileID string) error
+	TrashEntry(ctx context.Context, fileID string) error
 }
 
-// Drive is the Drive surface the navigator uses.
+// Drive is the Drive surface the navigator uses. Each call ends when its
+// ctx does.
 type Drive interface {
 	Lister
 	Uploader
@@ -59,9 +61,14 @@ func pickLocal(term *terminal) (string, error) {
 	return path, err
 }
 
+// upload hands the terminal to the file picker, then uploads the choice on
+// the worker. The folder's next listing replaces the cache.
 func (m *model) upload() bool {
 	if m.pick == nil {
 		m.status = "upload is unavailable"
+		return false
+	}
+	if m.visits > 0 {
 		return false
 	}
 	path, err := m.pick()
@@ -75,21 +82,41 @@ func (m *model) upload() bool {
 		m.status = "upload cancelled"
 		return false
 	}
-	if err := uploadLocal(m.client, m.parentID, path); err != nil {
-		m.err = err
-		m.status = err.Error()
+	if m.client == nil {
+		m.fail(errors.New("not connected to Drive"))
 		return false
 	}
+	client, parent, name := m.client, m.parentID, filepath.Base(path)
+	m.writes++
 	m.err = nil
-	m.load(m.parentID)
-	if m.err != nil {
-		return false
-	}
-	m.status = "uploaded " + filepath.Base(path)
+	m.status = "uploading " + name
+	m.jobs.Go(func() func() {
+		err := uploadWithin(client, parent, path)
+		var entries []driveapi.NavEntry
+		if err == nil {
+			entries, err = listWithin(client, parent)
+		}
+		return func() {
+			m.writes--
+			if err != nil {
+				m.fail(err)
+				return
+			}
+			m.relist(parent, entries)
+			m.err = nil
+			m.status = "uploaded " + name
+		}
+	})
 	return false
 }
 
-func uploadLocal(dest Uploader, parentID, localPath string) error {
+func uploadWithin(dest Uploader, parentID, localPath string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), uploadWait)
+	defer cancel()
+	return uploadLocal(ctx, dest, parentID, localPath)
+}
+
+func uploadLocal(ctx context.Context, dest Uploader, parentID, localPath string) error {
 	info, err := localInfo(localPath)
 	if err != nil {
 		return err
@@ -97,19 +124,19 @@ func uploadLocal(dest Uploader, parentID, localPath string) error {
 	if !info.IsDir() && !info.Mode().IsRegular() {
 		return fmt.Errorf("unsupported local path: %s", localPath)
 	}
-	name, err := dest.FindAvailableName(parentID, filepath.Base(localPath))
+	name, err := dest.FindAvailableName(ctx, parentID, filepath.Base(localPath))
 	if err != nil {
 		return err
 	}
 	if !info.IsDir() {
-		_, err = dest.UploadFile(parentID, name, localPath)
+		_, err = dest.UploadFile(ctx, parentID, name, localPath)
 		return err
 	}
-	folderID, err := dest.CreateFolder(parentID, name)
+	folderID, err := dest.CreateFolder(ctx, parentID, name)
 	if err != nil {
 		return err
 	}
-	return uploadDir(dest, folderID, localPath)
+	return uploadDir(ctx, dest, folderID, localPath)
 }
 
 func localInfo(path string) (os.FileInfo, error) {
@@ -127,14 +154,14 @@ func localInfo(path string) (os.FileInfo, error) {
 	return resolved, nil
 }
 
-func uploadDir(dest Uploader, parentID, dir string) error {
+func uploadDir(ctx context.Context, dest Uploader, parentID, dir string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
 	}
 	for _, entry := range entries {
 		path := filepath.Join(dir, entry.Name())
-		if err := uploadLocal(dest, parentID, path); err != nil {
+		if err := uploadLocal(ctx, dest, parentID, path); err != nil {
 			return err
 		}
 	}

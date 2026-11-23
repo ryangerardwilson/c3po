@@ -140,3 +140,16 @@ func TestMigrationsAreSafeToApplyTwice(t *testing.T) {
 		t.Fatalf("usage rows %d %v", n, err)
 	}
 }
+
+func countRows(path, table string) (int, error) {
+	var rows []struct {
+		N int `json:"n"`
+	}
+	if err := sqliteQueryJSON(path, "SELECT COUNT(*) AS n FROM "+quoteIdent(table), &rows); err != nil {
+		return 0, err
+	}
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	return rows[0].N, nil
+}

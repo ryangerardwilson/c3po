@@ -69,6 +69,24 @@ func AuthorizeAccount(clientSecretFile string, stdin io.Reader, stdout, stderr i
 // HTTPClient is an authorized client for the account. It refreshes the
 // stored token and writes it back when the refresh changed it.
 func HTTPClient(ctx context.Context, account *config.Account) (*http.Client, error) {
+	login, err := Prepare(account)
+	if err != nil {
+		return nil, err
+	}
+	return login.Client(ctx)
+}
+
+// Login is an account's stored token, read but not yet refreshed.
+type Login struct {
+	path   string
+	token  *Token
+	source *TokenSource
+}
+
+// Prepare reads the account's stored token. A token that cannot refresh is
+// authorized again on the terminal. Nothing else reaches Google until
+// Client.
+func Prepare(account *config.Account) (*Login, error) {
 	if account.Email == "" {
 		return nil, fmt.Errorf("preset %s is missing email; re-run `c3po gdrive auth <client_secret_path>`", account.Preset)
 	}
@@ -87,15 +105,21 @@ func HTTPClient(ctx context.Context, account *config.Account) (*http.Client, err
 			return nil, err
 		}
 	}
-	source := NewTokenSource(ctx, oauthConfig, token)
-	refreshed, err := source.Token()
+	source := NewTokenSource(context.Background(), oauthConfig, token)
+	return &Login{path: tokenPath, token: token, source: source}, nil
+}
+
+// Client refreshes the token within ctx, writes it back when the refresh
+// changed it, and returns a client that authorizes each request.
+func (l *Login) Client(ctx context.Context) (*http.Client, error) {
+	refreshed, err := l.source.tokenWithin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("oauth refresh failed: %w", err)
 	}
-	if tokenChanged(token, refreshed) {
-		_ = WriteToken(tokenPath, refreshed)
+	if tokenChanged(l.token, refreshed) {
+		_ = WriteToken(l.path, refreshed)
 	}
-	return NewClient(source), nil
+	return NewClient(l.source), nil
 }
 
 func accountOAuthConfig(account *config.Account) (string, *OAuthConfig, error) {

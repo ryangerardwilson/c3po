@@ -113,3 +113,36 @@ func TestArgsStayNilUntilNoted(t *testing.T) {
 		t.Fatalf("args %#v", body.Args)
 	}
 }
+
+func TestAKeyDoesNotWaitAndOnlyAChangeIsStored(t *testing.T) {
+	t.Setenv("SQLX_ROOT", t.TempDir())
+	sess, err := Open("o", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 50; i++ {
+		if err := sess.Place("/tmp", "same"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := sess.Place("/tmp", "last"); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Close(); err != nil {
+		t.Fatal(err)
+	}
+	again, err := Open("o", sess.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer again.Close()
+	if body, ok := again.Restored(); !ok || body.Cursor != "last" || body.Path != "/tmp" {
+		t.Fatalf("close did not store the last place: %+v", body)
+	}
+	sess.mu.Lock()
+	written := sess.written
+	sess.mu.Unlock()
+	if written != placeKey(Place{Screen: "o", CWD: workingDir(""), Path: "/tmp", Cursor: "last"}) {
+		t.Fatalf("written %s", written)
+	}
+}

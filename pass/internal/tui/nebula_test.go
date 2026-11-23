@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -9,7 +10,7 @@ func TestNebulaItemsAndCopyDoNotCarryASecret(t *testing.T) {
 	prev := runCrypt
 	t.Cleanup(func() { runCrypt = prev })
 	var got [][]string
-	runCrypt = func(args ...string) ([]byte, []byte, error) {
+	runCrypt = func(_ context.Context, args ...string) ([]byte, []byte, error) {
 		got = append(got, append([]string(nil), args...))
 		switch args[0] {
 		case "items":
@@ -21,18 +22,19 @@ func TestNebulaItemsAndCopyDoNotCarryASecret(t *testing.T) {
 		}
 	}
 	src := Nebula{}
-	vaults, err := src.Vaults()
+	ctx := context.Background()
+	vaults, err := src.Vaults(ctx)
 	if err != nil || len(vaults) != 1 || vaults[0].Name != "Root" {
 		t.Fatalf("%v %v", vaults, err)
 	}
-	items, err := src.Items("Root")
+	items, err := src.Items(ctx, "Root")
 	if err != nil || len(items) != 1 || items[0].Username != "ada" || items[0].ID != "abc" {
 		t.Fatalf("%v %v", items, err)
 	}
-	if err := src.Copy("Root", "abc"); err != nil {
+	if err := src.Copy(ctx, "Root", "abc"); err != nil {
 		t.Fatal(err)
 	}
-	if err := src.Delete("Root", "abc"); err != nil {
+	if err := src.Delete(ctx, "Root", "abc"); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"vaults", "items Root", "copy Root abc", "delete Root item abc"}

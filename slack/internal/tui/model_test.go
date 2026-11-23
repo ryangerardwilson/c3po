@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,12 +15,13 @@ import (
 func TestMain(m *testing.M) {
 	fetchBoard = func() (Board, error) { return Board{}, nil }
 	openDeskItem = func(string, string) error { return errors.New("open not stubbed") }
-	readDeskItem = func(string, string) error { return errors.New("read not stubbed") }
+	readDeskItem = func(string, string) (Board, error) { return Board{}, errors.New("read not stubbed") }
 	syncDesk = func() error { return errors.New("sync not stubbed") }
 	os.Exit(m.Run())
 }
 
 type fakeScreen struct {
+	mu     sync.Mutex
 	keys   []string
 	frames []string
 	width  int
@@ -28,7 +30,36 @@ type fakeScreen struct {
 
 func (f *fakeScreen) size() (int, int) { return f.width, f.height }
 
-func (f *fakeScreen) paint(frame string) { f.frames = append(f.frames, frame) }
+func (f *fakeScreen) paint(frame string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.frames = append(f.frames, frame)
+}
+
+// lastFrame is safe to call from a desk stub on the screen's worker.
+func (f *fakeScreen) lastFrame() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.frames) == 0 {
+		return ""
+	}
+	return f.frames[len(f.frames)-1]
+}
+
+// waitFrame waits until a painted frame satisfies ok.
+func (f *fakeScreen) waitFrame(t *testing.T, what string, ok func(string) bool) string {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if frame := f.lastFrame(); ok(frame) {
+			return frame
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no frame %s; last\n%s", what, f.lastFrame())
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
 
 func (f *fakeScreen) readKey() (string, error) {
 	if len(f.keys) == 0 {
@@ -53,9 +84,12 @@ func stubDesk(t *testing.T, next Board, openErr, readErr error) *deskLog {
 		log.opened = append(log.opened, preset+"/"+id)
 		return openErr
 	}
-	readDeskItem = func(preset, id string) error {
+	readDeskItem = func(preset, id string) (Board, error) {
 		log.read = append(log.read, preset+"/"+id)
-		return readErr
+		if readErr != nil {
+			return Board{}, readErr
+		}
+		return next, nil
 	}
 	t.Cleanup(func() {
 		fetchBoard, openDeskItem, readDeskItem = oldFetch, oldOpen, oldRead
@@ -188,8 +222,11 @@ func TestFailedOpenStaysOnTheRow(t *testing.T) {
 	if len(log.opened) != 1 || len(log.read) != 0 {
 		t.Fatalf("opened %v read %v", log.opened, log.read)
 	}
-	if !strings.Contains(screen.frames[1], "browser refused") || !strings.Contains(selected(screen.frames[1]), "Ada") {
+	if !strings.Contains(screen.frames[1], "opening") {
 		t.Fatalf("frame\n%s", screen.frames[1])
+	}
+	if !strings.Contains(screen.frames[2], "browser refused") || !strings.Contains(selected(screen.frames[2]), "Ada") {
+		t.Fatalf("frame\n%s", screen.frames[2])
 	}
 }
 
@@ -201,7 +238,11 @@ func TestMarkDropsTheRow(t *testing.T) {
 	if len(log.read) != 1 || log.read[0] != "1/D1:1" || len(log.opened) != 0 {
 		t.Fatalf("read %v opened %v", log.read, log.opened)
 	}
-	frame := screen.frames[1]
+	marking := screen.frames[1]
+	if strings.Contains(marking, "need the numbers") || !strings.Contains(marking, "marking") || !strings.Contains(marking, "DMS  0") {
+		t.Fatalf("while marking\n%s", marking)
+	}
+	frame := screen.frames[2]
 	if strings.Contains(frame, "need the numbers") || !strings.Contains(frame, "marked") || !strings.Contains(frame, "DMS  0") {
 		t.Fatalf("after mark\n%s", frame)
 	}
@@ -210,8 +251,11 @@ func TestMarkDropsTheRow(t *testing.T) {
 func TestFailedMarkLeavesTheRow(t *testing.T) {
 	log := stubDesk(t, sampleBoard(), nil, errors.New("desk busy"))
 	screen := runKeys(t, newModel(sampleBoard(), nil), "r", "q")
-	if len(log.read) != 1 || !strings.Contains(screen.frames[1], "desk busy") || !strings.Contains(screen.frames[1], "need the numbers") {
-		t.Fatalf("frame\n%s", screen.frames[1])
+	if len(log.read) != 1 || strings.Contains(screen.frames[1], "need the numbers") {
+		t.Fatalf("while marking\n%s", screen.frames[1])
+	}
+	if !strings.Contains(screen.frames[2], "desk busy") || !strings.Contains(screen.frames[2], "need the numbers") || !strings.Contains(selected(screen.frames[2]), "Ada") {
+		t.Fatalf("frame\n%s", screen.frames[2])
 	}
 }
 
@@ -432,9 +476,15 @@ type timedScreen struct {
 	at       time.Time
 	keys     []timedKey
 	timeouts int
+	settle   func()
 }
 
+// readUntil lets queued desk work finish first, so a fake clock does not
+// race the worker.
 func (s *timedScreen) readUntil(deadline time.Time) (string, bool, error) {
+	if s.settle != nil {
+		s.settle()
+	}
 	if len(s.keys) > 0 && !s.keys[0].at.After(deadline) {
 		if s.keys[0].at.After(s.at) {
 			s.at = s.keys[0].at
@@ -467,6 +517,7 @@ func runTimed(t *testing.T, m *model, start time.Time, keys ...timedKey) *timedS
 	t.Helper()
 	screen := &timedScreen{fakeScreen: fakeScreen{width: 100, height: 24}, at: start}
 	screen.keys = append([]timedKey(nil), keys...)
+	screen.settle = func() { m.jobs.Wait(time.Second) }
 	bindClock(t, screen)
 	if err := m.loop(screen); err != nil {
 		t.Fatal(err)
@@ -484,21 +535,19 @@ func TestAutoSyncRefreshesTheDesk(t *testing.T) {
 	screen := &timedScreen{fakeScreen: fakeScreen{width: 100, height: 24}, at: start}
 	screen.keys = []timedKey{{at: start.Add(syncEvery + time.Minute), key: "q"}}
 	bindClock(t, screen)
+	m := newModel(sampleBoard(), nil)
+	screen.settle = func() { m.jobs.Wait(time.Second) }
 	n := 0
 	old := syncDesk
 	syncDesk = func() error {
 		n++
-		if len(screen.frames) == 0 {
-			t.Fatal("no frame before refresh")
-		}
-		last := screen.frames[len(screen.frames)-1]
-		if !strings.Contains(last, "syncing") || !strings.Contains(last, "need the numbers") {
-			t.Fatalf("before refresh\n%s", last)
-		}
+		screen.waitFrame(t, "saying syncing over the old rows", func(frame string) bool {
+			return strings.Contains(frame, "syncing") && strings.Contains(frame, "need the numbers")
+		})
 		return nil
 	}
 	t.Cleanup(func() { syncDesk = old })
-	if err := newModel(sampleBoard(), nil).loop(screen); err != nil {
+	if err := m.loop(screen); err != nil {
 		t.Fatal(err)
 	}
 	if n != 1 {

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/ryangerardwilson/c3po/gdrive/internal/auth"
 	"github.com/ryangerardwilson/c3po/gdrive/internal/config"
 	"github.com/ryangerardwilson/c3po/gdrive/internal/driveapi"
 	"github.com/ryangerardwilson/c3po/gdrive/internal/localfs"
@@ -15,7 +16,10 @@ import (
 	"github.com/ryangerardwilson/c3po/internal/tuisession"
 )
 
-func presetClient(preset string) (*driveapi.DriveClient, error) {
+// presetConnect reads the preset's account and stored token. The refresh,
+// the first call that reaches Google, waits for the screen to call the
+// result on its worker.
+func presetConnect(preset string) (tui.Connect, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, err
@@ -27,7 +31,18 @@ func presetClient(preset string) (*driveapi.DriveClient, error) {
 	if _, err := config.RequireClientSecret(account); err != nil {
 		return nil, err
 	}
-	return newDriveClient(context.Background(), account)
+	login, err := auth.Prepare(account)
+	if err != nil {
+		return nil, err
+	}
+	return func(ctx context.Context) (tui.Drive, error) {
+		httpClient, err := login.Client(ctx)
+		if err != nil {
+			return nil, err
+		}
+		httpClient.Timeout = screenRequestWait
+		return screenDrive{client: driveapi.FromHTTP(httpClient)}, nil
+	}, nil
 }
 
 // accountClient checks the account setup and returns its Drive client and
@@ -51,11 +66,11 @@ func runBrowse(preset string, sess *tuisession.Session) error {
 	if _, err := ensureClientSecret(preset, true, os.Stdout); err != nil {
 		return err
 	}
-	client, err := presetClient(preset)
+	connect, err := presetConnect(preset)
 	if err != nil {
 		return err
 	}
-	_, err = tui.BrowseSession(client, sess)
+	_, err = tui.BrowseSession(connect, sess)
 	return err
 }
 

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -68,7 +69,15 @@ func (m model) updateKey(msg tui.KeyMsg) (tui.Model, tui.Cmd) {
 		}
 		m.status = ""
 	}
+	if m.running != "" && key == "esc" {
+		m.cancelRun()
+		m.status = "cancelling " + m.running
+		return m, nil
+	}
 	if key == "ctrl+c" || key == "q" {
+		if m.cancelRun != nil {
+			m.cancelRun()
+		}
 		return m, tui.Quit
 	}
 	if key == "?" || m.showHelp {
@@ -211,14 +220,15 @@ func (m model) commandKey(msg tui.KeyMsg, key string) (model, tui.Cmd) {
 			}
 			return m.execShell(command)
 		}
-		status, path, err := applyFileCommand(m.currentDir, line)
-		if err != nil {
-			m.status = err.Error()
+		if m.running != "" {
+			m.status = "still running " + m.running
 			return m, nil
 		}
-		m.reload()
-		m.selectPath(path)
-		m.status = status
+		ctx, cancel := context.WithTimeout(context.Background(), fileCommandWait)
+		m.running = line
+		m.cancelRun = cancel
+		m.status = "running " + line
+		return m, runFileCommand(ctx, cancel, m.currentDir, line)
 	case "backspace", "ctrl+h":
 		m = m.deleteBack()
 	case "alt+backspace":

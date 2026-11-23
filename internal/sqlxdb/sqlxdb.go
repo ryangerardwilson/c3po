@@ -1,8 +1,12 @@
-// Package sqlxdb owns the c3po sqlite file: its versioned schema and the
-// backup. Each app reads and writes its own
-// tables through Query and Exec. nebula s3 backs the file up. nebula sql is
-// not used. The record and meta tables hold nebula's tunnel routes and its
-// import flag; nebula creates, reads, and writes them, and c3po does not.
+// Package sqlxdb owns the c3po sqlite file and its versioned schema. Each
+// app reads and writes its own tables through Query and Exec. nebula keep
+// backs the file up after each commit. nebula sql is not used.
+//
+// Statute 2.2, 2.4, 3.5, 8.1: the record and meta tables hold nebula's
+// tunnel routes and its import flag. c3po's first migrations created them
+// and moved c3po's own data out; nebula's tunnel still reads and writes
+// them. They go, in a c3po migration, once nebula keeps its routes in its
+// own database.
 // Operator config, credential files, signatures, and caches stay on disk.
 package sqlxdb
 
@@ -86,9 +90,6 @@ func quote(value string) string {
 func queryJSON(dbPath, sql string, dest any) error {
 	return sqliteQueryJSON(dbPath, sql, dest)
 }
-
-// publishAfterWrite uploads after a durable write. Tests replace it.
-var publishAfterWrite = publishObject
 
 func execSQL(dbPath, sql string) error {
 	return sqliteExec(dbPath, sql)

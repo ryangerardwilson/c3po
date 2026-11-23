@@ -2,8 +2,10 @@ package tui
 
 import (
 	"fmt"
+	"github.com/ryangerardwilson/c3po/internal/tuiterm"
 	"os"
 	"strings"
+	"time"
 )
 
 type terminal struct {
@@ -77,4 +79,26 @@ func (t *terminal) readKey() (string, error) {
 		return "", err
 	}
 	return decodeKey(buf[:n]), nil
+}
+
+// readUntil waits for one key until deadline. ok is false when none came.
+func (t *terminal) readUntil(deadline time.Time) (string, bool, error) {
+	for {
+		ready, err := tuiterm.WaitReadable(int(t.in.Fd()), time.Until(deadline))
+		if err != nil {
+			return "", false, err
+		}
+		if !ready {
+			return "", false, nil
+		}
+		buf := make([]byte, 16)
+		n, err := t.in.Read(buf)
+		if err != nil {
+			return "", false, err
+		}
+		if n == 0 {
+			continue
+		}
+		return decodeKey(buf[:n]), true, nil
+	}
 }

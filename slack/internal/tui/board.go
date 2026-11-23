@@ -1,22 +1,47 @@
 package tui
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os/exec"
 	"strings"
+	"time"
+)
+
+// Each desk call runs on the screen's worker with its own bound. A refresh
+// may spend the desk's whole Slack and Grok budget.
+const (
+	showWait    = 10 * time.Second
+	readWait    = 10 * time.Second
+	openWait    = 30 * time.Second
+	refreshWait = 5 * time.Minute
 )
 
 var (
 	fetchBoard   = runShow
-	openDeskItem = func(preset, id string) error { return runDesk("open", preset, id) }
-	readDeskItem = func(preset, id string) error { return runDesk("read", preset, id) }
+	openDeskItem = func(preset, id string) error { return runDesk(openWait, "open", preset, id) }
+	readDeskItem = runRead
 	syncDesk     = func() error { return runSync() }
 )
 
 func runSync() error {
-	text, err := deskCombined("refresh")
+	text, err := deskCombined(refreshWait, "refresh")
 	return syncResult(text, err)
+}
+
+// runRead marks one row read and returns the desk the read printed. A desk
+// that prints nothing after a read is asked to show the desk.
+func runRead(preset, id string) (Board, error) {
+	out, err := deskOutput(readWait, "read", preset, id)
+	if err != nil {
+		return Board{}, err
+	}
+	if len(bytes.TrimSpace(out)) == 0 {
+		return fetchBoard()
+	}
+	return decodeBoard(out)
 }
 
 func syncResult(text string, err error) error {
@@ -52,28 +77,32 @@ func runShow() (Board, error) {
 	if err != nil {
 		return Board{}, errors.New("desk unavailable")
 	}
-	out, err := exec.Command(bin, "show").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), showWait)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, bin, "show").Output()
 	if err != nil {
 		return Board{}, errors.New("desk unavailable")
 	}
 	return decodeBoard(out)
 }
 
-func runDesk(action, preset, id string) error {
-	_, err := deskCombined(action, preset, id)
+func runDesk(wait time.Duration, action, preset, id string) error {
+	_, err := deskCombined(wait, action, preset, id)
 	return err
 }
 
-func deskCombined(args ...string) (string, error) {
+func deskCombined(wait time.Duration, args ...string) (string, error) {
 	bin, err := exec.LookPath("rgw-slack-quickshell-plugin")
 	if err != nil {
 		return "", errors.New("desk unavailable")
 	}
-	out, err := exec.Command(bin, args...).CombinedOutput()
-	text := oneLine(string(out))
-	if strings.Contains(text, "xoxp-") || strings.Contains(text, "xoxb-") {
-		text = ""
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, bin, args...).CombinedOutput()
+	if ctx.Err() != nil {
+		return "", errors.New("desk timed out")
 	}
+	text := safeText(string(out))
 	if err != nil {
 		if text == "" {
 			text = "desk unavailable"
@@ -81,6 +110,41 @@ func deskCombined(args ...string) (string, error) {
 		return "", errors.New(text)
 	}
 	return text, nil
+}
+
+// deskOutput runs one desk command and returns stdout. A failure carries
+// stderr as one line.
+func deskOutput(wait time.Duration, args ...string) ([]byte, error) {
+	bin, err := exec.LookPath("rgw-slack-quickshell-plugin")
+	if err != nil {
+		return nil, errors.New("desk unavailable")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), wait)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if ctx.Err() != nil {
+		return nil, errors.New("desk timed out")
+	}
+	if err != nil {
+		text := safeText(stderr.String())
+		if text == "" {
+			text = "desk unavailable"
+		}
+		return nil, errors.New(text)
+	}
+	return out, nil
+}
+
+// safeText is desk output as one line, or nothing when it holds a token.
+func safeText(raw string) string {
+	text := oneLine(raw)
+	if strings.Contains(text, "xoxp-") || strings.Contains(text, "xoxb-") {
+		return ""
+	}
+	return text
 }
 
 func oneLine(text string) string {

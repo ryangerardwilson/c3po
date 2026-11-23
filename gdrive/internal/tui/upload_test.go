@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -15,21 +16,25 @@ type fakeDrive struct {
 	trashed []string
 }
 
-func (f *fakeDrive) ListChildren(string) ([]driveapi.NavEntry, error) { return nil, nil }
+func (f *fakeDrive) ListChildren(context.Context, string) ([]driveapi.NavEntry, error) {
+	return nil, nil
+}
 
-func (f *fakeDrive) FindAvailableName(_, name string) (string, error) { return name, nil }
+func (f *fakeDrive) FindAvailableName(_ context.Context, _, name string) (string, error) {
+	return name, nil
+}
 
-func (f *fakeDrive) CreateFolder(_, name string) (string, error) {
+func (f *fakeDrive) CreateFolder(_ context.Context, _, name string) (string, error) {
 	f.dirs = append(f.dirs, name)
 	return "folder-" + name, nil
 }
 
-func (f *fakeDrive) UploadFile(_, name, path string) (string, error) {
+func (f *fakeDrive) UploadFile(_ context.Context, _, name, path string) (string, error) {
 	f.files = append(f.files, name+"="+path)
 	return "id", nil
 }
 
-func (f *fakeDrive) TrashEntry(id string) error {
+func (f *fakeDrive) TrashEntry(_ context.Context, id string) error {
 	f.trashed = append(f.trashed, id)
 	return nil
 }
@@ -46,7 +51,7 @@ func TestUUploadsThePickedFile(t *testing.T) {
 		parentID: "drive-folder",
 		pick:     func() (string, error) { return file, nil },
 	}
-	if m.handleKey("u") {
+	if press(t, m, "u") {
 		t.Fatal("quit")
 	}
 	if m.status != "uploaded notes.txt" || len(drive.files) != 1 || drive.files[0] != "notes.txt="+file {
@@ -66,7 +71,7 @@ func TestUUploadsADirectory(t *testing.T) {
 	}
 	drive := &fakeDrive{}
 	m := &model{client: drive, parentID: "here", pick: func() (string, error) { return sub, nil }}
-	if m.handleKey("u") {
+	if press(t, m, "u") {
 		t.Fatal("quit")
 	}
 	if len(drive.dirs) != 1 || drive.dirs[0] != "Album" {
@@ -80,14 +85,14 @@ func TestUUploadsADirectory(t *testing.T) {
 func TestUCancelDoesNotUpload(t *testing.T) {
 	drive := &fakeDrive{}
 	m := &model{client: drive, pick: func() (string, error) { return "", nil }}
-	if m.handleKey("u") || m.status != "upload cancelled" || len(drive.files) != 0 {
+	if press(t, m, "u") || m.status != "upload cancelled" || len(drive.files) != 0 {
 		t.Fatalf("%q %#v", m.status, drive.files)
 	}
 }
 
 func TestUReportsAPickerError(t *testing.T) {
 	m := &model{pick: func() (string, error) { return "", errors.New("picker failed") }}
-	if m.handleKey("u") || m.status != "picker failed" {
+	if press(t, m, "u") || m.status != "picker failed" {
 		t.Fatal(m.status)
 	}
 }

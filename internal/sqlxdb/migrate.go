@@ -180,6 +180,16 @@ func migrations() []migration {
 			"WHERE typeof(day) = 'integer' OR (typeof(day) = 'text' AND date(day) = day);\n" +
 			"DROP TABLE usage;\n" +
 			"ALTER TABLE usage_v2 RENAME TO usage"},
+		// A usage batch applies once: the worker records its id in the same
+		// transaction as its increments, so a worker that dies before it
+		// clears the batch cannot apply it again. Ids older than 30 days are
+		// pruned. No backfill: earlier batches are already in usage. Rollback:
+		// DROP TABLE usage_batch; the previous binary does not read it.
+		{12, "usage-batch", "" +
+			"CREATE TABLE IF NOT EXISTS usage_batch (\n" +
+			"  id TEXT PRIMARY KEY CHECK (id <> ''),\n" +
+			"  applied INTEGER NOT NULL\n" +
+			") STRICT"},
 	}
 }
 

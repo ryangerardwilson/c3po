@@ -10,7 +10,10 @@ func Query(sql string, dest any) error {
 	return queryJSON(db, sql, dest)
 }
 
-// Exec runs a write in one transaction and publishes the database.
+// Exec runs a write in one transaction and returns once it has committed.
+// The backup is not part of the write: nebula keep is told the file changed
+// and uploads it later. A failed mark leaves the commit in place; keep's
+// sweep and status show the copy lagging.
 func Exec(sql string) error {
 	db, err := open()
 	if err != nil {
@@ -19,17 +22,8 @@ func Exec(sql string) error {
 	if err := execSQL(db, transaction(sql)); err != nil {
 		return err
 	}
-	publishAfterWrite(db, DatabaseName)
+	_ = keepMark(db, DatabaseName)
 	return nil
-}
-
-// ExecLocal runs a write in one transaction and does not publish.
-func ExecLocal(sql string) error {
-	db, err := open()
-	if err != nil {
-		return err
-	}
-	return execSQL(db, transaction(sql))
 }
 
 // UsesDB reports whether path is a production record path, which lives in

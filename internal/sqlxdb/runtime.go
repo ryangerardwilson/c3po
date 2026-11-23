@@ -7,7 +7,7 @@ import (
 )
 
 // RuntimeMode reports whether this process keeps the in-memory sqlite
-// and publishes it with s3. SQLX_ROOT and SQLX_ENGINE=sqlite stay on the
+// and backs it up through nebula keep. SQLX_ROOT and SQLX_ENGINE=sqlite stay on the
 // local tree used by tests.
 func RuntimeMode() bool {
 	switch os.Getenv("SQLX_ENGINE") {
@@ -61,6 +61,31 @@ func WrapUsage(body string) string {
 	return "BEGIN IMMEDIATE;\n" + body + "COMMIT;\n"
 }
 
+// UsageBatchApplied reports whether the runtime sqlite already holds the
+// usage batch id.
+func UsageBatchApplied(id string) (bool, error) {
+	if err := migrate(RuntimeDB()); err != nil {
+		return false, err
+	}
+	var rows []struct {
+		N int `json:"n"`
+	}
+	if err := sqliteQueryJSON(RuntimeDB(), "SELECT COUNT(*) AS n FROM usage_batch WHERE id = "+quote(id), &rows); err != nil {
+		return false, err
+	}
+	return len(rows) == 1 && rows[0].N > 0, nil
+}
+
+// WrapUsageBatch is one immediate transaction that applies body and records
+// batch id with it, so a batch is applied once. It stops at the first
+// failing statement, so nothing commits half. now is a unix time.
+func WrapUsageBatch(id, body string, now int64) string {
+	return ".bail on\nBEGIN IMMEDIATE;\n" + body +
+		"INSERT INTO usage_batch(id, applied) VALUES (" + quote(id) + ", " + strconv.FormatInt(now, 10) + ");\n" +
+		"DELETE FROM usage_batch WHERE applied < " + strconv.FormatInt(now-30*86400, 10) + ";\n" +
+		"COMMIT;\n"
+}
+
 // ExecRuntime brings the app sqlite to the current schema, applies sql, and
 // does not publish the backup.
 func ExecRuntime(sql string) error {
@@ -70,13 +95,14 @@ func ExecRuntime(sql string) error {
 	return sqliteExec(RuntimeDB(), sql)
 }
 
-// ExecBackup publishes the runtime sqlite. The worker already wrote it.
-// An empty record table is not published.
+// ExecBackup marks the runtime sqlite changed for nebula keep. The worker
+// already wrote it.
 func ExecBackup() error {
-	return publishFile(RuntimeDB(), DatabaseName)
+	return keepMark(RuntimeDB(), DatabaseName)
 }
 
-// TouchRuntime opens the app sqlite and restores it from s3 when it is missing.
+// TouchRuntime opens the app sqlite and restores it through nebula keep when
+// it is missing.
 func TouchRuntime() error {
 	return prepareAppDB(RuntimeDB(), DatabaseName)
 }

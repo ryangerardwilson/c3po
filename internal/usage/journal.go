@@ -2,9 +2,12 @@ package usage
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/ryangerardwilson/c3po/internal/sqlxdb"
@@ -43,26 +46,53 @@ func addLocal(feature, actor, day string, okAdd int, last int64) error {
 	})
 }
 
-// subtractLocal removes rows that were written to the runtime sqlite from
-// the journal. Runs added while they were written stay in the journal.
-func subtractLocal(done []sqlxdb.UsageRow) error {
-	type key struct{ feature, actor, day string }
-	written := map[key]sqlxdb.UsageRow{}
-	for _, row := range done {
-		written[key{row.Feature, row.Actor, row.Day}] = row
+// takeBatch moves the journal aside as one batch with a fresh id, under the
+// journal lock, so increments that arrive meanwhile start a new journal. A
+// batch a dead worker left is returned again with its own id.
+func takeBatch() (string, []sqlxdb.UsageRow, error) {
+	path, err := journalPath()
+	if err != nil {
+		return "", nil, err
 	}
-	return updateLocal(func(rows []sqlxdb.UsageRow) ([]sqlxdb.UsageRow, bool) {
-		keep := []sqlxdb.UsageRow{}
-		for _, row := range rows {
-			if w, ok := written[key{row.Feature, row.Actor, row.Day}]; ok {
-				row.N -= w.N
-				row.OK = max(row.OK-w.OK, 0)
-			}
-			if row.N > 0 {
-				keep = append(keep, row)
-			}
+	var id string
+	var rows []sqlxdb.UsageRow
+	err = withJournalLock(path, func() error {
+		left, _ := filepath.Glob(path + ".batch.*")
+		if len(left) > 0 {
+			id = strings.TrimPrefix(left[0], path+".batch.")
+			rows, err = readJournal(left[0])
+			return err
 		}
-		return keep, true
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return nil
+		}
+		var raw [8]byte
+		if _, err := rand.Read(raw[:]); err != nil {
+			return err
+		}
+		id = hex.EncodeToString(raw[:])
+		if err := os.Rename(path, path+".batch."+id); err != nil {
+			return err
+		}
+		rows, err = readJournal(path + ".batch." + id)
+		return err
+	})
+	return id, rows, err
+}
+
+// finishBatch drops a batch the runtime sqlite holds. Tests replace it to
+// stop a worker between the commit and this step.
+var finishBatch = func(id string) error {
+	path, err := journalPath()
+	if err != nil {
+		return err
+	}
+	return withJournalLock(path, func() error {
+		err := os.Remove(path + ".batch." + id)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
 	})
 }
 
@@ -90,6 +120,21 @@ func updateLocal(fn func([]sqlxdb.UsageRow) ([]sqlxdb.UsageRow, bool)) error {
 	if err != nil {
 		return err
 	}
+	return withJournalLock(path, func() error {
+		rows, err := readJournal(path)
+		if err != nil {
+			return err
+		}
+		next, write := fn(rows)
+		if !write {
+			return nil
+		}
+		return writeJournal(path, next)
+	})
+}
+
+// withJournalLock runs fn holding the journal's lock file.
+func withJournalLock(path string, fn func() error) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
@@ -102,15 +147,7 @@ func updateLocal(fn func([]sqlxdb.UsageRow) ([]sqlxdb.UsageRow, bool)) error {
 		return err
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
-	rows, err := readJournal(path)
-	if err != nil {
-		return err
-	}
-	next, write := fn(rows)
-	if !write {
-		return nil
-	}
-	return writeJournal(path, next)
+	return fn()
 }
 
 func journalPath() (string, error) {

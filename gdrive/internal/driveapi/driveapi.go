@@ -54,10 +54,12 @@ func (e NavEntry) IsDir() bool {
 }
 
 // DriveClient calls the Drive v3 REST API with an authorized HTTP client.
+// Each request ends when ctx does; a nil ctx never ends.
 type DriveClient struct {
 	http       *http.Client
 	apiBase    string
 	uploadBase string
+	ctx        context.Context
 }
 
 type fileResource struct {
@@ -87,8 +89,28 @@ func New(ctx context.Context, account *config.Account) (*DriveClient, error) {
 	return newClient(httpClient, googleapi.DriveBase, googleapi.UploadBase), nil
 }
 
+// FromHTTP is a Drive client on an authorized HTTP client.
+func FromHTTP(httpClient *http.Client) *DriveClient {
+	return newClient(httpClient, googleapi.DriveBase, googleapi.UploadBase)
+}
+
 func newClient(httpClient *http.Client, apiBase, uploadBase string) *DriveClient {
 	return &DriveClient{http: httpClient, apiBase: apiBase, uploadBase: uploadBase}
+}
+
+// WithContext is a copy of the client whose requests end when ctx does.
+func (c *DriveClient) WithContext(ctx context.Context) *DriveClient {
+	bound := *c
+	bound.ctx = ctx
+	return &bound
+}
+
+// requestContext is the context every request of this client carries.
+func (c *DriveClient) requestContext() context.Context {
+	if c.ctx == nil {
+		return context.Background()
+	}
+	return c.ctx
 }
 
 func (c *DriveClient) EnsureDrivePath(drivePath string) (string, error) {
@@ -272,7 +294,7 @@ func (c *DriveClient) openDownload(entry NavEntry) (io.ReadCloser, error) {
 }
 
 func (c *DriveClient) download(endpoint string, params url.Values) (io.ReadCloser, error) {
-	req, err := http.NewRequest(http.MethodGet, endpoint+"?"+params.Encode(), nil)
+	req, err := http.NewRequestWithContext(c.requestContext(), http.MethodGet, endpoint+"?"+params.Encode(), nil)
 	if err != nil {
 		return nil, err
 	}

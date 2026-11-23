@@ -17,7 +17,7 @@ func TestDDDeletesTheSelectedFile(t *testing.T) {
 		},
 		cursor: 1,
 	}
-	if m.handleKey("d") || m.handleKey("d") {
+	if press(t, m, "d") || press(t, m, "d") {
 		t.Fatal("quit")
 	}
 	if len(drive.trashed) != 1 || drive.trashed[0] != "b" || m.status != "deleted b.txt" {
@@ -34,10 +34,10 @@ func TestDThenMotionDoesNotDelete(t *testing.T) {
 			{ID: "b", Name: "b.txt", MimeType: "text/plain"},
 		},
 	}
-	if m.handleKey("d") {
+	if press(t, m, "d") {
 		t.Fatal("quit")
 	}
-	if m.handleKey("j") || m.cursor != 1 || len(drive.trashed) != 0 || m.armed {
+	if press(t, m, "j") || m.cursor != 1 || len(drive.trashed) != 0 || m.armed {
 		t.Fatalf("cursor %d armed %v %#v", m.cursor, m.armed, drive.trashed)
 	}
 }
@@ -50,7 +50,7 @@ func TestDDLeavesAFolder(t *testing.T) {
 			ID: "dir", Name: "Album", MimeType: driveapi.FolderMime,
 		}},
 	}
-	if m.handleKey("d") || m.handleKey("d") || len(drive.trashed) != 0 || m.status != "dd deletes a file" {
+	if press(t, m, "d") || press(t, m, "d") || len(drive.trashed) != 0 || m.status != "dd deletes a file" {
 		t.Fatalf("%q %#v", m.status, drive.trashed)
 	}
 }
@@ -61,8 +61,8 @@ func TestEscCancelsDelete(t *testing.T) {
 		client:  drive,
 		entries: []driveapi.NavEntry{{ID: "a", Name: "a.txt", MimeType: "text/plain"}},
 	}
-	m.handleKey("d")
-	if m.handleKey("esc") || m.armed || m.status != "" || len(drive.trashed) != 0 {
+	press(t, m, "d")
+	if press(t, m, "esc") || m.armed || m.status != "" || len(drive.trashed) != 0 {
 		t.Fatalf("armed %v %q %#v", m.armed, m.status, drive.trashed)
 	}
 }
@@ -72,13 +72,13 @@ func TestJKWrapsTheFileList(t *testing.T) {
 		{ID: "a", Name: "a.txt"},
 		{ID: "b", Name: "b.txt"},
 	}}
-	if m.handleKey("k") || m.cursor != 1 {
+	if press(t, m, "k") || m.cursor != 1 {
 		t.Fatalf("k %d", m.cursor)
 	}
-	if m.handleKey("j") || m.cursor != 0 {
+	if press(t, m, "j") || m.cursor != 0 {
 		t.Fatalf("j %d", m.cursor)
 	}
-	if m.handleKey("G") || m.cursor != 1 || m.handleKey("g") || m.cursor != 0 {
+	if press(t, m, "G") || m.cursor != 1 || press(t, m, "g") || m.cursor != 0 {
 		t.Fatalf("ends %d", m.cursor)
 	}
 	empty := &model{}

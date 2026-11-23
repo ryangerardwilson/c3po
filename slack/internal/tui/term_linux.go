@@ -4,10 +4,7 @@ package tui
 
 import (
 	"syscall"
-	"time"
 	"unsafe"
-
-	"golang.org/x/sys/unix"
 )
 
 func enterRaw(fd int) (func(), error) {
@@ -43,33 +40,4 @@ func termSize(fd int) (int, int) {
 		return 80, 24
 	}
 	return int(ws.Col), int(ws.Row)
-}
-
-func waitReadable(fd int, wait time.Duration) (bool, error) {
-	if wait < 0 {
-		wait = 0
-	}
-	deadline := time.Now().Add(wait)
-	fds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
-	for {
-		remain := time.Until(deadline)
-		ms := int(remain / time.Millisecond)
-		if remain > 0 && ms == 0 {
-			ms = 1
-		}
-		if ms < 0 {
-			ms = 0
-		}
-		n, err := unix.Poll(fds, ms)
-		if err == unix.EINTR {
-			if ms == 0 {
-				return false, nil
-			}
-			continue
-		}
-		if err != nil {
-			return false, err
-		}
-		return n > 0, nil
-	}
 }

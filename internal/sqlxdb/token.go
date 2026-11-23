@@ -29,7 +29,7 @@ func ReadToken(app, path string) ([]byte, error) {
 	return []byte(rows[0].Document), nil
 }
 
-// WriteToken stores the token document and publishes the database. Another
+// WriteToken stores the token document and marks the database changed. Another
 // path is written as a file readable only by the user.
 func WriteToken(app, path string, document []byte) error {
 	if !useDB(path) {
@@ -45,7 +45,7 @@ func WriteToken(app, path string, document []byte) error {
 	if err := execSQL(db, tokenUpsert(app, Key(path), document)); err != nil {
 		return err
 	}
-	publishAfterWrite(db, DatabaseName)
+	_ = keepMark(db, DatabaseName)
 	return nil
 }
 

@@ -117,7 +117,11 @@ func withSession(id, pidText string, change func(*Session) error) error {
 	if !ok {
 		return fmt.Errorf("c3po: session %s was not found", id)
 	}
-	return change(&Session{id: id, screen: body.Screen, body: body, restored: true, pid: pid})
+	sess := &Session{id: id, screen: body.Screen, body: body, restored: true, pid: pid}
+	if err := change(sess); err != nil {
+		return err
+	}
+	return sess.sync()
 }
 
 // Active lists every running screen with the place its session holds.

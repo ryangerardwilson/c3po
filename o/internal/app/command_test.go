@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ryangerardwilson/c3po/o/internal/tui"
 )
@@ -210,7 +211,7 @@ func submitCommand(t *testing.T, m model, line string) model {
 	if !ok {
 		t.Fatalf("typing returned %T", next)
 	}
-	next, _ = m.Update(tui.KeyMsg{Type: tui.KeyEnter})
+	next, cmd := m.Update(tui.KeyMsg{Type: tui.KeyEnter})
 	m, ok = next.(model)
 	if !ok {
 		t.Fatalf("enter returned %T", next)
@@ -218,7 +219,70 @@ func submitCommand(t *testing.T, m model, line string) model {
 	if m.commanding {
 		t.Fatal("prompt stayed open")
 	}
+	return finishCommand(t, m, cmd)
+}
+
+// finishCommand runs the : command the way the program does, off the
+// update, and hands its result back. Other commands are not run.
+func finishCommand(t *testing.T, m model, cmd tui.Cmd) model {
+	t.Helper()
+	if cmd == nil || m.running == "" {
+		return m
+	}
+	if !strings.HasPrefix(m.status, "running ") {
+		t.Fatalf("status while running %q", m.status)
+	}
+	done, ok := cmd().(fileCommandDoneMsg)
+	if !ok {
+		t.Fatal("the : command did not return its result")
+	}
+	next, _ := m.Update(done)
+	m, ok = next.(model)
+	if !ok || m.running != "" {
+		t.Fatalf("result left the command running: %#v", next)
+	}
 	return m
+}
+
+func TestAFileCommandRunsOffTheUpdateAndCanBeCancelled(t *testing.T) {
+	root := t.TempDir()
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "touch"), []byte("#!/bin/sh\nsleep 5\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	m := newModel(Config{StartDir: root, Mode: ModeBrowse})
+	next, _ := m.Update(previewKey(":"))
+	m = next.(model)
+	next, _ = m.Update(previewKey("touch slow.txt"))
+	m = next.(model)
+	start := time.Now()
+	next, cmd := m.Update(tui.KeyMsg{Type: tui.KeyEnter})
+	m = next.(model)
+	if took := time.Since(start); took > time.Second || cmd == nil {
+		t.Fatalf("enter waited %v for the command", took)
+	}
+	if m.status != "running touch slow.txt" || m.running == "" {
+		t.Fatalf("status %q", m.status)
+	}
+	next, _ = m.Update(previewKey("j"))
+	m = next.(model)
+	next, _ = m.Update(tui.KeyMsg{Type: tui.KeyEsc})
+	m = next.(model)
+	if !strings.HasPrefix(m.status, "cancelling ") {
+		t.Fatalf("esc did not cancel: %q", m.status)
+	}
+	done, ok := cmd().(fileCommandDoneMsg)
+	if !ok || done.err == nil || !strings.Contains(done.err.Error(), "cancelled") {
+		t.Fatalf("cancelled command %#v", done)
+	}
+	if took := time.Since(start); took > 3*time.Second {
+		t.Fatalf("cancel took %v", took)
+	}
+	next, _ = m.Update(done)
+	if m = next.(model); m.running != "" || !strings.Contains(m.status, "cancelled") {
+		t.Fatalf("after cancel %q", m.status)
+	}
 }
 
 func TestShellCommandLineIsTheLastRow(t *testing.T) {

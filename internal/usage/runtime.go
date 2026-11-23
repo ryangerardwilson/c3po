@@ -47,7 +47,7 @@ func rememberRuntime(feature, actor, day string, okAdd int, last int64) error {
 }
 
 // FlushBackup is the detached usage worker. It writes the journal to the
-// runtime sqlite, then publishes that file with s3, and stays
+// runtime sqlite, then marks that file changed for nebula keep, and stays
 // until no increment has arrived for workerIdle, so a burst of commands
 // shares one worker.
 func FlushBackup() {
@@ -81,14 +81,7 @@ func RestoreRuntime() {
 	}
 }
 
-// subtractJournal removes rows the runtime sqlite already has. Tests replace
-// it so a failed removal cannot apply the same increment again.
-var subtractJournal = subtractLocal
-
-type worker struct {
-	backupDown bool   // the last send failed; wait for new rows before retrying
-	applied    string // runtime script already executed while its journal removal failed
-}
+type worker struct{}
 
 // drain moves batches until none has arrived for workerIdle and returns the
 // journal stamp it saw last.
@@ -107,64 +100,42 @@ func (w *worker) drain() stamp {
 	}
 }
 
-// step moves one batch and reports whether anything moved.
+// step moves one batch and reports whether anything moved. A batch that
+// moved marks the runtime sqlite changed; nebula keep uploads it later and
+// keeps its own record of what is not backed up yet.
 func (w *worker) step() bool {
 	moved := w.toRuntime()
 	if moved {
-		w.backupDown = false
+		_ = sqlxdb.ExecBackup()
 	}
-	if w.backupDown {
-		return moved
-	}
-	sent, err := toBackup()
-	w.backupDown = err != nil
-	return moved || sent
+	return moved
 }
 
-// toRuntime writes the journal to the runtime sqlite, then removes those rows
-// and queues the same statements for the backup. A failed sqlite write leaves
-// the journal alone. applied stops a failed removal from writing those rows
-// again on the next look.
+// toRuntime moves one journal batch into the runtime sqlite and drops it.
+// The batch id commits with its increments, so a batch that a dead worker
+// committed but did not drop is dropped, not applied again (statute 2.8).
 func (w *worker) toRuntime() bool {
 	if !sqlxdb.RuntimeReady() {
 		return false
 	}
-	rows, err := localRows()
-	if err != nil || len(rows) == 0 {
-		w.applied = ""
+	id, rows, err := takeBatch()
+	if err != nil || id == "" {
 		return false
 	}
-	var b strings.Builder
-	for _, row := range rows {
-		b.WriteString(sqlxdb.UsageBody(row.Feature, row.Actor, row.Day, row.N, row.OK, row.Last))
+	done, err := sqlxdb.UsageBatchApplied(id)
+	if err != nil {
+		return false
 	}
-	script := sqlxdb.WrapUsage(b.String())
-	if script != w.applied {
-		if err := sqlxdb.ExecRuntime(script); err != nil {
+	if !done && len(rows) > 0 {
+		var b strings.Builder
+		for _, row := range rows {
+			b.WriteString(sqlxdb.UsageBody(row.Feature, row.Actor, row.Day, row.N, row.OK, row.Last))
+		}
+		if err := sqlxdb.ExecRuntime(sqlxdb.WrapUsageBatch(id, b.String(), time.Now().Unix())); err != nil {
 			return false
 		}
-		w.applied = script
 	}
-	if err := subtractJournal(rows); err != nil {
-		return false
-	}
-	w.applied = ""
-	_ = enqueue(script)
-	return true
-}
-
-// toBackup publishes the runtime sqlite. A failed publish puts the
-// queued statements back for the next worker.
-func toBackup() (bool, error) {
-	script, err := takeQueue()
-	if err != nil || strings.TrimSpace(script) == "" {
-		return false, err
-	}
-	if err := sqlxdb.ExecBackup(); err != nil {
-		_ = enqueue(script)
-		return false, err
-	}
-	return true, nil
+	return finishBatch(id) == nil
 }
 
 // stamp identifies one version of the journal file.
@@ -183,83 +154,6 @@ func journalStamp() stamp {
 		return stamp{}
 	}
 	return stamp{size: info.Size(), mtime: info.ModTime().UnixNano()}
-}
-
-func enqueue(script string) error {
-	path, err := queuePath()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	lock, err := lockFile(path + ".lock")
-	if err != nil {
-		return err
-	}
-	defer lock.Close()
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	if !strings.HasSuffix(script, "\n") {
-		script += "\n"
-	}
-	_, err = file.WriteString(script)
-	return err
-}
-
-func takeQueue() (string, error) {
-	path, err := queuePath()
-	if err != nil {
-		return "", err
-	}
-	lock, err := lockFile(path + ".lock")
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil
-		}
-		return "", err
-	}
-	defer lock.Close()
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return "", nil
-	}
-	if err != nil {
-		return "", err
-	}
-	if len(data) == 0 {
-		return "", nil
-	}
-	if err := os.Truncate(path, 0); err != nil {
-		return "", err
-	}
-	return string(data), nil
-}
-
-func queuePath() (string, error) {
-	dir, err := stateDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "usage-backup.sql"), nil
-}
-
-func lockFile(path string) (*os.File, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, err
-	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		return nil, err
-	}
-	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX); err != nil {
-		_ = file.Close()
-		return nil, err
-	}
-	return file, nil
 }
 
 // tryLock takes a worker lock in the state directory without waiting.

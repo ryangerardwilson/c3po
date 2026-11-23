@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCallTreeShowsComplexityAndInternal(t *testing.T) {
@@ -651,5 +652,23 @@ func TestNestedPathIsRelativeToTheCaller(t *testing.T) {
 	}
 	if pathFromParent("main.go", "internal/hidden/h.go") != "internal/hidden/h.go" {
 		t.Fatal("top file")
+	}
+}
+
+func TestTheWatcherScoresOffTheLoop(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "main.go", "package main\n\nfunc main() {\n\tStart()\n}\n\nfunc Start() {}\n")
+	stop := make(chan struct{})
+	defer close(stop)
+	trees := watchTree(dir, "", 10*time.Millisecond, stop)
+	time.Sleep(30 * time.Millisecond)
+	write(t, dir, "main.go", "package main\n\nfunc main() {\n\tStart()\n\tExtra()\n}\n\nfunc Start() {}\n\nfunc Extra() {}\n")
+	select {
+	case fresh := <-trees:
+		if fresh == nil || !strings.Contains(fresh.Text(false), "Extra") {
+			t.Fatalf("fresh tree %v", fresh)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the watcher sent no fresh tree")
 	}
 }

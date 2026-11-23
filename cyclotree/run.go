@@ -265,13 +265,19 @@ func runTUI(s *screen, dir, query string, in, out *os.File) error {
 }
 
 func tuiLoop(s *screen, dir, query string, in, out *os.File, restore *func()) error {
-	stamp := sourceStamp(dir)
-	var pending string
+	stop := make(chan struct{})
+	defer close(stop)
+	trees := watchTree(dir, query, refreshWait, stop)
 	for {
 		paint(out, s.Frame(termRows(int(out.Fd()))))
 		k, ok, err := readKeyWait(in, refreshWait)
 		if err != nil {
 			return err
+		}
+		select {
+		case fresh := <-trees:
+			s = adoptScreen(s, fresh)
+		default:
 		}
 		if ok {
 			switch applyKeys(s, burst(in, k)) {
@@ -284,9 +290,7 @@ func tuiLoop(s *screen, dir, query string, in, out *os.File, restore *func()) er
 				}
 			}
 			s.noteSession(dir, query)
-			continue
 		}
-		s, stamp, pending = settle(s, dir, query, stamp, pending)
 	}
 }
 

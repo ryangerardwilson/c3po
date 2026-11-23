@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"github.com/ryangerardwilson/c3po/internal/tuiterm"
 	"os"
 	"strings"
 	"time"
@@ -60,7 +61,7 @@ func (t *terminal) readKey() (string, error) {
 
 func (t *terminal) readUntil(deadline time.Time) (string, bool, error) {
 	for {
-		ready, err := waitReadable(int(t.in.Fd()), deadline.Sub(now()))
+		ready, err := tuiterm.WaitReadable(int(t.in.Fd()), deadline.Sub(now()))
 		if err != nil {
 			return "", false, err
 		}

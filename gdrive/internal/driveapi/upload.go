@@ -108,7 +108,7 @@ func (c *DriveClient) multipartUpload(job uploadJob) (string, error) {
 	if err := writer.Close(); err != nil {
 		return "", err
 	}
-	req, err := http.NewRequest(job.method, job.endpoint+"?"+uploadParams("multipart").Encode(), &body)
+	req, err := http.NewRequestWithContext(c.requestContext(), job.method, job.endpoint+"?"+uploadParams("multipart").Encode(), &body)
 	if err != nil {
 		return "", err
 	}
@@ -142,6 +142,9 @@ func (c *DriveClient) resumableUpload(job uploadJob) (string, error) {
 		}
 		if result.retryable {
 			retries++
+			if ctxErr := c.requestContext().Err(); ctxErr != nil {
+				return "", ctxErr
+			}
 			if retries > maxUploadRetries {
 				return "", err
 			}
@@ -160,7 +163,7 @@ func (c *DriveClient) startResumable(job uploadJob) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req, err := http.NewRequest(job.method, job.endpoint+"?"+uploadParams("resumable").Encode(), bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(c.requestContext(), job.method, job.endpoint+"?"+uploadParams("resumable").Encode(), bytes.NewReader(data))
 	if err != nil {
 		return "", err
 	}
@@ -193,7 +196,7 @@ func (c *DriveClient) uploadStep(location string, job uploadJob, offset int64, s
 		body = io.NewSectionReader(job.file, offset, length)
 		contentRange = fmt.Sprintf("bytes %d-%d/%d", offset, offset+length-1, job.size)
 	}
-	req, err := http.NewRequest(http.MethodPut, location, body)
+	req, err := http.NewRequestWithContext(c.requestContext(), http.MethodPut, location, body)
 	if err != nil {
 		return chunkResult{}, err
 	}
