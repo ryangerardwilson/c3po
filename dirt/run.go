@@ -34,7 +34,9 @@ under the scan path.
 A directory holding .git is a repository. Nested repositories are their own
 entries. Symlinks are not followed. Directories that cannot be listed are
 skipped, and so are node_modules, .venv, venv, .cache, __pycache__, .npm,
-.cargo, and site-packages below the scan path.
+.cargo, and site-packages below the scan path. The home directory's .local
+is not entered. A scan of that .local directory still reads it. Another
+directory named .local is entered.
 
 Exit 0 when every repository was judged. A bare repository or a failed
 git status is named on stderr and exits 1. A usage error exits 2.

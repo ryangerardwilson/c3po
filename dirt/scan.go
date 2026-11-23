@@ -92,10 +92,24 @@ func walk(dir string, repos *[]repo) {
 			}
 			continue
 		}
-		if e.IsDir() && !skipped[name] {
+		if e.IsDir() && !skipped[name] && !homeLocal(dir, name) {
 			walk(filepath.Join(dir, name), repos)
 		}
 	}
+}
+
+// homeLocal is the user's ~/.local. A parent walk does not enter it. The
+// directory is still scanned when it is the scan root, because the walk
+// starts there. Any other directory named .local is entered.
+func homeLocal(parent, name string) bool {
+	if name != ".local" {
+		return false
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return false
+	}
+	return filepath.Clean(filepath.Join(parent, name)) == filepath.Clean(filepath.Join(home, ".local"))
 }
 
 // enclosing returns the nearest ancestor of root that holds .git, when root

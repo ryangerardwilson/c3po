@@ -138,6 +138,36 @@ func TestSkippedNamesAreNotEntered(t *testing.T) {
 	}
 }
 
+func TestHomeLocalIsSkipped(t *testing.T) {
+	dir := isolate(t)
+	app := filepath.Join(dir, "Apps", "app")
+	fixture(t, app)
+	write(t, filepath.Join(app, "x.txt"), "x\n")
+	hidden := filepath.Join(dir, ".local", "share", "plugin")
+	fixture(t, hidden)
+	write(t, filepath.Join(hidden, "x.txt"), "x\n")
+	nested := filepath.Join(dir, "Work", "proj", ".local", "tool")
+	fixture(t, nested)
+	write(t, filepath.Join(nested, "x.txt"), "x\n")
+
+	out, errs, code := run(dir)
+	if code != 0 || errs != "" || !strings.Contains(out, hidden+"\n") {
+		t.Fatalf("outside home: code %d\nout %q\nerr %q", code, out, errs)
+	}
+
+	t.Setenv("HOME", dir)
+	out, errs, code = run(dir)
+	want := app + "\n## main\n?? x.txt\n\n" + nested + "\n## main\n?? x.txt\n"
+	if code != 0 || out != want || errs != "" {
+		t.Fatalf("home: code %d\nout %q\nwant %q\nerr %q", code, out, want, errs)
+	}
+	out, _, code = run(filepath.Join(dir, ".local"))
+	want = hidden + "\n## main\n?? x.txt\n"
+	if code != 0 || out != want {
+		t.Fatalf("explicit: code %d\nout %q\nwant %q", code, out, want)
+	}
+}
+
 func TestScanInsideRepositoryKeepsOnlyThatPath(t *testing.T) {
 	dir := isolate(t)
 	app := filepath.Join(dir, "app")
