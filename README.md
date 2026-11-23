@@ -28,6 +28,18 @@ Help for every tool is `c3po help`. `c3po help -f ast` lists the ast commands, a
 
 The installed names are `c3po` and `rgw-ast`. `rgw-ast` is the same binary, for tools that still launch that command. `xl` is a screen, `r2d2 xl`, and is not a separate command. `c3po idealake` stores one-line ideas of at most 300 characters by topic. `search` ranks one topic by meaning. `contains` matches the lowercase text. `c3po clippy` copies a multiline text to the Wayland clipboard and does not print it. `c3po gates` lists the types, `c3po gates code` lists the statutes, `c3po gates code architecture` lists each provision as its section and heading, and `c3po gates code architecture §1.1` prints that one body of at most 300 characters. A section may also be the bare number, `1.1`, or the old `S.1.1`. Several sections may follow the statute in one command, `c3po gates code architecture 6 7 8.3`, which prints each section on its own line and then its body, in the order written. Every printed body is followed by `receipt <8 hex>`, a hash of the c3po version, the section, and the body. A section with subsections lists those subsections under the body and then names the bodies not shown with the command that prints them. `c3po gates code architecture all` prints every provision with its receipt. `c3po gates code architecture tally <sheet>` counts a sheet of `§1.2 <receipt> <pass|fail> <site> [files <path>...]` lines against this build and the changed files in `git status`, and exits 2 until every provision is judged and every changed file is claimed. Judge every provision; the first failure is the headline. The agent judges. There is no gates screen. `c3po notify` sends an omarchy-shell toast through the `ryan.notify` overlay, which `install.sh` installs from `notify/plugin/`. `c3po looptab` registers jobs files and installs them onto the Looptab scheduler. It does not open vim. `r2d2 looptab` lists Looptab jobs. Enter runs the selected job once through `looptab now`, and `e` edits the jobs file in vim and asks c3po to install it. `r2d2 slack` shows the Slack desk. `h` and `l` switch workspace. The table is direct messages, tags, and what to know. Enter opens the row. `r` marks it read on the desk. Opening a row does not mark it read. `s` syncs the desk from Slack. The screen also syncs about every 10 minutes. The screen shows when the desk last synced. `cx` and `complexity` are not installed.
 
+## Design constraints
+
+Agents can edit code, but every edit must be inspectable and reversible.
+
+- The `ast` agent traces a symbol’s callers and impact before any change.
+- Patches are applied only against the file’s current hash. Concurrent agents or stale context cannot silently overwrite work.
+- New code above a complexity limit is refused.
+- Usage is counted separately for humans, agents, and services so the human remains the source of truth for what actually ran.
+- The companion TUI (`r2d2`) keeps the same tools visible to the operator.
+
+This is the smallest system that lets agents ship while still protecting invariants. Specs (OpenSpec proposals with GIVEN/WHEN/THEN) remain the source of truth; the code is an implementation of the accepted spec.
+
 ## Install
 
 Public source is https://github.com/ryangerardwilson/c3po. Release tags are `vX.Y.Z`. The source version is 0.5.0. The published tag stays v0.4.0 until this version is tagged.
@@ -52,3 +64,5 @@ ln -sfn c3po "$HOME/.local/bin/rgw-ast"
 ```sh
 GOWORK=off go test ./...
 ```
+
+Part of an open-source harness for shipping the smallest inspectable system that agents and operators can run and improve. See also [nebula](https://github.com/ryangerardwilson/nebula), [c3po](https://github.com/ryangerardwilson/c3po), [r2d2](https://github.com/ryangerardwilson/r2d2), [crusade](https://github.com/ryangerardwilson/crusade), [tesseract](https://github.com/ryangerardwilson/tesseract).

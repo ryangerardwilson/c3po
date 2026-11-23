@@ -1,5 +1,7 @@
 # Working on c3po
 
+This tool is part of a harness for 0→1 product engineering with AI agents. Prefer the smallest system that keeps rules visible and recoverable.
+
 c3po is the agent CLI. Apps are top-level commands, `c3po <name>`. Agents use those commands and do not open a screen. The apps are `ast`, `clippy`, `deport`, `gates`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `notify`, `pass`, `slack`, and `tunnel`. `r2d2` is the terminal program. Running `r2d2` opens a screen menu. The screens are `web`, `cyclotree`, `l`, `o`, `tunnel`, `gdrive`, `pass`, `deport`, `xl`, `looptab`, and `slack`. `r2d2 web` is the ryangerardwilson.com admin screen. There is no `c3po tui` command.
 
 - `ast` is the tree in `ast/`. Its command is `c3po ast`.
