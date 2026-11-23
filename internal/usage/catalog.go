@@ -48,6 +48,8 @@ var Catalog = []string{
 	"deport",
 	"deport list",
 
+	"dirt",
+
 	"gates",
 
 	"gcal",

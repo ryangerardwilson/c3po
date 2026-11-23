@@ -41,6 +41,8 @@ func c3poFeature(args []string) string {
 		return singleFeature("clippy", args[1:])
 	case "deport":
 		return deportFeature(args[1:])
+	case "dirt":
+		return singleFeature("dirt", args[1:])
 	case "gates":
 		return singleFeature("gates", args[1:])
 	case "gcal":

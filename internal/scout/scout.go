@@ -9,6 +9,7 @@ import (
 	"github.com/ryangerardwilson/c3po/ast"
 	"github.com/ryangerardwilson/c3po/clippy"
 	"github.com/ryangerardwilson/c3po/deport"
+	"github.com/ryangerardwilson/c3po/dirt"
 	"github.com/ryangerardwilson/c3po/gates"
 	"github.com/ryangerardwilson/c3po/gcal"
 	"github.com/ryangerardwilson/c3po/gdrive"
@@ -34,6 +35,7 @@ var apps = map[string]runFunc{
 	"ast":      ast.Run,
 	"clippy":   clippy.Run,
 	"deport":   deport.Run,
+	"dirt":     dirt.Run,
 	"gates":    gates.Run,
 	"gcal":     gcal.Run,
 	"gdrive":   gdrive.Run,

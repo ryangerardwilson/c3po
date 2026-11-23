@@ -2,10 +2,11 @@ schema: spec-driven
 
 context: |
   c3po is one CLI. Each app is a top-level command,
-  c3po <name>. The apps are ast, clippy, deport, gates, gcal, gdrive,
+  c3po <name>. The apps are ast, clippy, deport, dirt, gates, gcal, gdrive,
   gmail, idealake, looptab, mess, notify, pass, slack, and tunnel. There is no
   c3po tui command. c3po gates prints the hardcoded gates. The agent judges.
-  There is no gates screen. c3po notify sends an omarchy-shell toast. c3po clippy copies a multiline text to the Wayland clipboard
+  There is no gates screen. c3po notify sends an omarchy-shell toast. c3po dirt lists the dirty git
+  repositories under home or one path. c3po clippy copies a multiline text to the Wayland clipboard
   and does not print it. c3po idealake stores ideas by topic. c3po looptab
   registers jobs files and edits them in vim. c3po mess reports linked
   worktrees to tidy and what is blocked until they are cleaned. Screens run in r2d2:

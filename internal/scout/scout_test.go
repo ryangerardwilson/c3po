@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-var portedScouts = []string{"clippy", "deport", "gates", "gcal", "gdrive", "gmail", "idealake", "looptab", "mess", "notify", "pass", "slack", "tunnel"}
+var portedScouts = []string{"clippy", "deport", "dirt", "gates", "gcal", "gdrive", "gmail", "idealake", "looptab", "mess", "notify", "pass", "slack", "tunnel"}
 
 var retiredScouts = []string{"complexity", "hide", "visualize", "vibetree", "iha", "cx", "sluser"}
 
@@ -191,6 +191,7 @@ func TestScreensAreNotC3poCommands(t *testing.T) {
 		{"c3po", "tui", "o", "--resume", "abc"},
 		{"c3po", "tui", "nlp"},
 		{"c3po", "tui", "idealake"},
+		{"c3po", "tui", "dirt"},
 	} {
 		out, code = call(args...)
 		if code != 2 || !bytes.Contains(out, []byte("unknown command")) || bytes.Contains(out, []byte("unknown tui")) {
