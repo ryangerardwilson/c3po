@@ -10,7 +10,7 @@ A published section SHALL be the section sign `§` (U+00A7) immediately followed
 
 A section argument SHALL name a published section when it is that section, that section without the section sign, or that section with `S.` in place of the section sign. `§6`, `6`, and `S.6` SHALL name `§6`. `§8.3`, `8.3`, and `S.8.3` SHALL name `§8.3`. The integers SHALL match exactly, so `6.0`, `01`, `0`, and `S.0` SHALL NOT name a section. `s.1`, `§ 1`, `§.1`, and `S§1` SHALL NOT name a section.
 
-The `architecture` provisions SHALL be cut from the architecture guardrails text without adding or paraphrasing a rule, with markdown stripped, one bullet or one short paragraph per body. `§1`, `§2`, and `§3` of `architecture` SHALL be `Data model`, `State ownership`, and `Boundaries`, with the bodies `Everything else inherits its shape.`, `Each fact has exactly one owner and one write path.`, and `The core domain is independent of UI, database, and frameworks.` Their subsections SHALL be the goal paragraph, then each hard rule, then each default, then each red flag. `§4` through `§8` SHALL be how to apply, severity, checklist, reporting, and exceptions. The hard-rules severity paragraph SHALL be two provisions under `§5`. Subsections SHALL be numbered from 1 without gaps.
+The `architecture` provisions SHALL be cut from the architecture guardrails text without adding or paraphrasing a rule, with markdown stripped, one bullet or one short paragraph per body. `§1`, `§2`, and `§3` of `architecture` SHALL be `Data model`, `State ownership`, and `Boundaries`, with the bodies `Everything else inherits its shape.`, `Each fact has exactly one owner and one write path.`, and `The core domain is independent of UI, database, and frameworks.` Their subsections SHALL be the goal paragraph, then each hard rule, then each default, then each red flag. `§4` through `§8` SHALL be how to apply, severity, checklist, reporting, and exceptions. The hard-rules severity paragraph SHALL be two provisions under `§5`. `§9` SHALL be `Components and UX`, with the body `Independent of language, framework, and platform. Use the project's existing component library and conventions. UI-1 through UI-25 are §9.1 through §9.25.` Its subsections `§9.1` through `§9.25` SHALL be the UI rules UI-1 through UI-25 in order: `§9.1` through `§9.13` are the hard rules and say MUST, and `§9.14` through `§9.25` are the defaults and say SHOULD. Adding `§9` SHALL NOT change the heading or body of any section in `§1` through `§8`. Subsections SHALL be numbered from 1 without gaps.
 
 #### Scenario: Sections sort by number
 - **GIVEN** provisions with sections `§10`, `§3.5.1`, `§2.3`, `§3`, `§1`, and `§2`
@@ -32,11 +32,16 @@ The `architecture` provisions SHALL be cut from the architecture guardrails text
 - **THEN** no body SHALL be over 300
 - **AND** some body SHALL contain `stable, immutable identifier`, `exactly one write path`, `Dependencies MUST point inward`, and `inherits its shape`
 
+#### Scenario: Components and UX
+- **WHEN** the agent runs `c3po gates code architecture 9`
+- **THEN** stdout SHALL be the `§9` body, its receipt line, a blank line, the title lines `§9.1  Design tokens` through `§9.25  Component examples`, and `25 bodies not shown: c3po gates code architecture 9.{1..25}`
+- **AND** the process SHALL exit 0
+
 ### Requirement: Gates refuse unknown names and cannot be rewritten
-`list`, `get`, `show`, `edit`, `add`, and `remove` SHALL NOT be commands. `c3po gates list`, `get`, `show`, `edit`, `add`, and `remove`, with or without more words, SHALL exit 2, and stderr SHALL say `unknown command` and that the gates change only when c3po itself is changed and reinstalled. Any other first word that is not a type, help, or version SHALL exit 2 and stderr SHALL say `unknown type`. An unknown statute SHALL exit 2 and stderr SHALL say `unknown statute`. A section argument that does not name a section published in that statute SHALL exit 2 and stderr SHALL say `unknown section` and quote that argument; `§9`, `9`, `s.1`, `§ 1`, `§.1`, `§0`, `0`, `S.0`, `§1.0`, `6.0`, `§01`, `01`, and `C/A/S.1` SHALL be unknown sections of `code architecture`. When several sections are requested and any one is unknown, the process SHALL exit 2, SHALL name that section as an unknown section, and SHALL NOT print the sections that were valid. A refusal SHALL print nothing on stdout.
+`list`, `get`, `show`, `edit`, `add`, and `remove` SHALL NOT be commands. `c3po gates list`, `get`, `show`, `edit`, `add`, and `remove`, with or without more words, SHALL exit 2, and stderr SHALL say `unknown command` and that the gates change only when c3po itself is changed and reinstalled. Any other first word that is not a type, help, or version SHALL exit 2 and stderr SHALL say `unknown type`. An unknown statute SHALL exit 2 and stderr SHALL say `unknown statute`. A section argument that does not name a section published in that statute SHALL exit 2 and stderr SHALL say `unknown section` and quote that argument; `§10`, `10`, `s.1`, `§ 1`, `§.1`, `§0`, `0`, `S.0`, `§1.0`, `6.0`, `§01`, `01`, and `C/A/S.1` SHALL be unknown sections of `code architecture`. When several sections are requested and any one is unknown, the process SHALL exit 2, SHALL name that section as an unknown section, and SHALL NOT print the sections that were valid. A refusal SHALL print nothing on stdout.
 
 #### Scenario: Unknown names
-- **WHEN** the agent runs `c3po gates poems`, `c3po gates code style`, or `c3po gates code architecture §9`
+- **WHEN** the agent runs `c3po gates poems`, `c3po gates code style`, or `c3po gates code architecture §10`
 - **THEN** the process SHALL exit 2
 - **AND** stderr SHALL contain `unknown type`, `unknown statute`, or `unknown section` in turn
 - **AND** stdout SHALL be empty
@@ -48,9 +53,9 @@ The `architecture` provisions SHALL be cut from the architecture guardrails text
 - **AND** stdout SHALL be empty
 
 #### Scenario: One unknown section refuses the pass
-- **WHEN** the agent runs `c3po gates code architecture 6 9 7`
+- **WHEN** the agent runs `c3po gates code architecture 6 10 7`
 - **THEN** the process SHALL exit 2
-- **AND** stderr SHALL contain `unknown section "9"`
+- **AND** stderr SHALL contain `unknown section "10"`
 - **AND** stdout SHALL be empty
 
 #### Scenario: A fourth argument
@@ -152,7 +157,7 @@ The closing line SHALL count only the immediate subsections whose bodies are not
 
 #### Scenario: All provisions
 - **WHEN** the agent runs `c3po gates code architecture all`
-- **THEN** stdout SHALL be 93 blocks in section order, each the section, the body, and the receipt line, separated by one blank line
+- **THEN** stdout SHALL be 119 blocks in section order, each the section, the body, and the receipt line, separated by one blank line
 - **AND** stdout SHALL contain `§8.3`, `Mention it in the summary of the change.`, and its receipt line
 - **AND** stdout SHALL NOT contain a title line or `not shown`
 - **AND** the process SHALL exit 0
@@ -192,13 +197,13 @@ The process SHALL exit 0 when every provision has a good line, there is no bad l
 #### Scenario: A complete sheet
 - **GIVEN** a clean git repository and a sheet with one good pass line per provision
 - **WHEN** the agent runs `c3po gates code architecture tally sheet.txt`
-- **THEN** stdout SHALL be `93 of 93 judged`
+- **THEN** stdout SHALL be `119 of 119 judged`
 - **AND** the process SHALL exit 0
 
 #### Scenario: Missing sections
 - **GIVEN** a sheet without `§1.3`, `§2.4`, and `§8`
 - **WHEN** the agent runs tally
-- **THEN** stdout SHALL be `90 of 93 judged`, `missing §1.3 §2.4 §8`, and `c3po gates code architecture 1.3 2.4 8`
+- **THEN** stdout SHALL be `116 of 119 judged`, `missing §1.3 §2.4 §8`, and `c3po gates code architecture 1.3 2.4 8`
 - **AND** the process SHALL exit 2
 
 #### Scenario: A bad receipt
@@ -217,7 +222,7 @@ The process SHALL exit 0 when every provision has a good line, there is no bad l
 #### Scenario: An unclaimed changed file
 - **GIVEN** a git repository with a modified tracked file `a.go` and a full sheet that names no files
 - **WHEN** the agent runs tally
-- **THEN** stdout SHALL be `93 of 93 judged` and `unclaimed a.go`
+- **THEN** stdout SHALL be `119 of 119 judged` and `unclaimed a.go`
 - **AND** the process SHALL exit 2
 - **WHEN** one fail line names `files a.go`
 - **THEN** the process SHALL exit 0

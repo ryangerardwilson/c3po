@@ -1,8 +1,8 @@
 package gates
 
-// architecture is the code statute on data model, state ownership, and
-// boundaries. One body is one bullet or one short paragraph of the source
-// text, with markdown stripped. Each body is at most maxBody code points.
+// architecture is the code statute on data model, state ownership,
+// boundaries, and UI. One body is one bullet or one short paragraph of the
+// source text, with markdown stripped. Each body is at most maxBody code points.
 var architecture = []provision{
 	{"§1", "Data model", "Everything else inherits its shape."},
 	{"§1.1", "Domain truth", "Goal: the smallest model that represents the domain truthfully. A wrong entity or relationship leaks into every query, API, and screen."},
@@ -104,4 +104,30 @@ var architecture = []provision{
 	{"§8.2", "Contain the violation", "Contain it: keep the violation behind an interface so the rest of the code does not depend on it."},
 	{"§8.3", "Mention it in the summary", "Mention it in the summary of the change."},
 	{"§8.4", "Legitimate exceptions", "Typical legitimate exceptions: a denormalized column or cache justified by measured performance, a temporary dual write during a migration, a prototype explicitly marked as throwaway."},
+	{"§9", "Components and UX", "Independent of language, framework, and platform. Use the project's existing component library and conventions. UI-1 through UI-25 are §9.1 through §9.25."},
+	{"§9.1", "Design tokens", "Visual values (colour, spacing, type scale, radius, elevation, motion duration, breakpoints) MUST come from one source of design tokens. No raw values in components; add a token rather than a one-off."},
+	{"§9.2", "One component per concept", "There MUST be one component per UI concept. Search for an existing component and extend or compose it before creating one."},
+	{"§9.3", "Presentational components", "Presentational components MUST contain no business rules or data access. They receive data and emit events."},
+	{"§9.4", "Every view state", "Every data-dependent view MUST handle loading, empty, error, partial, and populated. Every interactive element MUST define default, hover or pressed, focus, disabled, and busy where applicable."},
+	{"§9.5", "Visible feedback", "Every user action MUST give visible feedback. Slow actions MUST show progress, and the triggering control MUST be protected against duplicate submission."},
+	{"§9.6", "Destructive actions", "Destructive or irreversible actions MUST require confirmation or offer undo, and MUST look distinct from safe actions."},
+	{"§9.7", "Keep the input", "A failure MUST never lose user input. Error messages MUST say what happened and what to do next, in plain language, next to what failed. No raw error codes or stack traces as the only message."},
+	{"§9.8", "Keyboard and assistive input", "Everything operable by pointer MUST be operable by keyboard or the platform's assistive input, in a logical order, with a visible focus indicator."},
+	{"§9.9", "Name and state", "Controls MUST use semantic elements or expose an equivalent role, name, and state. Every input MUST have an associated label. Every meaningful image or icon MUST have a text alternative."},
+	{"§9.10", "Contrast", "Text and essential graphics MUST meet contrast minimums (WCAG 2.2 AA or the platform equivalent). Nothing is conveyed by colour alone."},
+	{"§9.11", "Overlay focus", "Overlays MUST manage focus: move it in on open, contain it while open, restore it on close, and close on the platform's standard dismiss action."},
+	{"§9.12", "Reduced motion", "Motion MUST respect the reduced-motion preference. Nothing flashes or auto-plays without a way to stop it."},
+	{"§9.13", "Adaptive layout", "Layout MUST adapt to the supported viewport sizes and to enlarged text without clipping, overlap, or loss of function."},
+	{"§9.14", "Small interfaces", "Component interfaces SHOULD be small: composition over configuration, and a named variant over several booleans."},
+	{"§9.15", "One source of value", "A component's value and state SHOULD have one source. Do not keep a private copy of a value passed in."},
+	{"§9.16", "Same action everywhere", "The same action SHOULD look, be named, and behave the same everywhere. One primary action per view."},
+	{"§9.17", "Platform conventions", "Platform conventions SHOULD come before new patterns."},
+	{"§9.18", "Prevent errors", "SHOULD prevent errors before reporting them: constrain inputs, give sensible defaults, and disable or explain unavailable actions. Validate inline at the field once the user has finished typing, not per keystroke and not only on submit."},
+	{"§9.19", "Acknowledge immediately", "Input SHOULD be acknowledged immediately. Show progress or a skeleton for waits beyond about a second. Optimistic updates only with a defined rollback and error message."},
+	{"§9.20", "Touch targets", "Touch targets SHOULD be about 44 by 44 points with adequate spacing."},
+	{"§9.21", "Common path first", "The common path SHOULD be shown first, and advanced options on request."},
+	{"§9.22", "Restorable view state", "View state (current view, selection, filters, pagination) SHOULD be restorable and shareable through routing or deep links, and SHOULD survive back navigation and refresh."},
+	{"§9.23", "User-facing text", "User-facing text SHOULD use the data model's names, stay separate from logic for translation, and never be built by concatenating fragments. Layouts tolerate longer text, and right-to-left scripts where localisation is in scope."},
+	{"§9.24", "Brief motion", "Motion SHOULD be brief and explain a change of state or location."},
+	{"§9.25", "Component examples", "Each shared component SHOULD have examples of all its variants and states."},
 }

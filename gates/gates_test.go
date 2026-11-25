@@ -88,6 +88,7 @@ func TestTopSections(t *testing.T) {
 		"§6": {"Checklist", "A no on a hard rule blocks the change."},
 		"§7": {"Reporting", "Report each finding as the rule, where, why it matters, and the fix."},
 		"§8": {"Exceptions", "A rule may be broken deliberately, never silently."},
+		"§9": {"Components and UX", "Independent of language, framework, and platform. Use the project's existing component library and conventions. UI-1 through UI-25 are §9.1 through §9.25."},
 	}
 	var top int
 	for _, p := range architecture {
@@ -197,7 +198,7 @@ func TestAllPrintsEveryProvision(t *testing.T) {
 		t.Fatalf("code %d\n%s%s", code, out, errOut)
 	}
 	blocks := strings.Split(strings.TrimSuffix(out, "\n"), "\n\n")
-	if len(blocks) != 93 || len(architecture) != 93 {
+	if len(blocks) != 119 || len(architecture) != 119 {
 		t.Fatalf("%d blocks for %d provisions", len(blocks), len(architecture))
 	}
 	for i, p := range architecture {
@@ -328,14 +329,14 @@ func TestUnknownNames(t *testing.T) {
 		{[]string{"Code"}, "unknown type"},
 		{[]string{"code", "style"}, "unknown statute"},
 		{[]string{"essays", "architecture"}, "unknown statute"},
-		{[]string{"code", "architecture", "§9"}, "unknown section"},
+		{[]string{"code", "architecture", "§10"}, "unknown section"},
 		{[]string{"code", "architecture", "§99"}, "unknown section"},
 		{[]string{"code", "architecture", "§0"}, "unknown section"},
 		{[]string{"code", "architecture", "§1.0"}, "unknown section"},
 		{[]string{"code", "architecture", "§01"}, "unknown section"},
 		{[]string{"code", "architecture", "§ 1"}, "unknown section"},
 		{[]string{"code", "architecture", "§.1"}, "unknown section"},
-		{[]string{"code", "architecture", "9"}, "unknown section"},
+		{[]string{"code", "architecture", "10"}, "unknown section"},
 		{[]string{"code", "architecture", "6.0"}, "unknown section"},
 		{[]string{"code", "architecture", "01"}, "unknown section"},
 		{[]string{"code", "architecture", "0"}, "unknown section"},
@@ -347,7 +348,7 @@ func TestUnknownNames(t *testing.T) {
 		{[]string{"code", "architecture", "s.1"}, "unknown section"},
 		{[]string{"code", "architecture", ""}, "unknown section"},
 		{[]string{"code", "architecture", "C/A/S.1"}, "unknown section"},
-		{[]string{"code", "architecture", "6", "9", "7"}, `unknown section "9"`},
+		{[]string{"code", "architecture", "6", "10", "7"}, `unknown section "10"`},
 		{[]string{"code", "architecture", "§6", "§1", "6.0"}, `unknown section "6.0"`},
 		{[]string{"code", "architecture", "§1", "x"}, `unknown section "x"`},
 	} {
