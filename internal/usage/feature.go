@@ -43,8 +43,6 @@ func c3poFeature(args []string) string {
 		return deportFeature(args[1:])
 	case "dirt":
 		return singleFeature("dirt", args[1:])
-	case "gates":
-		return singleFeature("gates", args[1:])
 	case "gcal":
 		return gcalFeature(args[1:])
 	case "gdrive":

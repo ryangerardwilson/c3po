@@ -14,7 +14,6 @@ Usage:
   c3po clippy [text...]
   c3po deport list|<port>
   c3po dirt [<path>]
-  c3po gates [<type> [<statute> [<section>...|all|tally <sheet>]]]
   c3po gcal [args...]
   c3po gdrive [args...]
   c3po gmail [args...]
@@ -40,7 +39,6 @@ const appText = `apps:
   clippy    copy a multiline text to the clipboard
   deport    free a safe external port
   dirt      every dirty git repository under home or one path
-  gates     the hardcoded gates an agent judges work against
   gcal      Google Calendar across presets
   gdrive    local-first Google Drive sync
   gmail     Gmail send, list, spam clean, and the hourly timer

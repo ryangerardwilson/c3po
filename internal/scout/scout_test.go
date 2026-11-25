@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-var portedScouts = []string{"clippy", "deport", "dirt", "gates", "gcal", "gdrive", "gmail", "idealake", "looptab", "mess", "notify", "pass", "slack", "tunnel"}
+var portedScouts = []string{"clippy", "deport", "dirt", "gcal", "gdrive", "gmail", "idealake", "looptab", "mess", "notify", "pass", "slack", "tunnel"}
 
-var retiredScouts = []string{"complexity", "hide", "visualize", "vibetree", "iha", "cx", "sluser"}
+var retiredScouts = []string{"complexity", "hide", "visualize", "vibetree", "iha", "cx", "sluser", "gates"}
 
 func TestScoutListsTools(t *testing.T) {
 	out, code := call("c3po")
@@ -25,6 +25,11 @@ func TestScoutListsTools(t *testing.T) {
 	for _, name := range retiredScouts {
 		if gone := "\n  " + name + " "; bytes.Contains(out, []byte(gone)) {
 			t.Fatalf("old name still listed %q\n%s", gone, out)
+		}
+	}
+	for _, name := range retiredScouts {
+		if bytes.Contains(out, []byte("c3po "+name)) {
+			t.Fatalf("old command still in help %q\n%s", name, out)
 		}
 	}
 	for _, gone := range []string{"\n  cyclotree", "\n  l ", "\n  o ", "\n  xl ", "\n  nlp ", "\n  tui "} {

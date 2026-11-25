@@ -50,8 +50,6 @@ var Catalog = []string{
 
 	"dirt",
 
-	"gates",
-
 	"gcal",
 	"gcal auth",
 	"gcal accounts list",

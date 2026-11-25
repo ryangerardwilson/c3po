@@ -5,13 +5,14 @@
 c3po runs one app from the first argument. There is no tui command. Screens open through r2d2.
 ## Requirements
 ### Requirement: The first argument selects an app
-`c3po ast` SHALL run the ast tool with the remaining arguments. `c3po clippy`, `c3po deport`, `c3po dirt`, `c3po gates`, `c3po gcal`, `c3po gdrive`, `c3po gmail`, `c3po idealake`, `c3po looptab`, `c3po mess`, `c3po notify`, `c3po pass`, `c3po slack`, and `c3po tunnel` SHALL run those tools with the remaining arguments. There is no `c3po tui` command. `c3po tui` SHALL exit 2. `c3po` SHALL NOT open a terminal screen. Agents use the c3po commands and do not open a screen. `r2d2` is the terminal program, and running it opens the screen menu. The screens in this module SHALL be `cyclotree`, `l`, `o`, `tunnel`, `gdrive`, `pass`, `deport`, and `xl`, and `r2d2 <screen>` SHALL open them, including `r2d2 <screen> --resume <id>`. `r2d2 looptab` SHALL be an r2d2 screen that calls the exported looptab functions, and the c3po screen package SHALL NOT open it. `c3po looptab` SHALL NOT open vim or any other terminal screen. `c3po` with no tool SHALL list `ast`, `clippy`, `deport`, `dirt`, `gates`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `mess`, `notify`, `pass`, `slack`, and `tunnel`, and SHALL exit 0. It SHALL NOT list `tui`. An unknown command SHALL exit 2 and SHALL list the apps. The names `complexity`, `hide`, `visualize`, `vibetree`, `scout`, `cyclotree`, `l`, `o`, `xl`, `nlp`, and `tui` SHALL be unknown commands. `c3po tunnel open` SHALL exit 2. `c3po tui <screen>` and `c3po tui <screen> --resume <id>` SHALL exit 2.
+`c3po ast` SHALL run the ast tool with the remaining arguments. `c3po clippy`, `c3po deport`, `c3po dirt`, `c3po gcal`, `c3po gdrive`, `c3po gmail`, `c3po idealake`, `c3po looptab`, `c3po mess`, `c3po notify`, `c3po pass`, `c3po slack`, and `c3po tunnel` SHALL run those tools with the remaining arguments. There is no `c3po tui` command. `c3po tui` SHALL exit 2. `c3po` SHALL NOT open a terminal screen. Agents use the c3po commands and do not open a screen. `r2d2` is the terminal program, and running it opens the screen menu. The screens in this module SHALL be `cyclotree`, `l`, `o`, `tunnel`, `gdrive`, `pass`, `deport`, and `xl`, and `r2d2 <screen>` SHALL open them, including `r2d2 <screen> --resume <id>`. `r2d2 looptab` SHALL be an r2d2 screen that calls the exported looptab functions, and the c3po screen package SHALL NOT open it. `c3po looptab` SHALL NOT open vim or any other terminal screen. `c3po` with no tool SHALL list `ast`, `clippy`, `deport`, `dirt`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `mess`, `notify`, `pass`, `slack`, and `tunnel`, and SHALL exit 0. It SHALL NOT list `tui`. An unknown command SHALL exit 2 and SHALL list the apps. The names `complexity`, `hide`, `visualize`, `vibetree`, `scout`, `cyclotree`, `l`, `o`, `xl`, `nlp`, `tui`, and `gates` SHALL be unknown commands. `c3po tunnel open` SHALL exit 2. `c3po tui <screen>` and `c3po tui <screen> --resume <id>` SHALL exit 2.
 
 #### Scenario: c3po lists the apps
 - **WHEN** the operator runs `c3po`
 - **THEN** the command SHALL exit 0
-- **AND** the text SHALL list `ast`, `clippy`, `deport`, `dirt`, `gates`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `mess`, `notify`, `pass`, `slack`, and `tunnel`
+- **AND** the text SHALL list `ast`, `clippy`, `deport`, `dirt`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `mess`, `notify`, `pass`, `slack`, and `tunnel`
 - **AND** the text SHALL NOT list `tui`
+- **AND** the text SHALL NOT list `gates`
 - **AND** the text SHALL NOT list `complexity`, `hide`, or `vibetree`
 - **AND** the text SHALL NOT list `cyclotree`, `l`, `o`, `xl`, or `nlp` as top-level apps
 
@@ -85,6 +86,7 @@ c3po runs one app from the first argument. There is no tui command. Screens open
 - **THEN** the command SHALL exit 2
 - **AND** the text SHALL list the known apps
 - **AND** the text SHALL NOT list `tui`
+- **AND** the text SHALL NOT list `gates`
 
 #### Scenario: Resume is not a c3po command
 
@@ -105,14 +107,14 @@ Invoking the binary as `rgw-ast` SHALL run ast. The arguments after the program 
 - **AND** the text SHALL name the patch command
 
 ### Requirement: One help command
-`c3po help` SHALL exit 0, SHALL show `c3po help -f`, and SHALL list `ast`, `clippy`, `deport`, `dirt`, `gates`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `mess`, `notify`, `pass`, `slack`, and `tunnel`. It SHALL NOT list `tui`. `c3po help -f <category>` SHALL explain that category. `c3po help -f ast <feature>` SHALL explain that ast command. `c3po help -f <app>` SHALL print the same text as `c3po <app> help`. An unknown category SHALL exit 2. An unknown ast feature SHALL exit 2. A feature after an app other than ast SHALL exit 2. `c3po help -f tui`, `c3po help -f tui cyclotree`, `c3po help -f vibetree`, `c3po help -f cyclotree`, `c3po help -f l`, `c3po help -f o`, and `c3po help -f nlp` SHALL exit 2.
+`c3po help` SHALL exit 0, SHALL show `c3po help -f`, and SHALL list `ast`, `clippy`, `deport`, `dirt`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `mess`, `notify`, `pass`, `slack`, and `tunnel`. It SHALL NOT list `tui`. `c3po help -f <category>` SHALL explain that category. `c3po help -f ast <feature>` SHALL explain that ast command. `c3po help -f <app>` SHALL print the same text as `c3po <app> help`. An unknown category SHALL exit 2. An unknown ast feature SHALL exit 2. A feature after an app other than ast SHALL exit 2. `c3po help -f tui`, `c3po help -f tui cyclotree`, `c3po help -f vibetree`, `c3po help -f cyclotree`, `c3po help -f l`, `c3po help -f o`, and `c3po help -f nlp` SHALL exit 2.
 
 #### Scenario: Help shows the single form
 - **WHEN** the operator runs `c3po help`
 - **THEN** the command SHALL exit 0
 - **AND** the text SHALL show `c3po help -f`
-- **AND** the text SHALL list `ast`, `clippy`, `deport`, `dirt`, `gates`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `mess`, `notify`, `pass`, `slack`, and `tunnel`
-- **AND** the text SHALL NOT list `tui`
+- **AND** the text SHALL list `ast`, `clippy`, `deport`, `dirt`, `gcal`, `gdrive`, `gmail`, `idealake`, `looptab`, `mess`, `notify`, `pass`, `slack`, and `tunnel`
+- **AND** the text SHALL NOT list `tui` or `gates`
 - **AND** the text SHALL NOT list `vibetree`
 
 #### Scenario: tui is not a help category
@@ -246,24 +248,6 @@ Every c3po invocation SHALL add one to a daily counter for one catalog feature a
 - **THEN** the recorded feature SHALL be `notify`
 - **AND** `c3po notify --help` SHALL be recorded as `help`
 
-### Requirement: Gates is an app
-`c3po gates` SHALL run gates with the remaining arguments. `c3po` and `c3po help` SHALL list `gates` between `deport` and `gcal`. `c3po help -f gates` SHALL print the same text as `c3po gates help`. There SHALL be no gates screen. `c3po tui gates` SHALL exit 2. The usage feature SHALL be `gates`; help and version SHALL stay `help` and `version`. The usage record SHALL NOT store the type, the statute, or the section.
-
-#### Scenario: Gates is listed with the apps
-- **WHEN** the operator runs `c3po`
-- **THEN** the command SHALL exit 0
-- **AND** the text SHALL list `gates`
-
-#### Scenario: Gates help is the category help
-- **WHEN** the operator runs `c3po help -f gates`
-- **THEN** the command SHALL exit 0
-- **AND** the text SHALL match `c3po gates help`
-
-#### Scenario: Gates usage feature
-- **WHEN** the agent runs `c3po gates code architecture §1`
-- **THEN** the recorded feature SHALL be `gates`
-- **AND** `c3po gates --help` SHALL be recorded as `help`
-
 ### Requirement: A stored-data migration runs once
 A change to the c3po database schema or to stored c3po data SHALL ship as a numbered migration in one ordered list. Opening the database SHALL apply, in order, every migration whose version is newer than the newest version in `schema_migration`. A migration's sql and its `schema_migration` row SHALL commit in one transaction. When the sql fails, neither SHALL commit, the command SHALL report the error, and a later open SHALL try that migration again. A migration SHALL be safe to apply twice. An applied migration SHALL NOT be edited. The database SHALL run with foreign keys enforced.
 
@@ -302,7 +286,7 @@ Drive sync state SHALL be stored in the table `gdrive_sync_entry`, one row per e
 - **AND** `a` and `a/b` SHALL keep their row ids
 
 ### Requirement: Dirt is an app
-`c3po dirt` SHALL run dirt with the remaining arguments. `c3po` and `c3po help` SHALL list `dirt` between `deport` and `gates`. `c3po help -f dirt` SHALL print the same text as `c3po dirt help`. A feature after `dirt` SHALL be an unknown feature and SHALL exit 2. There SHALL be no dirt screen. `c3po tui dirt` SHALL exit 2. The usage feature SHALL be `dirt`; help and version SHALL stay `help` and `version`. The usage record SHALL NOT store the scan path.
+`c3po dirt` SHALL run dirt with the remaining arguments. `c3po` and `c3po help` SHALL list `dirt` between `deport` and `gcal`. `c3po help -f dirt` SHALL print the same text as `c3po dirt help`. A feature after `dirt` SHALL be an unknown feature and SHALL exit 2. There SHALL be no dirt screen. `c3po tui dirt` SHALL exit 2. The usage feature SHALL be `dirt`; help and version SHALL stay `help` and `version`. The usage record SHALL NOT store the scan path.
 
 #### Scenario: Dirt is listed with the apps
 - **WHEN** the operator runs `c3po`
