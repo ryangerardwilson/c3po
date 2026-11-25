@@ -1,7 +1,7 @@
 package gates
 
 // architecture is the code statute on data model, state ownership,
-// boundaries, and UI. One body is one bullet or one short paragraph of the
+// boundaries, UI, and tests. One body is one bullet or one short paragraph of the
 // source text, with markdown stripped. Each body is at most maxBody code points.
 var architecture = []provision{
 	{"§1", "Data model", "Everything else inherits its shape."},
@@ -130,4 +130,25 @@ var architecture = []provision{
 	{"§9.23", "User-facing text", "User-facing text SHOULD use the data model's names, stay separate from logic for translation, and never be built by concatenating fragments. Layouts tolerate longer text, and right-to-left scripts where localisation is in scope."},
 	{"§9.24", "Brief motion", "Motion SHOULD be brief and explain a change of state or location."},
 	{"§9.25", "Component examples", "Each shared component SHOULD have examples of all its variants and states."},
+	{"§10", "Tests", "Independent of language and test framework. A test should be readable on its own and fail only when behaviour is wrong. TS-1 through TS-20 are §10.1 through §10.20."},
+	{"§10.1", "Assert behaviour", "Tests MUST assert observable behaviour through the public interface. Never private functions, internal state, or internal call sequences."},
+	{"§10.2", "Independent tests", "Each test MUST be independent: it creates the state it needs and passes alone, in any order, and in parallel. No reliance on state left by another test."},
+	{"§10.3", "Deterministic tests", "Tests MUST be deterministic: no real clock, real network, sleeps, or unseeded randomness."},
+	{"§10.4", "One behaviour", "Each test MUST check one behaviour, and its name MUST state the scenario and the expected outcome."},
+	{"§10.5", "Visible values", "The values that matter to the assertion MUST be visible in the test body. Shared builders supply only defaults that are irrelevant to the test."},
+	{"§10.6", "Mock the edges", "Tests MUST mock or fake only the system's edges (network, clock, third-party services, and persistence where needed). Never the code under test or the core domain."},
+	{"§10.7", "No skipped tests", "There MUST be no skipped, disabled, commented-out, or expected-to-fail tests without a stated reason and an owner. Delete tests when the code they cover is deleted."},
+	{"§10.8", "No test-only production code", "Production code MUST contain nothing that exists only for tests: no test flags, back doors, or methods made public for a test."},
+	{"§10.9", "Bug fix has a test", "A bug fix MUST come with a test that fails without the fix."},
+	{"§10.10", "Tests directory", "The tests directory MUST contain only tests and their support code. No scratch scripts, debug output, or one-off repros."},
+	{"§10.11", "Real assertions", "Every test MUST have an assertion that can fail for the behaviour it names. Never weaken or delete an assertion, or regenerate a snapshot, just to make a test pass."},
+	{"§10.12", "Mirror the source", "The tests directory SHOULD mirror the source layout, so the test for a module is findable by path."},
+	{"§10.13", "Lowest level", "Each behaviour SHOULD be tested at the lowest level that can prove it. Keep end-to-end tests for a few critical flows, and do not repeat the same check at several levels."},
+	{"§10.14", "Extend an existing test", "SHOULD look for an existing test to extend or parameterise before adding one."},
+	{"§10.15", "Builders and factories", "Test data SHOULD come from one set of builders or factories, not hand-rolled objects or large fixture files."},
+	{"§10.16", "Explicit setup", "Shared setup SHOULD be explicit and close to the test. Avoid fixtures applied automatically or defined far from where they are used, and avoid deep helper layers or test base classes."},
+	{"§10.17", "Small snapshots", "Snapshots SHOULD be small and reviewed. Prefer explicit assertions on the fields that matter."},
+	{"§10.18", "No logic in tests", "Tests SHOULD contain no logic (loops, conditionals, computed expectations). Expected values are written literally."},
+	{"§10.19", "Recorded data", "Recorded data files (fixtures, captured responses, dumps) SHOULD state their source and which tests use them; remove them when unused."},
+	{"§10.20", "No coverage padding", "Tests for trivial code or the framework itself SHOULD NOT be written to raise coverage."},
 }

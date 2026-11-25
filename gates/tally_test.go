@@ -75,7 +75,7 @@ func TestTallyCompleteSheet(t *testing.T) {
 	tempRepo(t)
 	// the sheet is untracked, so it is not a changed file
 	out, errOut, code := tally(t, fullSheet(map[string]string{"§2.3": line("§2.3", "pass a.go:3")}))
-	if code != 0 || out != "119 of 119 judged\n" || errOut != "" {
+	if code != 0 || out != "140 of 140 judged\n" || errOut != "" {
 		t.Fatalf("code %d\n%s%s", code, out, errOut)
 	}
 }
@@ -83,7 +83,7 @@ func TestTallyCompleteSheet(t *testing.T) {
 func TestTallyMissingSections(t *testing.T) {
 	tempRepo(t)
 	out, _, code := tally(t, fullSheet(map[string]string{"§1.3": "", "§2.4": "", "§8": ""}))
-	want := "116 of 119 judged\nmissing §1.3 §2.4 §8\nc3po gates code architecture 1.3 2.4 8\n"
+	want := "137 of 140 judged\nmissing §1.3 §2.4 §8\nc3po gates code architecture 1.3 2.4 8\n"
 	if code != 2 || out != want {
 		t.Fatalf("code %d\n%s", code, out)
 	}
@@ -103,16 +103,16 @@ func TestTallyBadLines(t *testing.T) {
 		{"§1.9", line("§1.9", "pass a.go"), "bad line 10: site a.go is not none or path:line: "},
 	} {
 		out, _, code := tally(t, fullSheet(map[string]string{tc.section: tc.line}))
-		if code != 2 || !strings.HasPrefix(out, "118 of 119 judged\nmissing "+tc.section+"\n") || !strings.Contains(out, tc.want) {
+		if code != 2 || !strings.HasPrefix(out, "139 of 140 judged\nmissing "+tc.section+"\n") || !strings.Contains(out, tc.want) {
 			t.Fatalf("%s code %d\n%s", tc.line, code, out)
 		}
 	}
 	out, _, code := tally(t, fullSheet(nil)+line("§8.3", "pass none")+"\n")
-	if code != 2 || !strings.HasPrefix(out, "119 of 119 judged\nbad line 120: duplicate §8.3: ") {
+	if code != 2 || !strings.HasPrefix(out, "140 of 140 judged\nbad line 141: duplicate §8.3: ") {
 		t.Fatalf("duplicate code %d\n%s", code, out)
 	}
-	out, _, code = tally(t, fullSheet(nil)+"§10 00000000 pass none\n")
-	if code != 2 || !strings.Contains(out, `bad line 120: unknown section "§10"`) {
+	out, _, code = tally(t, fullSheet(nil)+"§11 00000000 pass none\n")
+	if code != 2 || !strings.Contains(out, `bad line 141: unknown section "§11"`) {
 		t.Fatalf("unknown code %d\n%s", code, out)
 	}
 }
@@ -122,15 +122,15 @@ func TestTallyChangedFiles(t *testing.T) {
 	write(t, "a.go", "package a\n")
 	write(t, "new.go", "package a\n")
 	out, _, code := tally(t, fullSheet(nil))
-	if code != 2 || out != "119 of 119 judged\nunclaimed a.go\n" {
+	if code != 2 || out != "140 of 140 judged\nunclaimed a.go\n" {
 		t.Fatalf("unclaimed code %d\n%s", code, out)
 	}
 	claim := map[string]string{"§1.3": line("§1.3", "fail a.go:1 files a.go")}
-	if out, _, code := tally(t, fullSheet(claim)); code != 0 || out != "119 of 119 judged\n" {
+	if out, _, code := tally(t, fullSheet(claim)); code != 0 || out != "140 of 140 judged\n" {
 		t.Fatalf("claimed code %d\n%s", code, out)
 	}
 	claim["§3.2"] = line("§3.2", "fail none")
-	if out, _, code := tally(t, fullSheet(claim)); code != 2 || out != "119 of 119 judged\nunfixed §3.2\n" {
+	if out, _, code := tally(t, fullSheet(claim)); code != 2 || out != "140 of 140 judged\nunfixed §3.2\n" {
 		t.Fatalf("dirty unfixed code %d\n%s", code, out)
 	}
 	git(t, "rm", "-q", "sub/b.go")
@@ -149,7 +149,7 @@ func TestTallyRename(t *testing.T) {
 	tempRepo(t)
 	git(t, "mv", "a.go", "moved.go")
 	out, _, code := tally(t, fullSheet(nil))
-	if code != 2 || out != "119 of 119 judged\nunclaimed moved.go\n" {
+	if code != 2 || out != "140 of 140 judged\nunclaimed moved.go\n" {
 		t.Fatalf("code %d\n%s", code, out)
 	}
 }
@@ -157,7 +157,7 @@ func TestTallyRename(t *testing.T) {
 func TestTallyCleanTreeAllowsUnfixed(t *testing.T) {
 	tempRepo(t)
 	out, _, code := tally(t, fullSheet(map[string]string{"§3.2": line("§3.2", "fail none"), "§1.1": line("§1.1", "fail a.go:1")}))
-	if code != 0 || out != "119 of 119 judged\nunfixed §1.1 §3.2\n" {
+	if code != 0 || out != "140 of 140 judged\nunfixed §1.1 §3.2\n" {
 		t.Fatalf("code %d\n%s", code, out)
 	}
 }
