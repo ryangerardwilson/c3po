@@ -35,15 +35,42 @@ type repo struct {
 }
 
 type verdict struct {
-	text string
-	err  error
+	tally tally
+	err   error
+}
+
+type tally struct {
+	modified  int
+	added     int
+	deleted   int
+	untracked int
+}
+
+func (t tally) empty() bool {
+	return t.modified == 0 && t.added == 0 && t.deleted == 0 && t.untracked == 0
+}
+
+func (t tally) String() string {
+	var parts []string
+	if t.modified > 0 {
+		parts = append(parts, fmt.Sprintf("M%d", t.modified))
+	}
+	if t.added > 0 {
+		parts = append(parts, fmt.Sprintf("+%d", t.added))
+	}
+	if t.deleted > 0 {
+		parts = append(parts, fmt.Sprintf("-%d", t.deleted))
+	}
+	if t.untracked > 0 {
+		parts = append(parts, fmt.Sprintf("??%d", t.untracked))
+	}
+	return strings.Join(parts, " ")
 }
 
 func report(root string, stdout, stderr io.Writer) int {
 	repos := find(root)
 	verdicts := judgeAll(repos)
 	code := 0
-	printed := false
 	for i, r := range repos {
 		v := verdicts[i]
 		if v.err != nil {
@@ -51,15 +78,9 @@ func report(root string, stdout, stderr io.Writer) int {
 			code = 1
 			continue
 		}
-		if v.text == "" {
-			continue
+		if !v.tally.empty() {
+			fmt.Fprintf(stdout, "%s : %s\n", shortPath(r.path), v.tally)
 		}
-		if printed {
-			fmt.Fprintln(stdout)
-		}
-		printed = true
-		fmt.Fprintln(stdout, r.path)
-		fmt.Fprint(stdout, v.text)
 	}
 	return code
 }
@@ -148,28 +169,77 @@ func judgeAll(repos []repo) []verdict {
 	return out
 }
 
-// judge returns the porcelain to print for r, or "" when r is clean.
+// judge returns how much dirt r holds. An empty tally means r is clean.
 func judge(r repo) verdict {
 	status, err := gitStatus(r.path)
 	if err != nil {
 		return verdict{err: err}
 	}
-	var kept []string
-	dirty := false
-	for _, line := range strings.Split(strings.TrimRight(status, "\n"), "\n") {
-		switch {
-		case line == "":
-		case strings.HasPrefix(line, "##"):
-			kept = append(kept, line)
-		case r.within == "" || inside(line, r.within):
-			kept = append(kept, line)
-			dirty = true
+	return verdict{tally: dirtTally(status, r.within)}
+}
+
+// dirtTally counts porcelain lines that are not the ## branch line and, when
+// within is set, name a path under it.
+func dirtTally(status, within string) tally {
+	var t tally
+	for _, line := range strings.Split(status, "\n") {
+		if line == "" || strings.HasPrefix(line, "##") {
+			continue
+		}
+		if within != "" && !inside(line, within) {
+			continue
+		}
+		switch kind(line) {
+		case 'M':
+			t.modified++
+		case '+':
+			t.added++
+		case '-':
+			t.deleted++
+		case '?':
+			t.untracked++
 		}
 	}
-	if !dirty {
-		return verdict{}
+	return t
+}
+
+// kind is the one mark a porcelain line adds. 0 means the line is not dirt.
+func kind(line string) byte {
+	if len(line) < 2 {
+		return 0
 	}
-	return verdict{text: strings.Join(kept, "\n") + "\n"}
+	x, y := line[0], line[1]
+	switch {
+	case x == '?' || y == '?':
+		return '?'
+	case x == '!' || y == '!':
+		return 0
+	case x == 'D' || y == 'D':
+		return '-'
+	case x == 'A' || y == 'A' || x == 'C' || y == 'C':
+		return '+'
+	default:
+		return 'M'
+	}
+}
+
+// shortPath writes a repository under the home directory as ~/..., and that
+// directory itself as ~. Any other path stays absolute.
+func shortPath(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
+	home = filepath.Clean(home)
+	path = filepath.Clean(path)
+	if path == home {
+		return "~"
+	}
+	rel, err := filepath.Rel(home, path)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return path
+	}
+	return "~/" + filepath.ToSlash(rel)
 }
 
 func gitStatus(dir string) (string, error) {

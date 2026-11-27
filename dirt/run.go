@@ -25,11 +25,16 @@ list every dirty git repository under a directory
   c3po dirt version
     print the c3po version
 
-Stdout lists only dirty repositories, sorted by absolute path, with one blank
-line between them. Each is its absolute path, then git status --porcelain=v1 -b.
-A repository whose status is only the ## line is clean and is not printed.
-A scan path inside a repository shows that repository with only the paths
-under the scan path.
+Stdout is one line per dirty repository, sorted by absolute path:
+
+  ~/src/app : M2 +3 -7 ??5
+
+A path under the home directory uses ~/. The home directory itself is ~.
+Anywhere else the path is absolute. M is modified, + is added, - is deleted,
+and ?? is untracked. A mark of zero is left out. A rename counts as modified.
+An untracked directory counts as one untracked. File names are not printed.
+A repository with no marks is clean and is not printed.
+A scan path inside a repository counts only the paths under the scan path.
 
 A directory holding .git is a repository. Nested repositories are their own
 entries. Symlinks are not followed. Directories that cannot be listed are

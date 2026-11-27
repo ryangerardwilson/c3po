@@ -60,6 +60,10 @@ func run(args ...string) (string, string, int) {
 	return out.String(), errb.String(), code
 }
 
+func row(path, kinds string) string {
+	return shortPath(path) + " : " + kinds + "\n"
+}
+
 func TestCleanRepositoryIsOmitted(t *testing.T) {
 	dir := isolate(t)
 	fixture(t, filepath.Join(dir, "app"), "README.md")
@@ -76,9 +80,75 @@ func TestDirtyRepositoryIsPrinted(t *testing.T) {
 	write(t, filepath.Join(app, "README.md"), "two\n")
 	write(t, filepath.Join(app, "notes.txt"), "x\n")
 	out, errs, code := run(dir)
-	want := app + "\n## main\n M README.md\n?? notes.txt\n"
+	want := row(app, "M1 ??1")
 	if code != 0 || out != want || errs != "" {
 		t.Fatalf("code %d\nout %q\nwant %q\nerr %q", code, out, want, errs)
+	}
+}
+
+func TestRenameAndUntrackedDirectoryCountOne(t *testing.T) {
+	dir := isolate(t)
+	app := filepath.Join(dir, "app")
+	fixture(t, app, "a.txt")
+	git(t, app, "mv", "a.txt", "b.txt")
+	write(t, filepath.Join(app, "new", "one.txt"), "x\n")
+	write(t, filepath.Join(app, "new", "two.txt"), "x\n")
+	out, errs, code := run(dir)
+	want := row(app, "M1 ??1")
+	if code != 0 || out != want || errs != "" {
+		t.Fatalf("code %d\nout %q\nwant %q\nerr %q", code, out, want, errs)
+	}
+}
+
+func TestTallyMarks(t *testing.T) {
+	dir := isolate(t)
+	app := filepath.Join(dir, "app")
+	fixture(t, app, "keep.txt", "gone.txt")
+	write(t, filepath.Join(app, "keep.txt"), "two\n")
+	git(t, app, "rm", "-q", "gone.txt")
+	write(t, filepath.Join(app, "new.txt"), "x\n")
+	git(t, app, "add", "new.txt")
+	write(t, filepath.Join(app, "extra.txt"), "x\n")
+	out, errs, code := run(dir)
+	want := row(app, "M1 +1 -1 ??1")
+	if code != 0 || out != want || errs != "" {
+		t.Fatalf("code %d\nout %q\nwant %q\nerr %q", code, out, want, errs)
+	}
+}
+
+func TestDirtTallySkipsTheBranchLine(t *testing.T) {
+	status := "## main...origin/main [ahead 1]\nR  old/a.go -> src/a.go\n M README.md\n?? src/\n!! ignored\n"
+	cases := []struct {
+		within string
+		want   string
+	}{
+		{"", "M2 ??1"},
+		{"src", "M1 ??1"},
+		{"old", "M1"},
+		{"docs", ""},
+	}
+	for _, tc := range cases {
+		if got := dirtTally(status, tc.within).String(); got != tc.want {
+			t.Fatalf("dirtTally(%q) = %q, want %q", tc.within, got, tc.want)
+		}
+	}
+	if got := dirtTally("## main\n", "").String(); got != "" {
+		t.Fatalf("branch line only = %q", got)
+	}
+}
+
+func TestShortPathUsesHome(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	if got := shortPath(dir); got != "~" {
+		t.Fatalf("home = %q", got)
+	}
+	if got := shortPath(filepath.Join(dir, "Apps", "app")); got != "~/Apps/app" {
+		t.Fatalf("child = %q", got)
+	}
+	outside := t.TempDir()
+	if got := shortPath(outside); got != outside {
+		t.Fatalf("outside = %q", got)
 	}
 }
 
@@ -93,7 +163,7 @@ func TestNestedRepositoryIsSeparate(t *testing.T) {
 	write(t, filepath.Join(app, "README.md"), "two\n")
 	write(t, filepath.Join(lib, "lib.go"), "two\n")
 	out, _, code := run(dir)
-	want := app + "\n## main\n M README.md\n\n" + lib + "\n## main\n M lib.go\n"
+	want := row(app, "M1") + row(lib, "M1")
 	if code != 0 || out != want {
 		t.Fatalf("code %d\nout %q\nwant %q", code, out, want)
 	}
@@ -132,7 +202,7 @@ func TestSkippedNamesAreNotEntered(t *testing.T) {
 		t.Fatalf("code %d\nout %q\nerr %q", code, out, errs)
 	}
 	out, _, code = run(filepath.Join(dir, "web", "node_modules"))
-	want := pkg + "\n## main\n?? x.txt\n"
+	want := row(pkg, "??1")
 	if code != 0 || out != want {
 		t.Fatalf("root named node_modules: code %d\nout %q\nwant %q", code, out, want)
 	}
@@ -151,18 +221,18 @@ func TestHomeLocalIsSkipped(t *testing.T) {
 	write(t, filepath.Join(nested, "x.txt"), "x\n")
 
 	out, errs, code := run(dir)
-	if code != 0 || errs != "" || !strings.Contains(out, hidden+"\n") {
+	if code != 0 || errs != "" || !strings.Contains(out, row(hidden, "??1")) {
 		t.Fatalf("outside home: code %d\nout %q\nerr %q", code, out, errs)
 	}
 
 	t.Setenv("HOME", dir)
 	out, errs, code = run(dir)
-	want := app + "\n## main\n?? x.txt\n\n" + nested + "\n## main\n?? x.txt\n"
+	want := row(app, "??1") + row(nested, "??1")
 	if code != 0 || out != want || errs != "" {
 		t.Fatalf("home: code %d\nout %q\nwant %q\nerr %q", code, out, want, errs)
 	}
 	out, _, code = run(filepath.Join(dir, ".local"))
-	want = hidden + "\n## main\n?? x.txt\n"
+	want = row(hidden, "??1")
 	if code != 0 || out != want {
 		t.Fatalf("explicit: code %d\nout %q\nwant %q", code, out, want)
 	}
@@ -180,7 +250,7 @@ func TestScanInsideRepositoryKeepsOnlyThatPath(t *testing.T) {
 	write(t, filepath.Join(lib, "lib.go"), "two\n")
 
 	out, _, code := run(filepath.Join(app, "src"))
-	want := app + "\n## main\n M src/main.go\n?? src/lib/\n\n" + lib + "\n## main\n M lib.go\n"
+	want := row(app, "M1 ??1") + row(lib, "M1")
 	if code != 0 || out != want {
 		t.Fatalf("src: code %d\nout %q\nwant %q", code, out, want)
 	}
@@ -189,7 +259,7 @@ func TestScanInsideRepositoryKeepsOnlyThatPath(t *testing.T) {
 		t.Fatalf("clean docs: code %d\nout %q", code, out)
 	}
 	out, _, code = run(filepath.Join(app, "fresh", "deep"))
-	want = app + "\n## main\n?? fresh/\n"
+	want = row(app, "??1")
 	if code != 0 || out != want {
 		t.Fatalf("untracked parent: code %d\nout %q\nwant %q", code, out, want)
 	}
@@ -225,7 +295,7 @@ func TestGitFileIsARepository(t *testing.T) {
 	git(t, app, "init", "-q", "-b", "main", "--separate-git-dir", filepath.Join(t.TempDir(), "app.git"))
 	write(t, filepath.Join(app, "x.txt"), "x\n")
 	out, _, code := run(dir)
-	if code != 0 || !strings.HasPrefix(out, app+"\n## ") || !strings.Contains(out, "?? x.txt") {
+	if code != 0 || out != row(app, "??1") {
 		t.Fatalf("code %d\nout %q", code, out)
 	}
 }
@@ -244,7 +314,7 @@ func TestUnlistableDirectoryIsSkipped(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
 	out, errs, code := run(dir)
-	if code != 0 || out != app+"\n## main\n?? x.txt\n" || errs != "" {
+	if code != 0 || out != row(app, "??1") || errs != "" {
 		t.Fatalf("code %d\nout %q\nerr %q", code, out, errs)
 	}
 }
@@ -263,8 +333,8 @@ func TestFailedStatusExitsOneAfterPrinting(t *testing.T) {
 	fixture(t, zed)
 	write(t, filepath.Join(zed, "y.txt"), "y\n")
 	out, errs, code := run(dir)
-	want := app + "\n## main\n?? x.txt\n\n" + zed + "\n## main\n?? y.txt\n"
-	if code != 1 || out != want {
+	want := row(app, "??1") + row(zed, "??1")
+	if code != 1 || out != want || strings.Contains(out, broken) {
 		t.Fatalf("code %d\nout %q\nwant %q", code, out, want)
 	}
 	if !strings.Contains(errs, "dirt: "+broken+": git status failed") {
@@ -287,7 +357,7 @@ func TestHomeIsTheDefaultRoot(t *testing.T) {
 	fixture(t, app)
 	write(t, filepath.Join(app, "x.txt"), "x\n")
 	out, _, code := run()
-	if code != 0 || out != app+"\n## main\n?? x.txt\n" {
+	if code != 0 || out != row(app, "??1") {
 		t.Fatalf("code %d\nout %q", code, out)
 	}
 }
@@ -299,7 +369,7 @@ func TestRelativePathIsResolved(t *testing.T) {
 	write(t, filepath.Join(app, "x.txt"), "x\n")
 	t.Chdir(dir)
 	out, _, code := run("./work/../work")
-	if code != 0 || out != app+"\n## main\n?? x.txt\n" {
+	if code != 0 || out != row(app, "??1") {
 		t.Fatalf("code %d\nout %q", code, out)
 	}
 }
@@ -330,6 +400,9 @@ func TestHelpAndVersion(t *testing.T) {
 	}
 	if !strings.Contains(Help, "c3po dirt <path>") {
 		t.Fatal("help does not name c3po dirt <path>")
+	}
+	if !strings.Contains(Help, "~/src/app : M2 +3 -7 ??5") || strings.Contains(Help, "blank") {
+		t.Fatal("help does not describe the tally line")
 	}
 	for _, word := range []string{"version", "--version", "-v"} {
 		out, _, code := run(word)
