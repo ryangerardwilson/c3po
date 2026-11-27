@@ -79,7 +79,7 @@ func report(root string, stdout, stderr io.Writer) int {
 			continue
 		}
 		if !v.tally.empty() {
-			fmt.Fprintf(stdout, "%s : %s\n", shortPath(r.path), v.tally)
+			fmt.Fprintf(stdout, "%s: %s\n", shortPath(r.path), v.tally)
 		}
 	}
 	return code

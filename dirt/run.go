@@ -27,7 +27,7 @@ list every dirty git repository under a directory
 
 Stdout is one line per dirty repository, sorted by absolute path:
 
-  ~/src/app : M2 +3 -7 ??5
+  ~/src/app: M2 +3 -7 ??5
 
 A path under the home directory uses ~/. The home directory itself is ~.
 Anywhere else the path is absolute. M is modified, + is added, - is deleted,

@@ -61,7 +61,7 @@ func run(args ...string) (string, string, int) {
 }
 
 func row(path, kinds string) string {
-	return shortPath(path) + " : " + kinds + "\n"
+	return shortPath(path) + ": " + kinds + "\n"
 }
 
 func TestCleanRepositoryIsOmitted(t *testing.T) {
@@ -401,7 +401,7 @@ func TestHelpAndVersion(t *testing.T) {
 	if !strings.Contains(Help, "c3po dirt <path>") {
 		t.Fatal("help does not name c3po dirt <path>")
 	}
-	if !strings.Contains(Help, "~/src/app : M2 +3 -7 ??5") || strings.Contains(Help, "blank") {
+	if !strings.Contains(Help, "~/src/app: M2 +3 -7 ??5") || strings.Contains(Help, "blank") {
 		t.Fatal("help does not describe the tally line")
 	}
 	for _, word := range []string{"version", "--version", "-v"} {
